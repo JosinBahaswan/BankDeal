@@ -1,0 +1,1405 @@
+import { useEffect, useRef, useState } from "react";
+import { askClaude, calcOffer, extractJSON, fmt, toNum } from "./dealbank/core/helpers";
+import { G, card, lbl, smIn, btnG, btnO } from "./dealbank/core/theme";
+import {
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
+  AD_SLOTS,
+  DEALMAKER_CONTENT,
+  INSURANCE_PARTNERS,
+  MOCK_CONTRACTORS,
+  MOCK_REALTORS,
+  MORTGAGE_PARTNERS,
+  PIPELINE_STAGES,
+  RENO_KEYS,
+  SOFTWARE_REVIEWS,
+  STATE_LAWS,
+  TRADES,
+} from "./dealbank/data/appData";
+import AdminDashboardScreen from "./dealbank/screens/AdminDashboardScreen";
+import AuthScreen from "./dealbank/screens/AuthScreen";
+import ContractorDashboardScreen from "./dealbank/screens/ContractorDashboardScreen";
+import ContractorOnboardingScreen from "./dealbank/screens/ContractorOnboardingScreen";
+import DealMakerDashboardScreen from "./dealbank/screens/DealMakerDashboardScreen";
+import LandingScreen from "./dealbank/screens/LandingScreen";
+import RealtorOnboardingScreen from "./dealbank/screens/RealtorOnboardingScreen";
+import RealtorDashboardScreen from "./dealbank/screens/RealtorDashboardScreen";
+import { supabase } from "./lib/supabaseClient";
+
+const USER_TYPES = new Set(["dealmaker", "contractor", "realtor", "admin"]);
+
+function normalizeUserType(type) {
+  const value = String(type || "").toLowerCase();
+  return USER_TYPES.has(value) ? value : "dealmaker";
+}
+
+const ADMIN_PASSWORD_ALIASES = new Set([ADMIN_PASSWORD, "DealBank2025", "DealBank2025!"]);
+
+function toOnboardingTradeLabel(trade) {
+  if (trade === "General Contractor") return "GC";
+  return trade;
+}
+
+function createContractorOnboardingState(initialTrade = "") {
+  return {
+    step: 1,
+    trades: initialTrade ? [initialTrade] : [],
+    yearsInBusiness: "",
+    licenseNumber: "",
+    city: "",
+    serviceRadius: "",
+    rateType: "hourly",
+    rateAmount: "",
+    bio: "",
+    licensedAndInsured: false,
+    bonded: false,
+    plan: "basic",
+    submitting: false,
+    error: "",
+  };
+}
+
+function createRealtorOnboardingState() {
+  return {
+    step: 1,
+    dreLicense: "",
+    brokerage: "",
+    avgDaysToClose: "",
+    dealsPerYear: "",
+    bio: "",
+    markets: [],
+    specialties: [],
+    submitting: false,
+    error: "",
+  };
+}
+
+function errCode(error) {
+  return String(error?.code || error?.error_code || "").toLowerCase();
+}
+
+function errMessage(error) {
+  return String(error?.message || "").toLowerCase();
+}
+
+function isRateLimitError(error) {
+  return errCode(error) === "over_email_send_rate_limit" || errMessage(error).includes("email rate limit exceeded");
+}
+
+function isInvalidCredentialError(error) {
+  return errCode(error) === "invalid_credentials" || errMessage(error).includes("invalid login credentials");
+}
+
+function isEmailNotConfirmedError(error) {
+  return errCode(error) === "email_not_confirmed" || errMessage(error).includes("email not confirmed");
+}
+
+function isUserExistsError(error) {
+  return errCode(error) === "user_already_exists" || errMessage(error).includes("already registered") || errMessage(error).includes("already been registered");
+}
+
+function mapDealRowToPipeline(row) {
+  return {
+    id: row.id,
+    address: row.address,
+    arvNum: Number(row.arv || 0),
+    offer: Number(row.offer_price || 0),
+    allIn: Number(row.all_in_cost || 0),
+    projProfit: Number(row.net_profit || 0),
+    roi: Number(row.roi || 0).toFixed(1),
+    stage: row.stage || "Analyzing",
+    notes: "",
+    savedAt: row.saved_at ? new Date(row.saved_at).toLocaleDateString() : "",
+    reno: {
+      kitchen: String(row.reno_kitchen || 0),
+      bathrooms: String(row.reno_bathrooms || 0),
+      flooring: String(row.reno_flooring || 0),
+      paint: String(row.reno_paint || 0),
+      hvac: String(row.reno_hvac || 0),
+      plumbing: String(row.reno_plumbing || 0),
+      electrical: String(row.reno_electrical || 0),
+      roof: String(row.reno_roof || 0),
+      windows: String(row.reno_windows || 0),
+      landscaping: String(row.reno_landscaping || 0),
+      foundation: String(row.reno_foundation || 0),
+      misc: String(row.reno_misc || 0),
+    },
+    softCosts: "",
+    hardRate: String(row.hm_rate || ""),
+    loanMo: String(row.hm_months || ""),
+    loanPts: String(row.hm_points || ""),
+  };
+}
+
+const DEALMAKER_TAB_LABELS = {
+  analyze: "Deal Analysis",
+  pipeline: "Pipeline",
+  contractors: "Contractors",
+  tools: "Tools",
+  partners: "Partners",
+  resources: "Resources",
+  laws: "State Laws",
+  marketplace: "Marketplace",
+};
+
+const ADMIN_TAB_LABELS = {
+  overview: "Overview",
+  users: "Users",
+  revenue: "Revenue",
+  deals: "Deals",
+  contractors: "Contractors",
+};
+
+const CONTRACTOR_TAB_LABELS = {
+  leads: "Job Leads",
+  profile: "Profile",
+  earnings: "Earnings",
+};
+
+function upsertMetaTag(attrs, content) {
+  if (typeof document === "undefined") return;
+  const attrKey = attrs.name ? "name" : "property";
+  const attrValue = attrs.name || attrs.property;
+  if (!attrValue) return;
+
+  const selector = `meta[${attrKey}="${attrValue}"]`;
+  let node = document.head.querySelector(selector);
+
+  if (!node) {
+    node = document.createElement("meta");
+    node.setAttribute(attrKey, attrValue);
+    document.head.appendChild(node);
+  }
+
+  node.setAttribute("content", content);
+}
+
+function upsertCanonical(href) {
+  if (typeof document === "undefined") return;
+  let link = document.head.querySelector("link[rel='canonical']");
+  if (!link) {
+    link = document.createElement("link");
+    link.setAttribute("rel", "canonical");
+    document.head.appendChild(link);
+  }
+  link.setAttribute("href", href);
+}
+
+function applySeoMeta({ title, description, robots }) {
+  if (typeof document === "undefined" || typeof window === "undefined") return;
+
+  const canonicalUrl = `${window.location.origin}/`;
+  const imageUrl = `${window.location.origin}/favicon.svg`;
+  const pageTitle = title || "DealBank";
+  const pageDescription = description || "DealBank helps real estate investors analyze, manage, and close deals faster.";
+  const robotsValue = robots || "index, follow";
+
+  document.title = pageTitle;
+  upsertCanonical(canonicalUrl);
+
+  upsertMetaTag({ name: "description" }, pageDescription);
+  upsertMetaTag({ name: "robots" }, robotsValue);
+
+  upsertMetaTag({ property: "og:type" }, "website");
+  upsertMetaTag({ property: "og:site_name" }, "DealBank");
+  upsertMetaTag({ property: "og:title" }, pageTitle);
+  upsertMetaTag({ property: "og:description" }, pageDescription);
+  upsertMetaTag({ property: "og:url" }, canonicalUrl);
+  upsertMetaTag({ property: "og:image" }, imageUrl);
+
+  upsertMetaTag({ name: "twitter:card" }, "summary_large_image");
+  upsertMetaTag({ name: "twitter:title" }, pageTitle);
+  upsertMetaTag({ name: "twitter:description" }, pageDescription);
+  upsertMetaTag({ name: "twitter:image" }, imageUrl);
+}
+
+export default function App() {
+  const [screen, setScreen] = useState("landing");
+  const [authMode, setAuthMode] = useState("signup");
+  const [userType, setUserType] = useState("");
+  const [user, setUser] = useState(null);
+  const [authForm, setAuthForm] = useState({ name: "", email: "", password: "", trade: "General Contractor", location: "" });
+  const [authError, setAuthError] = useState("");
+
+  const [flipTab, setFlipTab] = useState("analyze");
+  const [pipeline, setPipeline] = useState([]);
+  const [savedMsg, setSavedMsg] = useState("");
+  const [activeDeal, setActiveDeal] = useState(null);
+  const [showRealtor, setShowRealtor] = useState(false);
+
+  const [mktView, setMktView] = useState("feed");
+  const [wDeal, setWDeal] = useState({ assignFee: "", closeDate: "", contractPrice: "", daysLeft: "", earnest: "", notes: "", buyers: [] });
+  const [wLive, setWLive] = useState(false);
+  const [mktFilter, setMktFilter] = useState("All");
+  const [mktSort, setMktSort] = useState("newest");
+  const [activeListing, setActiveListing] = useState(null);
+  const [submitStep, setSubmitStep] = useState(1);
+  const [wForm, setWForm] = useState({
+    address: "",
+    city: "",
+    state: "CA",
+    zip: "",
+    beds: "",
+    baths: "",
+    sqft: "",
+    yearBuilt: "",
+    arv: "",
+    askPrice: "",
+    renoEst: "",
+    assignFee: "",
+    earnest: "",
+    closeDate: "",
+    type: "Wholesale",
+    description: "",
+    highlights: "",
+    condition: "fair",
+    contactName: "",
+    contactPhone: "",
+    contactEmail: "",
+  });
+  const [wSubmitted, setWSubmitted] = useState(false);
+  const [savedDeals, setSavedDeals] = useState([]);
+
+  const [address, setAddress] = useState("");
+  const [propData, setPropData] = useState(null);
+  const [compsData, setCompsData] = useState(null);
+  const [avmData, setAvmData] = useState(null);
+  const [mktNotes, setMktNotes] = useState("");
+  const [reno, setReno] = useState(() => RENO_KEYS.reduce((acc, curr) => ({ ...acc, [curr.key]: "" }), {}));
+  const [softCosts, setSoftCosts] = useState("8000");
+  const [hardRate, setHardRate] = useState("12");
+  const [loanMo, setLoanMo] = useState("6");
+  const [loanPts, setLoanPts] = useState("2");
+  const [arvOvr, setArvOvr] = useState("");
+  const [lookLoad, setLookLoad] = useState(false);
+  const [lookErr, setLookErr] = useState("");
+  const [renoLoad, setRenoLoad] = useState(false);
+  const [renoNote, setRenoNote] = useState("");
+  const [analysis, setAnalysis] = useState("");
+  const [anlLoad, setAnlLoad] = useState(false);
+  const [anlErr, setAnlErr] = useState("");
+  const [anlTab, setAnlTab] = useState("reno");
+  const [targetP, setTargetP] = useState(75000);
+  const [pitch, setPitch] = useState("");
+  const [pitchLoad, setPitchLoad] = useState(false);
+  const [showPitch, setShowPitch] = useState(false);
+
+  const [selectedState, setSelectedState] = useState("California");
+  const [lawSection, setLawSection] = useState("transfer");
+  const [softwareFilter, setSoftwareFilter] = useState("All");
+  const [activeSoftware, setActiveSoftware] = useState(null);
+  const [partnerTab, setPartnerTab] = useState("software");
+
+  const [adminTab, setAdminTab] = useState("overview");
+  const [contractorTab, setContractorTab] = useState("leads");
+  const [showContractorOnboarding, setShowContractorOnboarding] = useState(false);
+  const [contractorOnboarding, setContractorOnboarding] = useState(() => createContractorOnboardingState());
+  const [showRealtorOnboarding, setShowRealtorOnboarding] = useState(false);
+  const [realtorOnboarding, setRealtorOnboarding] = useState(() => createRealtorOnboardingState());
+
+  const offerRef = useRef(null);
+
+  const totalReno = RENO_KEYS.reduce((sum, key) => sum + toNum(reno[key.key]), 0);
+  const softNum = toNum(softCosts);
+  const rateNum = parseFloat(hardRate) || 12;
+  const moNum = parseFloat(loanMo) || 6;
+  const ptsNum = parseFloat(loanPts) || 2;
+  const arvNum = toNum(arvOvr) || avmData?.price || 0;
+  const sixtyT = Math.round(arvNum * 0.6);
+  const offer = arvNum > 0 ? calcOffer(arvNum, totalReno, softNum, rateNum, moNum, ptsNum) : 0;
+  const hmInt = offer * (rateNum / 100) * (moNum / 12);
+  const hmPts = offer * (ptsNum / 100);
+  const totalHM = hmInt + hmPts;
+  const allIn = offer + totalReno + softNum + totalHM;
+  const projProfit = arvNum > 0 ? arvNum - allIn : 0;
+  const roi = allIn > 0 ? (projProfit / allIn) * 100 : 0;
+
+  useEffect(() => {
+    let title = "DealBank | AI Real Estate Deal Analyzer Platform";
+    let description = "AI-powered real estate platform for deal analysis, pipeline tracking, contractor collaboration, and flip execution.";
+    let robots = "index, follow";
+
+    if (screen === "auth") {
+      title = "Login & Signup | DealBank";
+      description = "Access your DealBank account to analyze deals, manage pipeline, and collaborate with your team.";
+      robots = "noindex, nofollow";
+    }
+
+    if (user?.type === "dealmaker" || (screen === "app" && userType === "dealmaker")) {
+      const tabName = DEALMAKER_TAB_LABELS[flipTab] || "Dashboard";
+      title = `${tabName} Dashboard | DealBank`;
+      description = "Private workspace for deal makers to run analysis, manage pipeline, and execute real estate flips.";
+      robots = "noindex, nofollow";
+    }
+
+    if (showContractorOnboarding && user?.type === "contractor") {
+      title = "Contractor Onboarding | DealBank";
+      description = "Complete your contractor profile to start receiving project opportunities from deal makers.";
+      robots = "noindex, nofollow";
+    }
+
+    if (showRealtorOnboarding && user?.type === "realtor") {
+      title = "Realtor Onboarding | DealBank";
+      description = "Set up your realtor profile and connect with active deal makers in your market.";
+      robots = "noindex, nofollow";
+    }
+
+    if (user?.type === "contractor" || (screen === "app" && userType === "contractor")) {
+      const tabName = CONTRACTOR_TAB_LABELS[contractorTab] || "Dashboard";
+      title = `${tabName} | Contractor Dashboard | DealBank`;
+      description = "Private contractor dashboard for job leads, profile optimization, and earnings tracking.";
+      robots = "noindex, nofollow";
+    }
+
+    if (user?.type === "realtor" || (screen === "app" && userType === "realtor")) {
+      title = "Realtor Referrals Dashboard | DealBank";
+      description = "Private realtor dashboard to manage referrals and collaborate with deal makers.";
+      robots = "noindex, nofollow";
+    }
+
+    if (user?.type === "admin") {
+      const tabName = ADMIN_TAB_LABELS[adminTab] || "Admin";
+      title = `${tabName} | Admin Dashboard | DealBank`;
+      description = "Internal admin dashboard for user, deal, and revenue operations.";
+      robots = "noindex, nofollow";
+    }
+
+    applySeoMeta({ title, description, robots });
+  }, [screen, user?.type, userType, flipTab, contractorTab, adminTab, showContractorOnboarding, showRealtorOnboarding]);
+
+  function normalizeProfile(profile, authUser, fallback = {}) {
+    const nameFromEmail = authUser?.email ? authUser.email.split("@")[0] : "User";
+    return {
+      id: profile?.id || authUser?.id,
+      email: profile?.email || authUser?.email || "",
+      name: profile?.name || fallback.name || authUser?.user_metadata?.name || nameFromEmail,
+      type: normalizeUserType(profile?.type || fallback.type || authUser?.user_metadata?.type || userType || "dealmaker"),
+      company: profile?.company ?? authUser?.user_metadata?.company ?? null,
+      phone: profile?.phone ?? authUser?.user_metadata?.phone ?? null,
+    };
+  }
+
+  function buildFallbackProfile(authUser, fallback = {}) {
+    return normalizeProfile(null, authUser, fallback);
+  }
+
+  async function resolveUserProfile(authUser, fallback = {}) {
+    try {
+      const profile = await upsertUserProfile(authUser, fallback);
+      return normalizeProfile(profile, authUser, fallback);
+    } catch {
+      try {
+        const { data: existingProfile, error } = await supabase
+          .from("users")
+          .select("id, email, name, type, company, phone")
+          .eq("id", authUser.id)
+          .maybeSingle();
+
+        if (!error && existingProfile) return normalizeProfile(existingProfile, authUser, fallback);
+      } catch {
+        // no-op
+      }
+
+      return buildFallbackProfile(authUser, fallback);
+    }
+  }
+
+  function applyAuthenticatedProfile(profile) {
+    const normalized = normalizeProfile(profile, profile, { type: profile?.type, name: profile?.name });
+    setUser(normalized);
+    setUserType(normalized.type);
+    setScreen("app");
+    if (normalized.id) {
+      loadPipeline(normalized.id);
+    } else {
+      setPipeline([]);
+    }
+  }
+
+  function hydrateAuthenticatedProfile(authUser, fallback = {}) {
+    const optimisticProfile = buildFallbackProfile(authUser, fallback);
+    applyAuthenticatedProfile(optimisticProfile);
+
+    resolveUserProfile(authUser, fallback)
+      .then((resolvedProfile) => {
+        applyAuthenticatedProfile(resolvedProfile);
+      })
+      .catch(() => {
+        // Keep optimistic profile if DB/profile sync fails.
+      });
+  }
+
+  async function upsertUserProfile(authUser, fallback = {}) {
+    const nameFromEmail = authUser.email ? authUser.email.split("@")[0] : "User";
+    const desiredType = normalizeUserType(fallback.type || authUser.user_metadata?.type || userType || "dealmaker");
+
+    const profilePayload = {
+      id: authUser.id,
+      email: authUser.email,
+      name: fallback.name || authUser.user_metadata?.name || nameFromEmail,
+      password_hash: "supabase_auth_managed",
+      type: desiredType,
+      company: authUser.user_metadata?.company || null,
+      phone: authUser.user_metadata?.phone || null,
+      last_login: new Date().toISOString(),
+    };
+
+    const { error: upsertError } = await supabase.from("users").upsert(profilePayload, { onConflict: "id" });
+    if (upsertError) throw upsertError;
+
+    const { data: profile, error: profileError } = await supabase
+      .from("users")
+      .select("id, email, name, type, company, phone")
+      .eq("id", authUser.id)
+      .single();
+
+    if (profileError) throw profileError;
+    return profile;
+  }
+
+  useEffect(() => {
+    let alive = true;
+
+    async function hydrateSession() {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data?.session?.user || !alive) return;
+
+      hydrateAuthenticatedProfile(data.session.user, {
+        name: data.session.user.user_metadata?.name,
+        type: data.session.user.user_metadata?.type,
+      });
+    }
+
+    hydrateSession();
+
+    const { data: authSubscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!alive) return;
+
+      if (!session?.user) {
+        setUser(null);
+        setUserType("");
+        setPipeline([]);
+        setShowContractorOnboarding(false);
+        setContractorOnboarding(createContractorOnboardingState());
+        setShowRealtorOnboarding(false);
+        setRealtorOnboarding(createRealtorOnboardingState());
+        return;
+      }
+
+      hydrateAuthenticatedProfile(session.user, {
+        name: session.user.user_metadata?.name,
+        type: session.user.user_metadata?.type,
+      });
+    });
+
+    return () => {
+      alive = false;
+      authSubscription.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function syncContractorOnboardingState() {
+      if (!user?.id || user?.type !== "contractor") {
+        if (active) setShowContractorOnboarding(false);
+        return;
+      }
+
+      const { data: contractorProfile, error: profileError } = await supabase
+        .from("contractor_profiles")
+        .select("id, city")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!active || profileError) return;
+
+      if (!contractorProfile) {
+        setShowContractorOnboarding(true);
+        setContractorOnboarding((prev) => {
+          if (prev.trades.length > 0) return prev;
+          return createContractorOnboardingState(toOnboardingTradeLabel(authForm.trade));
+        });
+        return;
+      }
+
+      const { data: tradeRows, error: tradesError } = await supabase
+        .from("contractor_trades")
+        .select("trade")
+        .eq("contractor_id", contractorProfile.id);
+
+      if (!active || tradesError) return;
+
+      const tradeText = (tradeRows || [])
+        .map((row) => (row.trade === "General Contractor" ? "GC" : row.trade))
+        .join(", ");
+
+      setShowContractorOnboarding(false);
+      setContractorOnboarding(createContractorOnboardingState());
+      setUser((prev) => {
+        if (!prev || prev.id !== user.id) return prev;
+        const nextTrade = tradeText || prev.trade || "";
+        const nextLocation = contractorProfile.city || prev.location || "";
+        if (prev.trade === nextTrade && prev.location === nextLocation) return prev;
+        return { ...prev, trade: nextTrade, location: nextLocation };
+      });
+    }
+
+    syncContractorOnboardingState();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, user?.type, authForm.trade]);
+
+  async function completeContractorOnboarding() {
+    if (!user?.id) return;
+
+    const required = [
+      contractorOnboarding.yearsInBusiness,
+      contractorOnboarding.licenseNumber,
+      contractorOnboarding.city,
+      contractorOnboarding.serviceRadius,
+      contractorOnboarding.rateType,
+      contractorOnboarding.rateAmount,
+      contractorOnboarding.bio,
+    ];
+
+    if (contractorOnboarding.trades.length === 0) {
+      setContractorOnboarding((prev) => ({ ...prev, error: "Select at least one trade before subscribing." }));
+      return;
+    }
+
+    if (required.some((value) => String(value || "").trim() === "")) {
+      setContractorOnboarding((prev) => ({ ...prev, error: "Complete all contractor details before subscribing." }));
+      return;
+    }
+
+    setContractorOnboarding((prev) => ({ ...prev, submitting: true, error: "" }));
+
+    try {
+      const profilePayload = {
+        user_id: user.id,
+        years_experience: Number(contractorOnboarding.yearsInBusiness),
+        license_number: contractorOnboarding.licenseNumber,
+        city: contractorOnboarding.city,
+        service_radius: Number(contractorOnboarding.serviceRadius),
+        rate_type: contractorOnboarding.rateType,
+        rate_amount: Number(contractorOnboarding.rateAmount),
+        bio: contractorOnboarding.bio,
+        is_licensed: contractorOnboarding.licensedAndInsured,
+        is_insured: contractorOnboarding.licensedAndInsured,
+        is_bonded: contractorOnboarding.bonded,
+        subscription_tier: contractorOnboarding.plan,
+        verified_badge: contractorOnboarding.plan === "pro",
+      };
+
+      const { data: contractorProfile, error: upsertProfileError } = await supabase
+        .from("contractor_profiles")
+        .upsert(profilePayload, { onConflict: "user_id" })
+        .select("id, city")
+        .single();
+
+      if (upsertProfileError) throw upsertProfileError;
+
+      const { error: clearTradesError } = await supabase
+        .from("contractor_trades")
+        .delete()
+        .eq("contractor_id", contractorProfile.id);
+      if (clearTradesError) throw clearTradesError;
+
+      const tradesPayload = contractorOnboarding.trades.map((trade) => ({
+        contractor_id: contractorProfile.id,
+        trade: trade === "GC" ? "General Contractor" : trade,
+      }));
+
+      const { error: insertTradesError } = await supabase
+        .from("contractor_trades")
+        .insert(tradesPayload);
+      if (insertTradesError) throw insertTradesError;
+
+      setUser((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          trade: contractorOnboarding.trades.join(", "),
+          location: contractorOnboarding.city,
+        };
+      });
+
+      setContractorTab("leads");
+      setShowContractorOnboarding(false);
+      setContractorOnboarding(createContractorOnboardingState());
+    } catch (error) {
+      setContractorOnboarding((prev) => ({
+        ...prev,
+        submitting: false,
+        error: error?.message || "Failed to save contractor onboarding.",
+      }));
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+
+    async function syncRealtorOnboardingState() {
+      if (!user?.id || user?.type !== "realtor") {
+        if (active) setShowRealtorOnboarding(false);
+        return;
+      }
+
+      const { data: realtorProfile, error: profileError } = await supabase
+        .from("realtor_profiles")
+        .select("id, dre_license, brokerage, avg_days_to_close, deals_per_year, bio")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!active || profileError) return;
+
+      if (!realtorProfile) {
+        setShowRealtorOnboarding(true);
+        setRealtorOnboarding((prev) => {
+          if (prev.step !== 1 || prev.dreLicense || prev.brokerage || prev.bio) return prev;
+          return createRealtorOnboardingState();
+        });
+        return;
+      }
+
+      const { data: marketRows, error: marketsError } = await supabase
+        .from("realtor_markets")
+        .select("city")
+        .eq("realtor_id", realtorProfile.id);
+      if (!active || marketsError) return;
+
+      const { data: specialtyRows, error: specialtiesError } = await supabase
+        .from("realtor_specialties")
+        .select("specialty")
+        .eq("realtor_id", realtorProfile.id);
+      if (!active || specialtiesError) return;
+
+      const markets = (marketRows || []).map((row) => row.city).filter(Boolean);
+      const specialties = (specialtyRows || []).map((row) => row.specialty).filter(Boolean);
+      const completed = markets.length > 0 && specialties.length > 0;
+
+      if (completed) {
+        setShowRealtorOnboarding(false);
+        setRealtorOnboarding(createRealtorOnboardingState());
+        setUser((prev) => {
+          if (!prev || prev.id !== user.id) return prev;
+          return { ...prev, location: markets[0] || prev.location || "" };
+        });
+        return;
+      }
+
+      setShowRealtorOnboarding(true);
+      setRealtorOnboarding((prev) => ({
+        ...prev,
+        step: prev.step || 1,
+        dreLicense: prev.dreLicense || realtorProfile.dre_license || "",
+        brokerage: prev.brokerage || realtorProfile.brokerage || "",
+        avgDaysToClose: prev.avgDaysToClose || String(realtorProfile.avg_days_to_close || ""),
+        dealsPerYear: prev.dealsPerYear || String(realtorProfile.deals_per_year || ""),
+        bio: prev.bio || realtorProfile.bio || "",
+        markets: prev.markets.length > 0 ? prev.markets : markets,
+        specialties: prev.specialties.length > 0 ? prev.specialties : specialties,
+      }));
+    }
+
+    syncRealtorOnboardingState();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, user?.type]);
+
+  async function completeRealtorOnboarding() {
+    if (!user?.id) return;
+
+    const required = [
+      realtorOnboarding.dreLicense,
+      realtorOnboarding.brokerage,
+      realtorOnboarding.avgDaysToClose,
+      realtorOnboarding.dealsPerYear,
+      realtorOnboarding.bio,
+    ];
+
+    if (required.some((value) => String(value || "").trim() === "")) {
+      setRealtorOnboarding((prev) => ({ ...prev, error: "Complete all profile fields before launching." }));
+      return;
+    }
+
+    if (realtorOnboarding.markets.length === 0 || realtorOnboarding.specialties.length === 0) {
+      setRealtorOnboarding((prev) => ({ ...prev, error: "Select at least one market and one specialty." }));
+      return;
+    }
+
+    setRealtorOnboarding((prev) => ({ ...prev, submitting: true, error: "" }));
+
+    try {
+      const profilePayload = {
+        user_id: user.id,
+        dre_license: realtorOnboarding.dreLicense,
+        brokerage: realtorOnboarding.brokerage,
+        avg_days_to_close: Number(realtorOnboarding.avgDaysToClose),
+        deals_per_year: Number(realtorOnboarding.dealsPerYear),
+        bio: realtorOnboarding.bio,
+      };
+
+      const { data: realtorProfile, error: upsertProfileError } = await supabase
+        .from("realtor_profiles")
+        .upsert(profilePayload, { onConflict: "user_id" })
+        .select("id")
+        .single();
+      if (upsertProfileError) throw upsertProfileError;
+
+      const { error: clearMarketsError } = await supabase
+        .from("realtor_markets")
+        .delete()
+        .eq("realtor_id", realtorProfile.id);
+      if (clearMarketsError) throw clearMarketsError;
+
+      const marketsPayload = realtorOnboarding.markets.map((city) => ({
+        realtor_id: realtorProfile.id,
+        city,
+      }));
+
+      const { error: insertMarketsError } = await supabase
+        .from("realtor_markets")
+        .insert(marketsPayload);
+      if (insertMarketsError) throw insertMarketsError;
+
+      const { error: clearSpecialtiesError } = await supabase
+        .from("realtor_specialties")
+        .delete()
+        .eq("realtor_id", realtorProfile.id);
+      if (clearSpecialtiesError) throw clearSpecialtiesError;
+
+      const specialtiesPayload = realtorOnboarding.specialties.map((specialty) => ({
+        realtor_id: realtorProfile.id,
+        specialty,
+      }));
+
+      const { error: insertSpecialtiesError } = await supabase
+        .from("realtor_specialties")
+        .insert(specialtiesPayload);
+      if (insertSpecialtiesError) throw insertSpecialtiesError;
+
+      setUser((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          location: realtorOnboarding.markets[0] || prev.location || "",
+        };
+      });
+
+      setShowRealtorOnboarding(false);
+      setRealtorOnboarding(createRealtorOnboardingState());
+    } catch (error) {
+      setRealtorOnboarding((prev) => ({
+        ...prev,
+        submitting: false,
+        error: error?.message || "Failed to save realtor onboarding.",
+      }));
+    }
+  }
+
+  async function handleAuth() {
+    setAuthError("");
+    if (!authForm.email || !authForm.password) {
+      setAuthError("Fill in all fields.");
+      return;
+    }
+
+    if (authForm.email === ADMIN_EMAIL && ADMIN_PASSWORD_ALIASES.has(authForm.password)) {
+      const adminUser = { name: "Admin", email: ADMIN_EMAIL, type: "admin" };
+      setUser(adminUser);
+      setUserType("admin");
+      setScreen("admin");
+      return;
+    }
+
+    if (authMode === "signup" && !authForm.name) {
+      setAuthError("Enter your name.");
+      return;
+    }
+
+    try {
+      if (authMode === "signup") {
+        const desiredType = normalizeUserType(userType || "dealmaker");
+
+        const { data: existingLoginData, error: existingLoginError } = await supabase.auth.signInWithPassword({
+          email: authForm.email,
+          password: authForm.password,
+        });
+
+        if (existingLoginData?.user) {
+          hydrateAuthenticatedProfile(existingLoginData.user, {
+            name: authForm.name,
+            type: desiredType,
+          });
+          return;
+        }
+
+        if (isEmailNotConfirmedError(existingLoginError)) {
+          setAuthError("Akun sudah dibuat, tapi email belum dikonfirmasi. Cek inbox/spam lalu login kembali.");
+          return;
+        }
+
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: authForm.email,
+          password: authForm.password,
+          options: {
+            data: {
+              name: authForm.name,
+              type: desiredType,
+              trade: authForm.trade,
+              location: authForm.location,
+            },
+          },
+        });
+
+        if (signUpError) {
+          if (isRateLimitError(signUpError)) {
+            const { data: retryLoginData, error: retryLoginError } = await supabase.auth.signInWithPassword({
+              email: authForm.email,
+              password: authForm.password,
+            });
+
+            if (retryLoginData?.user) {
+              hydrateAuthenticatedProfile(retryLoginData.user, {
+                name: authForm.name,
+                type: desiredType,
+              });
+              return;
+            }
+
+            if (isEmailNotConfirmedError(retryLoginError)) {
+              setAuthError("Akun sudah dibuat tapi email verifikasi belum dikonfirmasi. Cek inbox/spam. Untuk development, kamu bisa matikan 'Confirm email' di Supabase Auth > Providers > Email.");
+              return;
+            }
+
+            setAuthError("Terlalu banyak email verifikasi terkirim (rate limit). Tunggu beberapa menit atau matikan 'Confirm email' sementara di Supabase Auth > Providers > Email.");
+            return;
+          }
+
+          if (isUserExistsError(signUpError)) {
+            setAuthError("Email sudah terdaftar. Coba mode login atau reset password.");
+            return;
+          }
+
+          if (!isInvalidCredentialError(existingLoginError)) {
+            setAuthError(existingLoginError?.message || signUpError.message);
+            return;
+          }
+
+          setAuthError(signUpError.message);
+          return;
+        }
+
+        let authUser = signUpData?.user;
+        if (!signUpData?.session) {
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email: authForm.email,
+            password: authForm.password,
+          });
+
+          if (signInError) {
+            setAuthError("Signup success. Check email confirmation, then login.");
+            return;
+          }
+
+          authUser = signInData?.user;
+        }
+
+        if (!authUser) {
+          setAuthError("Unable to complete signup. Please try login.");
+          return;
+        }
+
+        hydrateAuthenticatedProfile(authUser, {
+          name: authForm.name,
+          type: desiredType,
+        });
+        return;
+      }
+
+      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+        email: authForm.email,
+        password: authForm.password,
+      });
+
+      if (loginError || !loginData?.user) {
+        if (isInvalidCredentialError(loginError) && String(authForm.email).toLowerCase().endsWith("@dealbank.local")) {
+          setAuthError("Login akun .local gagal. Pastikan password benar (default seed: DealBank2025!) atau jalankan npm run seed:auth-users jika akun auth belum dibootstrap.");
+          return;
+        }
+
+        if (isEmailNotConfirmedError(loginError)) {
+          setAuthError("Email belum dikonfirmasi. Cek inbox/spam atau matikan Confirm email sementara untuk development.");
+          return;
+        }
+
+        setAuthError(loginError?.message || "Invalid email or password.");
+        return;
+      }
+
+      hydrateAuthenticatedProfile(loginData.user, {
+        name: loginData.user.user_metadata?.name,
+        type: loginData.user.user_metadata?.type,
+      });
+    } catch (error) {
+      setAuthError(error?.message || "Authentication failed.");
+    }
+  }
+
+  async function loadPipeline(userId) {
+    if (!userId) {
+      setPipeline([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("deals")
+      .select("*")
+      .eq("user_id", userId)
+      .order("saved_at", { ascending: false });
+
+    if (error) {
+      setPipeline([]);
+      return;
+    }
+
+    setPipeline((data || []).map(mapDealRowToPipeline));
+  }
+
+  async function saveDeal() {
+    if (!address || !arvNum || !user?.id) {
+      setSavedMsg("Look up a property first.");
+      return;
+    }
+
+    const payload = {
+      user_id: user.id,
+      address,
+      arv: arvNum,
+      offer_price: offer,
+      stage: "Analyzing",
+      saved_at: new Date().toISOString(),
+      reno_kitchen: toNum(reno.kitchen),
+      reno_bathrooms: toNum(reno.bathrooms),
+      reno_flooring: toNum(reno.flooring),
+      reno_paint: toNum(reno.paint),
+      reno_hvac: toNum(reno.hvac),
+      reno_plumbing: toNum(reno.plumbing),
+      reno_electrical: toNum(reno.electrical),
+      reno_roof: toNum(reno.roof),
+      reno_windows: toNum(reno.windows),
+      reno_landscaping: toNum(reno.landscaping),
+      reno_foundation: toNum(reno.foundation),
+      reno_misc: toNum(reno.misc),
+      hm_rate: rateNum,
+      hm_months: moNum,
+      hm_points: ptsNum,
+      total_reno: totalReno,
+      total_hm: totalHM,
+      all_in_cost: allIn,
+      net_profit: projProfit,
+      roi: Number(roi.toFixed(2)),
+    };
+
+    const { error } = await supabase.from("deals").insert(payload);
+    if (error) {
+      setSavedMsg(`Save failed: ${error.message}`);
+      return;
+    }
+
+    await loadPipeline(user.id);
+    setSavedMsg("Saved to pipeline!");
+    setTimeout(() => setSavedMsg(""), 3000);
+  }
+
+  async function updateDealStage(deal, stage) {
+    if (!user?.id) return;
+    const updated = { ...deal, stage };
+
+    const { error } = await supabase
+      .from("deals")
+      .update({ stage })
+      .eq("id", deal.id)
+      .eq("user_id", user.id);
+
+    if (error) return;
+
+    await loadPipeline(user.id);
+    setActiveDeal(updated);
+    if (stage === "Selling") setShowRealtor(true);
+  }
+
+  async function lookupProperty() {
+    if (!address.trim()) {
+      setLookErr("Enter an address first.");
+      return;
+    }
+    setLookErr("");
+    setLookLoad(true);
+    setPropData(null);
+    setCompsData(null);
+    setAvmData(null);
+    setAnalysis("");
+
+    try {
+      const raw = await askClaude(
+        `Real estate analyst. Return property data for "${address}".
+Return ONLY raw JSON no markdown:
+{"property":{"bedrooms":3,"bathrooms":2,"squareFootage":1450,"yearBuilt":1985,"propertyType":"Single Family","lotSize":6500,"lastSalePrice":310000,"lastSaleDate":"2021-03-10"},"avm":{"price":420000,"priceRangeLow":395000,"priceRangeHigh":448000},"comps":[{"address":"nearby st","price":415000,"squareFootage":1380,"bedrooms":3,"bathrooms":2,"daysOld":42,"distance":0.4},{"address":"nearby ave","price":432000,"squareFootage":1510,"bedrooms":3,"bathrooms":2,"daysOld":28,"distance":0.7},{"address":"nearby blvd","price":408000,"squareFootage":1420,"bedrooms":3,"bathrooms":2,"daysOld":65,"distance":1.2}],"marketNotes":"2 sentences about this market."}
+Use real data for "${address}". avm.price = ARV after full renovation.`,
+        1200,
+      );
+      const parsed = extractJSON(raw);
+      if (parsed.property) setPropData(parsed.property);
+      if (parsed.avm) setAvmData(parsed.avm);
+      if (parsed.comps?.length) setCompsData(parsed.comps);
+      if (parsed.marketNotes) setMktNotes(parsed.marketNotes);
+      setTimeout(() => offerRef.current?.scrollIntoView({ behavior: "smooth" }), 200);
+    } catch (err) {
+      setLookErr(`Failed: ${err.message}`);
+    }
+    setLookLoad(false);
+  }
+
+  async function estimateReno() {
+    if (!address.trim()) return;
+    setRenoLoad(true);
+    try {
+      const raw = await askClaude(
+        `Fix-and-flip cost estimator. Estimate rehab for: ${address} | ${propData?.squareFootage || "?"}sqft | ${propData?.bedrooms || "?"}bd/${propData?.bathrooms || "?"}ba | Built ${propData?.yearBuilt || "?"}
+Return ONLY raw JSON:
+{"roof":0,"foundation":0,"hvac":5000,"plumbing":3000,"electrical":4000,"kitchen":18000,"bathrooms":12000,"flooring":8000,"paint":6000,"windows":4000,"landscaping":2500,"misc":7000,"notes":"local cost context"}
+Fill in real numbers for this market.`,
+        700,
+      );
+      const parsed = extractJSON(raw);
+      const updated = {};
+      RENO_KEYS.forEach((c) => {
+        updated[c.key] = parsed[c.key] ? String(parsed[c.key]) : "0";
+      });
+      setReno(updated);
+      if (parsed.notes) setRenoNote(parsed.notes);
+    } catch (err) {
+      // no-op
+    }
+    setRenoLoad(false);
+  }
+
+  async function runAnalysis() {
+    if (!arvNum) {
+      setAnlErr("Look up a property first.");
+      return;
+    }
+    setAnlErr("");
+    setAnlLoad(true);
+    setAnalysis("");
+    const compsText = (compsData || []).map((c) => `${c.address} - ${fmt(c.price)}, ${c.squareFootage}sqft, ${c.bedrooms}bd/${c.bathrooms}ba, ${c.daysOld}d ago`).join("\n");
+
+    try {
+      const text = await askClaude(
+        `Senior fix-and-flip analyst. Direct deal review.
+PROPERTY: ${address} | ARV: ${fmt(arvNum)} | 60%: ${fmt(sixtyT)} | OFFER: ${fmt(offer)}
+COSTS: Rehab ${fmt(Math.round(totalReno))} | Soft ${fmt(softNum)} | HM ${fmt(Math.round(totalHM))} | ALL-IN ${fmt(Math.round(allIn))}
+PROFIT: ${fmt(Math.round(projProfit))} | ROI: ${roi.toFixed(1)}% | TARGET: ${fmt(targetP)}
+COMPS:\n${compsText}
+RENO: ${RENO_KEYS.map((c) => `${c.label}: ${fmt(toNum(reno[c.key]))}`).join(" | ")}
+**1. DEAL VERDICT** **2. OFFER PRICE** **3. ARV CHECK** **4. RENO FLAGS** **5. TOP 3 RISKS** **6. BOTTOM LINE**`,
+      );
+      setAnalysis(text);
+    } catch (err) {
+      setAnlErr(`Failed: ${err.message}`);
+    }
+    setAnlLoad(false);
+  }
+
+  async function generatePitch() {
+    if (!address.trim() || !arvNum) {
+      setAnlErr("Look up a property first.");
+      return;
+    }
+    setPitchLoad(true);
+    setPitch("");
+    setShowPitch(true);
+
+    const compsLines = (compsData || []).slice(0, 3).map((c) => `- ${c.address}: ${fmt(c.price)}, sold ${c.daysOld}d ago`).join(" | ");
+    const msgParts = [
+      "Write a warm professional 4-paragraph cash offer letter from a real estate investor to a homeowner.",
+      "Tone: honest, respectful, data-driven. Not pushy.",
+      `PROPERTY: ${address}${propData ? ` | ${propData.bedrooms || "?"}bd/${propData.bathrooms || "?"}ba | ${propData.squareFootage || "?"}sqft | Built ${propData.yearBuilt || "?"}` : ""}`,
+      `CASH OFFER: ${fmt(offer)} (${Math.round((offer / arvNum) * 100)}% of renovated market value)`,
+      `ARV (after full renovation): ${fmt(arvNum)}`,
+      compsLines ? `RECENT COMPARABLE SALES (2-mile radius): ${compsLines}` : "",
+      "COST BREAKDOWN why investor cannot pay more:",
+      `- Renovation: ${fmt(Math.round(totalReno))}`,
+      `- Hard money loan cost: ${fmt(Math.round(totalHM))}`,
+      `- Closing costs + agent fees: ${fmt(Math.round(softNum))}`,
+      `- Total costs above purchase: ${fmt(Math.round(allIn - offer))}`,
+      `- Required investor profit margin: ${fmt(Math.round(projProfit))} (${roi.toFixed(1)}% ROI)`,
+      "Paragraph 1: Who the investor is, local cash buyer, respects homeowner time.",
+      "Paragraph 2: What renovated homes nearby sell for and what that means for as-is value.",
+      "Paragraph 3: Cost breakdown showing the offer is math not a lowball.",
+      "Paragraph 4: Cash offer benefits - speed, certainty, as-is, no repairs, no seller agent fees, flexible close.",
+      "Sign off with [Investor Name], Cash Offers LLC, [Phone], [Email].",
+    ].filter(Boolean).join(" ");
+
+    try {
+      const response = await askClaude(msgParts, 1000);
+      setPitch(response || "No response - try again.");
+    } catch (err) {
+      setPitch(`Error: ${err.message}`);
+    }
+    setPitchLoad(false);
+  }
+
+  const onSignOut = () => {
+    setUser(null);
+    setUserType("");
+    setScreen("landing");
+    setPipeline([]);
+    setActiveDeal(null);
+    setShowContractorOnboarding(false);
+    setContractorOnboarding(createContractorOnboardingState());
+    setShowRealtorOnboarding(false);
+    setRealtorOnboarding(createRealtorOnboardingState());
+
+    // Local scope clears persisted session instantly and avoids blocking UI on network calls.
+    supabase.auth.signOut({ scope: "local" }).catch(() => {
+      // no-op
+    });
+  };
+
+  const dealMakerCtx = {
+    G,
+    card,
+    lbl,
+    smIn,
+    btnG,
+    btnO,
+    fmt,
+    toNum,
+    flipTab,
+    setFlipTab,
+    user,
+    onSignOut,
+    RENO_KEYS,
+    PIPELINE_STAGES,
+    DEALMAKER_CONTENT,
+    STATE_LAWS,
+    SOFTWARE_REVIEWS,
+    INSURANCE_PARTNERS,
+    MORTGAGE_PARTNERS,
+    AD_SLOTS,
+    MOCK_CONTRACTORS,
+    MOCK_REALTORS,
+    address,
+    setAddress,
+    lookupProperty,
+    lookLoad,
+    lookErr,
+    arvNum,
+    offerRef,
+    offer,
+    sixtyT,
+    totalReno,
+    softNum,
+    totalHM,
+    arvOvr,
+    setArvOvr,
+    allIn,
+    projProfit,
+    roi,
+    anlTab,
+    setAnlTab,
+    estimateReno,
+    renoLoad,
+    renoNote,
+    reno,
+    setReno,
+    hardRate,
+    setHardRate,
+    loanMo,
+    setLoanMo,
+    loanPts,
+    setLoanPts,
+    softCosts,
+    setSoftCosts,
+    compsData,
+    mktNotes,
+    saveDeal,
+    runAnalysis,
+    anlLoad,
+    generatePitch,
+    pitchLoad,
+    savedMsg,
+    anlErr,
+    showPitch,
+    pitch,
+    setPitch,
+    setShowPitch,
+    analysis,
+    activeDeal,
+    setActiveDeal,
+    showRealtor,
+    setShowRealtor,
+    updateDealStage,
+    wDeal,
+    setWDeal,
+    wLive,
+    setWLive,
+    pipeline,
+    selectedState,
+    setSelectedState,
+    lawSection,
+    setLawSection,
+    partnerTab,
+    setPartnerTab,
+    activeSoftware,
+    setActiveSoftware,
+    softwareFilter,
+    setSoftwareFilter,
+    mktFilter,
+    setMktFilter,
+    mktSort,
+    setMktSort,
+    mktView,
+    setMktView,
+    activeListing,
+    setActiveListing,
+    savedDeals,
+    setSavedDeals,
+    submitStep,
+    setSubmitStep,
+    wForm,
+    setWForm,
+    wSubmitted,
+    setWSubmitted,
+  };
+
+  if (screen === "landing" && !user) {
+    return (
+      <LandingScreen
+        G={G}
+        card={card}
+        btnG={btnG}
+        btnO={btnO}
+        ADMIN_EMAIL={ADMIN_EMAIL}
+        ADMIN_PASSWORD={ADMIN_PASSWORD}
+        setAuthMode={setAuthMode}
+        setScreen={setScreen}
+        setUserType={setUserType}
+        setAuthForm={setAuthForm}
+      />
+    );
+  }
+
+  if (screen === "auth" && !user) {
+    return (
+      <AuthScreen
+        G={G}
+        card={card}
+        lbl={lbl}
+        smIn={smIn}
+        btnG={btnG}
+        TRADES={TRADES}
+        authMode={authMode}
+        userType={userType}
+        authForm={authForm}
+        authError={authError}
+        setAuthMode={setAuthMode}
+        setUserType={setUserType}
+        setAuthForm={setAuthForm}
+        setAuthError={setAuthError}
+        setScreen={setScreen}
+        handleAuth={handleAuth}
+      />
+    );
+  }
+
+  if (user?.type === "admin") {
+    return (
+      <AdminDashboardScreen
+        G={G}
+        card={card}
+        lbl={lbl}
+        btnO={btnO}
+        MOCK_CONTRACTORS={MOCK_CONTRACTORS}
+        adminTab={adminTab}
+        setAdminTab={setAdminTab}
+        userName={user?.name}
+        onSignOut={onSignOut}
+      />
+    );
+  }
+
+  if (user?.type === "dealmaker") {
+    return <DealMakerDashboardScreen ctx={dealMakerCtx} />;
+  }
+
+  if (showContractorOnboarding && user?.type === "contractor") {
+    return (
+      <ContractorOnboardingScreen
+        G={G}
+        card={card}
+        lbl={lbl}
+        smIn={smIn}
+        btnG={btnG}
+        btnO={btnO}
+        onboarding={contractorOnboarding}
+        setOnboarding={setContractorOnboarding}
+        onComplete={completeContractorOnboarding}
+        onSignOut={onSignOut}
+        userName={user?.name}
+      />
+    );
+  }
+
+  if (showRealtorOnboarding && user?.type === "realtor") {
+    return (
+      <RealtorOnboardingScreen
+        G={G}
+        card={card}
+        lbl={lbl}
+        smIn={smIn}
+        btnG={btnG}
+        btnO={btnO}
+        onboarding={realtorOnboarding}
+        setOnboarding={setRealtorOnboarding}
+        onComplete={completeRealtorOnboarding}
+        onSignOut={onSignOut}
+        userName={user?.name}
+      />
+    );
+  }
+
+  if (user?.type === "contractor") {
+    return (
+      <ContractorDashboardScreen
+        G={G}
+        card={card}
+        btnG={btnG}
+        btnO={btnO}
+        contractorTab={contractorTab}
+        setContractorTab={setContractorTab}
+        user={user}
+        onSignOut={onSignOut}
+      />
+    );
+  }
+
+  if (user?.type === "realtor") {
+    return <RealtorDashboardScreen G={G} card={card} btnG={btnG} btnO={btnO} userName={user?.name} onSignOut={onSignOut} />;
+  }
+
+  return (
+    <div style={{ background: G.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: G.text, fontFamily: G.mono }}>
+      <button onClick={() => setScreen("landing")} style={btnG}>Go to DealBank</button>
+    </div>
+  );
+}
