@@ -1,3 +1,5 @@
+import useIsMobile from "../core/useIsMobile";
+
 const CONTRACTOR_TRADE_OPTIONS = [
   "GC",
   "Roofing",
@@ -58,6 +60,8 @@ export default function ContractorOnboardingScreen({
   onSignOut,
   userName,
 }) {
+  const isMobile = useIsMobile(820);
+
   const setField = (field, value) => {
     setOnboarding((prev) => ({ ...prev, [field]: value, error: "" }));
   };
@@ -101,14 +105,14 @@ export default function ContractorOnboardingScreen({
 
   return (
     <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
-      <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: "12px 20px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: isMobile ? "12px" : "12px 20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", flexWrap: "wrap", gap: 10 }}>
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 18, fontWeight: "bold" }}>Contractor Onboarding</div>
-            <div style={{ fontSize: 9, color: G.muted, letterSpacing: 2, marginTop: 2 }}>SET UP YOUR PROFILE TO START RECEIVING DEAL LEADS</div>
+            <div style={{ fontSize: 9, color: G.muted, letterSpacing: isMobile ? 1 : 2, marginTop: 2 }}>SET UP YOUR PROFILE TO START RECEIVING DEAL LEADS</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ fontSize: 10, color: G.muted }}>{userName || "Contractor"}</div>
+            {!isMobile && <div style={{ fontSize: 10, color: G.muted }}>{userName || "Contractor"}</div>}
             <button onClick={onSignOut} style={{ ...btnO, padding: "6px 12px", fontSize: 9 }}>
               Sign Out
             </button>
@@ -116,7 +120,7 @@ export default function ContractorOnboardingScreen({
         </div>
       </div>
 
-      <div style={{ maxWidth: 940, margin: "0 auto", padding: "22px 16px 26px" }}>
+      <div style={{ maxWidth: 940, margin: "0 auto", padding: isMobile ? "14px 12px 20px" : "22px 16px 26px" }}>
         <div style={{ ...card, marginBottom: 14 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {[1, 2, 3].map((step) => {
@@ -183,9 +187,9 @@ export default function ContractorOnboardingScreen({
               })}
             </div>
 
-            <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", flexWrap: "wrap", gap: 10, flexDirection: isMobile ? "column" : "row" }}>
               <div style={badgeStyle(onboarding.trades.length > 0 ? G.green : G.gold)}>{onboarding.trades.length} trade(s) selected</div>
-              <button onClick={goNext} style={{ ...btnG, padding: "10px 16px" }}>
+              <button onClick={goNext} style={{ ...btnG, padding: "10px 16px", width: isMobile ? "100%" : "auto" }}>
                 Continue
               </button>
             </div>
@@ -254,9 +258,9 @@ export default function ContractorOnboardingScreen({
               </label>
             </div>
 
-            <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={goBack} style={{ ...btnO, padding: "10px 16px" }}>Back</button>
-              <button onClick={goNext} style={{ ...btnG, padding: "10px 16px" }}>Continue</button>
+            <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", flexDirection: isMobile ? "column" : "row" }}>
+              <button onClick={goBack} style={{ ...btnO, padding: "10px 16px", width: isMobile ? "100%" : "auto" }}>Back</button>
+              <button onClick={goNext} style={{ ...btnG, padding: "10px 16px", width: isMobile ? "100%" : "auto" }}>Continue</button>
             </div>
           </div>
         )}
@@ -302,14 +306,15 @@ export default function ContractorOnboardingScreen({
               })}
             </div>
 
-            <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={goBack} style={{ ...btnO, padding: "10px 16px" }}>Back</button>
+            <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", flexDirection: isMobile ? "column" : "row" }}>
+              <button onClick={goBack} style={{ ...btnO, padding: "10px 16px", width: isMobile ? "100%" : "auto" }}>Back</button>
               <button
                 onClick={onComplete}
                 disabled={onboarding.submitting}
                 style={{
                   ...btnG,
                   padding: "10px 16px",
+                  width: isMobile ? "100%" : "auto",
                   opacity: onboarding.submitting ? 0.75 : 1,
                   cursor: onboarding.submitting ? "not-allowed" : "pointer",
                 }}

@@ -1,4 +1,4 @@
-const MODEL = "claude-sonnet-4-20250514";
+const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
 export async function dbSet(key, value) {
   try {
@@ -46,20 +46,27 @@ export function extractJSON(raw) {
 }
 
 export async function askClaude(prompt, maxTokens = 1400) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetch(`${apiBaseUrl}/api/claude`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content: prompt }],
+      prompt,
+      maxTokens,
     }),
   });
 
-  if (!response.ok) throw new Error(`API ${response.status}`);
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(`Claude proxy error (${response.status})`);
+  }
 
-  const data = await response.json();
-  if (data.error) throw new Error(data.error.message);
+  if (!response.ok || data?.error) {
+    throw new Error(data?.error || `Claude proxy error (${response.status})`);
+  }
 
-  return data.content?.map((block) => block.text || "").join("") || "";
+  return data?.text || "";
 }

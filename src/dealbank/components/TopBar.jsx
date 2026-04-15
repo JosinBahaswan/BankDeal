@@ -1,24 +1,11 @@
 import { useEffect, useState } from "react";
+import useIsMobile from "../core/useIsMobile";
 
 const MOBILE_BREAKPOINT = 820;
 
 export default function TopBar({ title, tabs, active, onTab, userName, onSignOut, G, btnO }) {
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth <= MOBILE_BREAKPOINT;
-  });
+  const isMobile = useIsMobile(MOBILE_BREAKPOINT);
   const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    function onResize() {
-      setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
-    }
-
-    window.addEventListener("resize", onResize);
-    onResize();
-
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
 
   useEffect(() => {
     if (!isMobile) setMenuOpen(false);
@@ -30,14 +17,14 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
   }
 
   return (
-    <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: "0 24px", position: "sticky", top: 0, zIndex: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 12 }}>
+    <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: isMobile ? "0 12px" : "0 24px", position: "sticky", top: 0, zIndex: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: isMobile ? 10 : 12, gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 24, height: 24, background: G.green, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: "bold", color: "#000" }}>
+          <div style={{ width: isMobile ? 22 : 24, height: isMobile ? 22 : 24, background: G.green, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: "bold", color: "#000" }}>
             G
           </div>
-          <span style={{ fontFamily: G.serif, fontSize: 16, color: G.text, fontWeight: "bold" }}>DealBank</span>
-          <span style={{ fontSize: 8, color: G.muted, letterSpacing: 3, marginLeft: 4 }}>- {title}</span>
+          <span style={{ fontFamily: G.serif, fontSize: isMobile ? 14 : 16, color: G.text, fontWeight: "bold" }}>DealBank</span>
+          <span style={{ fontSize: 8, color: G.muted, letterSpacing: isMobile ? 1 : 3, marginLeft: isMobile ? 0 : 4 }}>- {title}</span>
         </div>
         {!isMobile && (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -54,15 +41,15 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
             onClick={() => setMenuOpen((prev) => !prev)}
             style={{
               ...btnO,
-              padding: "5px 10px",
+              padding: "5px 9px",
               fontSize: 9,
-              letterSpacing: 2,
+              letterSpacing: 1,
               color: menuOpen ? G.green : G.muted,
               borderColor: menuOpen ? G.green : G.border,
               background: menuOpen ? G.greenGlow : "transparent",
             }}
           >
-            ☰ Menu
+            ☰
           </button>
         )}
       </div>
@@ -120,7 +107,7 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
           ))}
 
           <div style={{ height: 1, background: G.border, margin: "4px 0" }} />
-          <div style={{ fontSize: 9, color: G.muted, padding: "2px 6px" }}>{userName}</div>
+          <div style={{ fontSize: 9, color: G.muted, padding: "2px 6px" }}>{userName || "User"}</div>
           <button onClick={onSignOut} style={{ ...btnO, width: "100%", padding: "8px 10px", fontSize: 9 }}>
             Sign Out
           </button>

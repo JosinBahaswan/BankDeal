@@ -188,8 +188,8 @@ export default function HardMoneyToolTab({ ctx }) {
               </div>
 
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                <button style={{ ...btnG, fontSize: 8, padding: "6px 9px" }}>Send Scenario</button>
-                <button style={{ ...btnO, fontSize: 8, padding: "6px 9px" }}>Request Term Sheet</button>
+                <button onClick={() => window.alert(`Scenario sent to ${lender.name}`)} style={{ ...btnG, fontSize: 8, padding: "6px 9px" }}>Send Scenario</button>
+                <button onClick={() => window.alert(`Term sheet requested from ${lender.name}`)} style={{ ...btnO, fontSize: 8, padding: "6px 9px" }}>Request Term Sheet</button>
               </div>
             </div>
           ))}

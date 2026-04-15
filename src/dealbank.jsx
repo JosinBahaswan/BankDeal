@@ -134,6 +134,7 @@ function mapDealRowToPipeline(row) {
 const DEALMAKER_TAB_LABELS = {
   analyze: "Deal Analysis",
   pipeline: "Pipeline",
+  contracts: "Contracts",
   contractors: "Contractors",
   tools: "Tools",
   partners: "Partners",
@@ -152,8 +153,18 @@ const ADMIN_TAB_LABELS = {
 
 const CONTRACTOR_TAB_LABELS = {
   leads: "Job Leads",
+  jobs: "Active Jobs",
   profile: "Profile",
   earnings: "Earnings",
+  reviews: "Reviews",
+};
+
+const REALTOR_TAB_LABELS = {
+  referrals: "Referrals",
+  listings: "Active Listings",
+  closed: "Closed Deals",
+  profile: "Profile",
+  splits: "Earnings & Splits",
 };
 
 function upsertMetaTag(attrs, content) {
@@ -292,6 +303,7 @@ export default function App() {
 
   const [adminTab, setAdminTab] = useState("overview");
   const [contractorTab, setContractorTab] = useState("leads");
+  const [realtorTab, setRealtorTab] = useState("referrals");
   const [showContractorOnboarding, setShowContractorOnboarding] = useState(false);
   const [contractorOnboarding, setContractorOnboarding] = useState(() => createContractorOnboardingState());
   const [showRealtorOnboarding, setShowRealtorOnboarding] = useState(false);
@@ -352,8 +364,9 @@ export default function App() {
     }
 
     if (user?.type === "realtor" || (screen === "app" && userType === "realtor")) {
-      title = "Realtor Referrals Dashboard | DealBank";
-      description = "Private realtor dashboard to manage referrals and collaborate with deal makers.";
+      const tabName = REALTOR_TAB_LABELS[realtorTab] || "Dashboard";
+      title = `${tabName} | Realtor Dashboard | DealBank`;
+      description = "Private realtor workspace for referrals, active listings, closed deals, and earnings splits.";
       robots = "noindex, nofollow";
     }
 
@@ -365,7 +378,7 @@ export default function App() {
     }
 
     applySeoMeta({ title, description, robots });
-  }, [screen, user?.type, userType, flipTab, contractorTab, adminTab, showContractorOnboarding, showRealtorOnboarding]);
+  }, [screen, user?.type, userType, flipTab, contractorTab, realtorTab, adminTab, showContractorOnboarding, showRealtorOnboarding]);
 
   function normalizeProfile(profile, authUser, fallback = {}) {
     const nameFromEmail = authUser?.email ? authUser.email.split("@")[0] : "User";
@@ -479,6 +492,8 @@ export default function App() {
         setUser(null);
         setUserType("");
         setPipeline([]);
+        setContractorTab("leads");
+        setRealtorTab("referrals");
         setShowContractorOnboarding(false);
         setContractorOnboarding(createContractorOnboardingState());
         setShowRealtorOnboarding(false);
@@ -1163,6 +1178,8 @@ RENO: ${RENO_KEYS.map((c) => `${c.label}: ${fmt(toNum(reno[c.key]))}`).join(" | 
     setUserType("");
     setScreen("landing");
     setPipeline([]);
+    setContractorTab("leads");
+    setRealtorTab("referrals");
     setActiveDeal(null);
     setShowContractorOnboarding(false);
     setContractorOnboarding(createContractorOnboardingState());
@@ -1383,6 +1400,7 @@ RENO: ${RENO_KEYS.map((c) => `${c.label}: ${fmt(toNum(reno[c.key]))}`).join(" | 
       <ContractorDashboardScreen
         G={G}
         card={card}
+        lbl={lbl}
         btnG={btnG}
         btnO={btnO}
         contractorTab={contractorTab}
@@ -1394,7 +1412,20 @@ RENO: ${RENO_KEYS.map((c) => `${c.label}: ${fmt(toNum(reno[c.key]))}`).join(" | 
   }
 
   if (user?.type === "realtor") {
-    return <RealtorDashboardScreen G={G} card={card} btnG={btnG} btnO={btnO} userName={user?.name} onSignOut={onSignOut} />;
+    return (
+      <RealtorDashboardScreen
+        G={G}
+        card={card}
+        lbl={lbl}
+        btnG={btnG}
+        btnO={btnO}
+        userName={user?.name}
+        user={user}
+        realtorTab={realtorTab}
+        setRealtorTab={setRealtorTab}
+        onSignOut={onSignOut}
+      />
+    );
   }
 
   return (

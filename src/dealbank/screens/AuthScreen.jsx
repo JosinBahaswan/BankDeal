@@ -1,3 +1,5 @@
+import useIsMobile from "../core/useIsMobile";
+
 export default function AuthScreen({
   G,
   card,
@@ -16,27 +18,30 @@ export default function AuthScreen({
   setScreen,
   handleAuth,
 }) {
+  const isMobile = useIsMobile(820);
+
   return (
-    <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ width: "100%", maxWidth: 400, padding: "0 20px" }}>
-        <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div style={{ fontFamily: G.serif, fontSize: 22, fontWeight: "bold", marginBottom: 3 }}>DealBank</div>
+    <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono, display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "center", padding: isMobile ? "24px 0" : 0 }}>
+      <div style={{ width: "100%", maxWidth: 420, padding: "0 16px" }}>
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <div style={{ fontFamily: G.serif, fontSize: isMobile ? 20 : 22, fontWeight: "bold", marginBottom: 3 }}>DealBank</div>
           <div style={{ fontSize: 9, color: G.muted, letterSpacing: 3 }}>{authMode === "signup" ? "CREATE ACCOUNT" : "WELCOME BACK"}</div>
         </div>
         {authMode === "signup" && (
-          <div style={{ display: "flex", gap: 5, marginBottom: 16, justifyContent: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 6, marginBottom: 16 }}>
             {["dealmaker", "contractor", "realtor"].map((type) => (
               <div
                 key={type}
                 onClick={() => setUserType(type)}
                 style={{
-                  padding: "5px 12px",
+                  padding: "7px 12px",
                   borderRadius: 4,
                   cursor: "pointer",
                   fontSize: 8,
                   letterSpacing: 2,
                   textTransform: "uppercase",
                   fontFamily: G.mono,
+                  textAlign: "center",
                   border: `1px solid ${userType === type ? G.green : G.border}`,
                   background: userType === type ? G.greenGlow : "transparent",
                   color: userType === type ? G.green : G.muted,
@@ -47,7 +52,7 @@ export default function AuthScreen({
             ))}
           </div>
         )}
-        <div style={{ ...card }}>
+        <div style={{ ...card, padding: isMobile ? "14px" : card.padding }}>
           {[
             ...(authMode === "signup" ? [{ label: "Full Name", field: "name", type: "text" }] : []),
             { label: "Email", field: "email", type: "email" },
@@ -81,7 +86,7 @@ export default function AuthScreen({
             </div>
           ))}
           {authError && <div style={{ color: G.red, fontSize: 10, marginBottom: 10 }}>{authError}</div>}
-          <button onClick={handleAuth} style={{ ...btnG, width: "100%", marginBottom: 10 }}>
+          <button onClick={handleAuth} style={{ ...btnG, width: "100%", marginBottom: 10, padding: isMobile ? "11px 14px" : btnG.padding }}>
             {authMode === "signup" ? "Create Account" : "Log In"}
           </button>
           <div style={{ textAlign: "center", fontSize: 10, color: G.muted }}>

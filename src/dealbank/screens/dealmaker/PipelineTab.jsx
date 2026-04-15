@@ -20,21 +20,35 @@ export default function PipelineTab({ ctx }) {
     toNum,
     pipeline,
     setFlipTab,
+    isMobile,
   } = ctx;
+
+  const summary = pipeline.reduce(
+    (acc, deal) => {
+      acc.totalInvested += Number(deal.allIn || 0);
+      acc.totalProjectedProfit += Number(deal.projProfit || 0);
+      acc.roiSum += Number(deal.roi || 0);
+      if (deal.stage !== "Closed") acc.activeDeals += 1;
+      return acc;
+    },
+    { activeDeals: 0, totalInvested: 0, totalProjectedProfit: 0, roiSum: 0 },
+  );
+
+  const avgRoi = pipeline.length ? summary.roiSum / pipeline.length : 0;
 
   if (activeDeal) {
     return (
       <div>
         <button onClick={() => { setActiveDeal(null); setShowRealtor(false); }} style={{ ...btnO, marginBottom: 14, padding: "5px 12px", fontSize: 9 }}>← Back</button>
         <div style={{ ...card, marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontFamily: G.serif, fontSize: 15, color: G.text, fontWeight: "bold", marginBottom: 3 }}>{activeDeal.address}</div>
               <div style={{ fontSize: 9, color: G.muted }}>Saved {activeDeal.savedAt}</div>
             </div>
             <div style={{ background: G.greenGlow, border: `1px solid ${G.green}44`, borderRadius: 4, padding: "3px 10px", fontSize: 8, color: G.green, letterSpacing: 2 }}>{activeDeal.stage}</div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, marginBottom: 14 }}>
             {[
               { l: "Offer", v: fmt(activeDeal.offer), c: G.green },
               { l: "ARV", v: fmt(activeDeal.arvNum), c: G.text },
@@ -77,7 +91,7 @@ export default function PipelineTab({ ctx }) {
             <div style={{ ...lbl, color: "#60a5fa", marginBottom: 4 }}>Ready to List - Realtor Matching</div>
             <div style={{ fontSize: 10, color: G.muted, marginBottom: 12, lineHeight: 1.6 }}>DealBank earns 25% referral split on commission - zero cost to you.</div>
             {MOCK_REALTORS.map((realtor) => (
-              <div key={realtor.id} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "12px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div key={realtor.id} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "12px", display: "flex", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", flexDirection: isMobile ? "column" : "row", gap: 10, marginBottom: 8 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#1e3a5f", border: `1px solid ${G.blue}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#60a5fa", fontWeight: "bold" }}>{realtor.avatar}</div>
                   <div>
@@ -86,17 +100,22 @@ export default function PipelineTab({ ctx }) {
                     <div style={{ fontSize: 9, color: "#60a5fa", marginTop: 1 }}>★ {realtor.rating} · {realtor.specialty}</div>
                   </div>
                 </div>
-                <button style={{ ...btnG, fontSize: 9, padding: "6px 12px", background: "#1e3a5f", color: "#60a5fa", border: `1px solid ${G.blue}44` }}>Connect</button>
+                <button
+                  onClick={() => window.alert(`Connection request sent to ${realtor.name} (${realtor.brokerage})`) }
+                  style={{ ...btnG, fontSize: 9, padding: "6px 12px", width: isMobile ? "100%" : "auto", background: "#1e3a5f", color: "#60a5fa", border: `1px solid ${G.blue}44` }}
+                >
+                  Connect
+                </button>
               </div>
             ))}
           </div>
         )}
 
         {activeDeal.stage === "Under Contract" && (
-          <div style={{ background: "linear-gradient(135deg,#1a1200,#0f0a00)", border: `2px solid ${G.gold}`, borderRadius: 10, padding: "18px 20px" }}>
+          <div style={{ background: "linear-gradient(135deg,#1a1200,#0f0a00)", border: `2px solid ${G.gold}`, borderRadius: 10, padding: isMobile ? "14px" : "18px 20px" }}>
             {!wLive ? (
               <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 10, flexWrap: "wrap" }}>
                   <div>
                     <div style={{ fontSize: 10, color: G.gold, letterSpacing: 4, marginBottom: 4 }}>WHOLESALE THIS CONTRACT</div>
                     <div style={{ fontFamily: G.serif, fontSize: 16, color: G.text, fontWeight: "bold", marginBottom: 2 }}>{activeDeal.address}</div>
@@ -108,7 +127,7 @@ export default function PipelineTab({ ctx }) {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 12 }}>
                   {[
                     { l: "Your Assignment Fee", f: "assignFee", ph: "12,000", prefix: "$", note: "What you earn at close" },
                     { l: "Contract Close Date", f: "closeDate", ph: "May 30, 2026", prefix: "", note: "Date on your purchase contract" },
@@ -129,7 +148,7 @@ export default function PipelineTab({ ctx }) {
                 {wDeal.assignFee && (
                   <div style={{ background: "#0d0d0d", border: `1px solid ${G.gold}33`, borderRadius: 6, padding: "12px 14px", marginBottom: 12 }}>
                     <div style={{ fontSize: 9, color: G.gold, letterSpacing: 3, marginBottom: 8 }}>WHAT THE BUYER SEES</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,1fr)", gap: 8 }}>
                       {[
                         { l: "Contract Price", v: fmt(activeDeal.offer), c: G.text },
                         { l: "Assignment Fee", v: fmt(toNum(wDeal.assignFee)), c: G.gold },
@@ -167,7 +186,7 @@ export default function PipelineTab({ ctx }) {
                   <div style={{ fontSize: 10, color: G.muted }}>Your deal is live. 30 buyers have been notified. You'll hear back fast.</div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,1fr)", gap: 8, marginBottom: 14 }}>
                   {[
                     { l: "Assignment Fee", v: fmt(toNum(wDeal.assignFee)), c: G.gold },
                     { l: "Days Remaining", v: `${wDeal.daysLeft} days`, c: toNum(wDeal.daysLeft) < 14 ? G.red : G.green },
@@ -191,7 +210,7 @@ export default function PipelineTab({ ctx }) {
                     { name: "Central Valley Investments", time: "1hr ago", msg: "Reviewing. Will have answer by EOD.", status: "Reviewing" },
                   ].map((buyer, index) => (
                     <div key={index} style={{ borderBottom: index < 2 ? `1px solid ${G.faint}` : "none", paddingBottom: index < 2 ? 12 : 0, marginBottom: index < 2 ? 12 : 0 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4, gap: 8, flexWrap: "wrap" }}>
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                           <div style={{ fontFamily: G.serif, fontSize: 12, color: G.text, fontWeight: "bold" }}>{buyer.name}</div>
                           <div style={{ fontSize: 7, color: buyer.status === "Hot" ? "#ff6b6b" : buyer.status === "Warm" ? G.gold : G.muted, background: buyer.status === "Hot" ? "#ff6b6b22" : buyer.status === "Warm" ? `${G.gold}22` : G.surface, border: `1px solid ${buyer.status === "Hot" ? "#ff6b6b" : buyer.status === "Warm" ? G.gold : G.border}44`, borderRadius: 3, padding: "1px 6px", letterSpacing: 1 }}>
@@ -201,14 +220,27 @@ export default function PipelineTab({ ctx }) {
                         <div style={{ fontSize: 9, color: G.muted }}>{buyer.time}</div>
                       </div>
                       <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.6, marginBottom: 8 }}>{buyer.msg}</div>
-                      <button style={{ ...btnG, fontSize: 8, padding: "5px 12px", background: buyer.status === "Hot" ? G.green : G.surface, color: buyer.status === "Hot" ? "#000" : G.muted, border: buyer.status === "Hot" ? "none" : `1px solid ${G.border}` }}>Reply</button>
+                      <button
+                        onClick={() => window.alert(`Reply composer opened for ${buyer.name}`)}
+                        style={{ ...btnG, fontSize: 8, padding: "5px 12px", background: buyer.status === "Hot" ? G.green : G.surface, color: buyer.status === "Hot" ? "#000" : G.muted, border: buyer.status === "Hot" ? "none" : `1px solid ${G.border}` }}
+                      >
+                        Reply
+                      </button>
                     </div>
                   ))}
                 </div>
 
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexDirection: isMobile ? "column" : "row" }}>
                   <button onClick={() => { setWLive(false); setWDeal({ assignFee: "", closeDate: "", contractPrice: "", daysLeft: "", earnest: "", notes: "", buyers: [] }); }} style={{ ...btnO, flex: 1, fontSize: 9 }}>Edit & Repost</button>
-                  <button style={{ ...btnG, flex: 2, fontSize: 9, background: "#ff6b6b22", color: "#ff6b6b", border: "1px solid #ff6b6b44" }}>Mark as Assigned ✓</button>
+                  <button
+                    onClick={() => {
+                      setWLive(false);
+                      updateDealStage(activeDeal, "Closed");
+                    }}
+                    style={{ ...btnG, flex: 2, fontSize: 9, background: "#ff6b6b22", color: "#ff6b6b", border: "1px solid #ff6b6b44" }}
+                  >
+                    Mark as Assigned ✓
+                  </button>
                 </div>
               </div>
             )}
@@ -220,12 +252,27 @@ export default function PipelineTab({ ctx }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", marginBottom: 14, gap: 8, flexDirection: isMobile ? "column" : "row" }}>
         <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text }}>My Pipeline</div>
-        <button onClick={() => setFlipTab("analyze")} style={{ ...btnG, fontSize: 9, padding: "7px 12px" }}>+ Analyze Deal</button>
+        <button onClick={() => setFlipTab("analyze")} style={{ ...btnG, fontSize: 9, padding: "7px 12px", width: isMobile ? "100%" : "auto" }}>+ Analyze Deal</button>
       </div>
+      {pipeline.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8, marginBottom: 12 }}>
+          {[
+            { l: "Active Deals", v: summary.activeDeals, c: G.green },
+            { l: "Total Invested", v: fmt(Math.round(summary.totalInvested)), c: G.text },
+            { l: "Projected Profit", v: fmt(Math.round(summary.totalProjectedProfit)), c: summary.totalProjectedProfit >= 0 ? G.green : G.red },
+            { l: "Avg ROI", v: `${avgRoi.toFixed(1)}%`, c: avgRoi >= 20 ? G.green : avgRoi >= 12 ? G.gold : G.red },
+          ].map(({ l, v, c }) => (
+            <div key={l} style={{ ...card, textAlign: "center" }}>
+              <div style={{ fontSize: 8, color: G.muted, letterSpacing: 2, marginBottom: 3 }}>{l.toUpperCase()}</div>
+              <div style={{ fontFamily: G.serif, fontSize: 16, color: c, fontWeight: "bold" }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      )}
       {pipeline.length === 0 ? (
-        <div style={{ ...card, textAlign: "center", padding: "40px" }}>
+        <div style={{ ...card, textAlign: "center", padding: isMobile ? "24px 14px" : "40px" }}>
           <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
           <div style={{ fontFamily: G.serif, fontSize: 15, color: G.text, marginBottom: 6 }}>No deals yet</div>
           <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Analyze a property and save it to start your pipeline</div>
@@ -242,16 +289,16 @@ export default function PipelineTab({ ctx }) {
                 <div key={deal.id} style={{ ...card, marginBottom: 7, borderColor: deal.stage === "Under Contract" ? `${G.gold}44` : G.border }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }} onClick={() => setActiveDeal(deal)}>
                     <div>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 2 }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 2, flexWrap: "wrap" }}>
                         <div style={{ fontFamily: G.serif, fontSize: 12, color: G.text, fontWeight: "bold" }}>{deal.address}</div>
                         {deal.stage === "Under Contract" && <div style={{ fontSize: 7, color: G.gold, background: `${G.gold}22`, border: `1px solid ${G.gold}44`, borderRadius: 3, padding: "1px 6px", letterSpacing: 1 }}>UNDER CONTRACT</div>}
                       </div>
-                      <div style={{ fontSize: 9, color: G.muted }}>Offer: <span style={{ color: G.green }}>{fmt(deal.offer)}</span> · ARV: {fmt(deal.arvNum)} · Profit: <span style={{ color: G.green }}>{fmt(deal.projProfit)}</span></div>
+                        <div style={{ fontSize: 9, color: G.muted, lineHeight: 1.6 }}>Offer: <span style={{ color: G.green }}>{fmt(deal.offer)}</span> · ARV: {fmt(deal.arvNum)} · Profit: <span style={{ color: G.green }}>{fmt(deal.projProfit)}</span></div>
                     </div>
                     <div style={{ fontSize: 9, color: G.muted }}>→</div>
                   </div>
                   {deal.stage === "Under Contract" && (
-                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${G.faint}`, display: "flex", gap: 6 }}>
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${G.faint}`, display: "flex", gap: 6, flexDirection: isMobile ? "column" : "row" }}>
                       <button onClick={() => { setActiveDeal(deal); setWLive(false); }} style={{ ...btnG, flex: 1, fontSize: 8, padding: "6px", background: G.gold, color: "#000", letterSpacing: 2 }}>
                         🚀 Wholesale This Deal
                       </button>

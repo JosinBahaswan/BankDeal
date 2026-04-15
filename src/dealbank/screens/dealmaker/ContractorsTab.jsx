@@ -21,7 +21,12 @@ export default function ContractorsTab({ ctx }) {
               </div>
             </div>
             <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.6, marginBottom: 8 }}>{contractor.bio}</div>
-            <button style={{ ...btnG, width: "100%", fontSize: 9, padding: "8px" }}>Request Quote</button>
+            <button
+              onClick={() => window.alert(`Quote request sent to ${contractor.name}\nTrade: ${contractor.trade}\nRate: ${contractor.rate}`)}
+              style={{ ...btnG, width: "100%", fontSize: 9, padding: "8px" }}
+            >
+              Request Quote
+            </button>
           </div>
         ))}
       </div>

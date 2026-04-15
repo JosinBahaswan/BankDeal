@@ -1,3 +1,5 @@
+import useIsMobile from "../core/useIsMobile";
+
 const REALTOR_MARKETS = [
   "Sacramento",
   "Stockton",
@@ -80,6 +82,8 @@ export default function RealtorOnboardingScreen({
   onSignOut,
   userName,
 }) {
+  const isMobile = useIsMobile(820);
+
   const setField = (field, value) => {
     setOnboarding((prev) => ({ ...prev, [field]: value, error: "" }));
   };
@@ -138,11 +142,11 @@ export default function RealtorOnboardingScreen({
 
   return (
     <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
-      <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: "12px 16px" }}>
+      <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: isMobile ? "12px" : "12px 16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 18, fontWeight: "bold" }}>Realtor Onboarding</div>
-            <div style={{ fontSize: 9, color: G.muted, letterSpacing: 2, marginTop: 2 }}>SET UP PROFILE TO RECEIVE DEAL REFERRALS</div>
+            <div style={{ fontSize: 9, color: G.muted, letterSpacing: isMobile ? 1 : 2, marginTop: 2 }}>SET UP PROFILE TO RECEIVE DEAL REFERRALS</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 10, color: G.muted, display: "none" }}>{userName || "Realtor"}</div>
@@ -153,7 +157,7 @@ export default function RealtorOnboardingScreen({
         </div>
       </div>
 
-      <div style={{ maxWidth: 940, margin: "0 auto", padding: "20px 16px 28px" }}>
+      <div style={{ maxWidth: 940, margin: "0 auto", padding: isMobile ? "14px 12px 20px" : "20px 16px 28px" }}>
         <div style={{ ...card, marginBottom: 14 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {[1, 2].map((step) => {
@@ -218,7 +222,7 @@ export default function RealtorOnboardingScreen({
             </div>
 
             <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={goNext} style={{ ...btnG, padding: "10px 16px" }}>
+              <button onClick={goNext} style={{ ...btnG, padding: "10px 16px", width: isMobile ? "100%" : "auto" }}>
                 Continue
               </button>
             </div>
@@ -253,9 +257,9 @@ export default function RealtorOnboardingScreen({
               </div>
             </div>
 
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={goBack} style={{ ...btnO, padding: "10px 16px" }}>Back</button>
-              <button onClick={launch} disabled={onboarding.submitting} style={{ ...btnG, padding: "10px 16px", opacity: onboarding.submitting ? 0.75 : 1, cursor: onboarding.submitting ? "not-allowed" : "pointer" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", flexDirection: isMobile ? "column" : "row" }}>
+              <button onClick={goBack} style={{ ...btnO, padding: "10px 16px", width: isMobile ? "100%" : "auto" }}>Back</button>
+              <button onClick={launch} disabled={onboarding.submitting} style={{ ...btnG, padding: "10px 16px", width: isMobile ? "100%" : "auto", opacity: onboarding.submitting ? 0.75 : 1, cursor: onboarding.submitting ? "not-allowed" : "pointer" }}>
                 {onboarding.submitting ? "Launching..." : "Launch Realtor Dashboard"}
               </button>
             </div>

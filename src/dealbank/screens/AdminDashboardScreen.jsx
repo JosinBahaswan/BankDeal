@@ -1,6 +1,9 @@
 import TopBar from "../components/TopBar";
+import useIsMobile from "../core/useIsMobile";
 
 export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACTORS, adminTab, setAdminTab, userName, onSignOut }) {
+  const isMobile = useIsMobile(820);
+
   const ATABS = [
     { id: "overview", icon: "📊", label: "Overview" },
     { id: "users", icon: "👥", label: "Users" },
@@ -9,14 +12,30 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
     { id: "contractors", icon: "🔨", label: "Contractors" },
   ];
 
+  const userRows = [
+    { name: "Daniel P.", email: "daniel@cashoffers.com", type: "dealmaker", status: "Active", joined: "Apr 1" },
+    { name: "Ray Dominguez", email: "ray@contractor.com", type: "contractor", status: "Active", joined: "Mar 28" },
+    { name: "Sandra Okafor", email: "sandra@kw.com", type: "realtor", status: "Active", joined: "Mar 15" },
+    { name: "Mike Torres", email: "mike@hvac.com", type: "contractor", status: "Active", joined: "Apr 3" },
+    { name: "T. Williams", email: "twilliams@flip.com", type: "dealmaker", status: "Trial", joined: "Apr 8" },
+    { name: "M. Johnson", email: "mj@invest.com", type: "dealmaker", status: "Active", joined: "Feb 20" },
+  ];
+
+  const dealRows = [
+    { addr: "4605 Old Mill Ct, Salida CA", user: "Daniel P.", stage: "Analyzing", arv: "$385,000", offer: "$198,000", profit: "$72,000", date: "Apr 10" },
+    { addr: "1842 Maple St, Sacramento CA", user: "T. Williams", stage: "Renovating", arv: "$420,000", offer: "$215,000", profit: "$84,000", date: "Mar 28" },
+    { addr: "534 Oak Blvd, Stockton CA", user: "M. Johnson", stage: "Selling", arv: "$310,000", offer: "$161,000", profit: "$61,000", date: "Feb 14" },
+    { addr: "3421 Poplar Ave, Sacramento CA", user: "S. Park", stage: "Closed", arv: "$385,000", offer: "$195,000", profit: "$78,000", date: "Jan 30" },
+  ];
+
   return (
     <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
       <TopBar title="ADMIN" tabs={ATABS} active={adminTab} onTab={setAdminTab} userName={userName} onSignOut={onSignOut} G={G} btnO={btnO} />
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px 16px" }}>
+      <div style={{ maxWidth: 980, margin: "0 auto", padding: isMobile ? "14px 12px 20px" : "20px 16px" }}>
         {adminTab === "overview" && (
           <div>
-            <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text, marginBottom: 16 }}>Platform Overview</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 16 }}>
+            <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 14 }}>Platform Overview</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
                 { l: "Total Users", v: "1,284", c: G.green, sub: "+47 this week" },
                 { l: "Active Deal Makers", v: "832", c: G.text, sub: "65% of users" },
@@ -25,12 +44,12 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
               ].map(({ l, v, c, sub }) => (
                 <div key={l} style={{ ...card }}>
                   <div style={lbl}>{l}</div>
-                  <div style={{ fontFamily: G.serif, fontSize: 26, color: c, fontWeight: "bold", marginBottom: 2 }}>{v}</div>
+                    <div style={{ fontFamily: G.serif, fontSize: isMobile ? 22 : 26, color: c, fontWeight: "bold", marginBottom: 2 }}>{v}</div>
                   <div style={{ fontSize: 9, color: G.muted }}>{sub}</div>
                 </div>
               ))}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
                 { l: "MRR", v: "$66,840", c: G.green, sub: "Deal Maker + Contractor subs" },
                 { l: "Deals Analyzed", v: "4,231", c: G.text, sub: "This month" },
@@ -43,7 +62,7 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
                 </div>
               ))}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
               <div style={{ ...card }}>
                 <div style={{ ...lbl, marginBottom: 10 }}>Top States by Activity</div>
                 {[["California", "38%", 380], ["Texas", "22%", 220], ["Florida", "16%", 160], ["Arizona", "12%", 120], ["Georgia", "8%", 80]].map(([state, pct, width]) => (
@@ -80,43 +99,67 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
 
         {adminTab === "users" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text }}>User Management</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text }}>User Management</div>
               <div style={{ fontSize: 10, color: G.muted }}>1,284 total users</div>
             </div>
             <div style={{ ...card }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", padding: "8px 12px", background: G.surface, borderRadius: "4px 4px 0 0", borderBottom: `1px solid ${G.border}`, marginBottom: 0 }}>
-                {["NAME / EMAIL", "TYPE", "STATUS", "JOINED", "ACTION"].map((header) => (
-                  <div key={header} style={{ fontSize: 8, color: G.muted, letterSpacing: 2 }}>{header}</div>
-                ))}
-              </div>
-              {[
-                { name: "Daniel P.", email: "daniel@cashoffers.com", type: "dealmaker", status: "Active", joined: "Apr 1" },
-                { name: "Ray Dominguez", email: "ray@contractor.com", type: "contractor", status: "Active", joined: "Mar 28" },
-                { name: "Sandra Okafor", email: "sandra@kw.com", type: "realtor", status: "Active", joined: "Mar 15" },
-                { name: "Mike Torres", email: "mike@hvac.com", type: "contractor", status: "Active", joined: "Apr 3" },
-                { name: "T. Williams", email: "twilliams@flip.com", type: "dealmaker", status: "Trial", joined: "Apr 8" },
-                { name: "M. Johnson", email: "mj@invest.com", type: "dealmaker", status: "Active", joined: "Feb 20" },
-              ].map((userRow, index) => (
-                <div key={index} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", padding: "10px 12px", borderBottom: `1px solid ${G.faint}`, alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: G.text }}>{userRow.name}</div>
-                    <div style={{ fontSize: 9, color: G.muted }}>{userRow.email}</div>
+              {!isMobile && (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", padding: "8px 12px", background: G.surface, borderRadius: "4px 4px 0 0", borderBottom: `1px solid ${G.border}`, marginBottom: 0 }}>
+                    {["NAME / EMAIL", "TYPE", "STATUS", "JOINED", "ACTION"].map((header) => (
+                      <div key={header} style={{ fontSize: 8, color: G.muted, letterSpacing: 2 }}>{header}</div>
+                    ))}
                   </div>
-                  <div style={{ fontSize: 9, color: userRow.type === "dealmaker" ? G.green : userRow.type === "contractor" ? G.gold : G.blue, textTransform: "capitalize" }}>{userRow.type}</div>
-                  <div style={{ fontSize: 9, color: userRow.status === "Active" ? G.green : G.gold }}>{userRow.status}</div>
-                  <div style={{ fontSize: 9, color: G.muted }}>{userRow.joined}</div>
-                  <button style={{ ...btnO, padding: "4px 10px", fontSize: 8 }}>View</button>
+                  {userRows.map((userRow, index) => (
+                    <div key={index} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", padding: "10px 12px", borderBottom: `1px solid ${G.faint}`, alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: G.text }}>{userRow.name}</div>
+                        <div style={{ fontSize: 9, color: G.muted }}>{userRow.email}</div>
+                      </div>
+                      <div style={{ fontSize: 9, color: userRow.type === "dealmaker" ? G.green : userRow.type === "contractor" ? G.gold : G.blue, textTransform: "capitalize" }}>{userRow.type}</div>
+                      <div style={{ fontSize: 9, color: userRow.status === "Active" ? G.green : G.gold }}>{userRow.status}</div>
+                      <div style={{ fontSize: 9, color: G.muted }}>{userRow.joined}</div>
+                      <button
+                        onClick={() => window.alert(`User: ${userRow.name}\nType: ${userRow.type}\nEmail: ${userRow.email}\nStatus: ${userRow.status}`)}
+                        style={{ ...btnO, padding: "4px 10px", fontSize: 8 }}
+                      >
+                        View
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {isMobile && (
+                <div>
+                  {userRows.map((userRow) => (
+                    <div key={`${userRow.email}-${userRow.joined}`} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "10px", marginBottom: 8 }}>
+                      <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, marginBottom: 2 }}>{userRow.name}</div>
+                      <div style={{ fontSize: 9, color: G.muted, marginBottom: 8 }}>{userRow.email}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
+                        <div style={{ fontSize: 9, color: G.muted }}>Type: <span style={{ color: userRow.type === "dealmaker" ? G.green : userRow.type === "contractor" ? G.gold : G.blue, textTransform: "capitalize" }}>{userRow.type}</span></div>
+                        <div style={{ fontSize: 9, color: G.muted }}>Status: <span style={{ color: userRow.status === "Active" ? G.green : G.gold }}>{userRow.status}</span></div>
+                        <div style={{ fontSize: 9, color: G.muted }}>Joined: {userRow.joined}</div>
+                      </div>
+                      <button
+                        onClick={() => window.alert(`User: ${userRow.name}\nType: ${userRow.type}\nEmail: ${userRow.email}\nStatus: ${userRow.status}`)}
+                        style={{ ...btnO, padding: "6px 10px", fontSize: 8, width: "100%" }}
+                      >
+                        View
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           </div>
         )}
 
         {adminTab === "revenue" && (
           <div>
-            <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text, marginBottom: 16 }}>Revenue Dashboard</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 16 }}>
+            <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 12 }}>Revenue Dashboard</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
                 { l: "Deal Maker Subs", v: "$41,168", sub: "832 x $49/mo", c: G.green },
                 { l: "Contractor Subs", v: "$25,122", sub: "318 x $79/mo", c: G.gold },
@@ -155,19 +198,14 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
 
         {adminTab === "deals" && (
           <div>
-            <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text, marginBottom: 16 }}>All Deals - Platform Wide</div>
-            {[
-              { addr: "4605 Old Mill Ct, Salida CA", user: "Daniel P.", stage: "Analyzing", arv: "$385,000", offer: "$198,000", profit: "$72,000", date: "Apr 10" },
-              { addr: "1842 Maple St, Sacramento CA", user: "T. Williams", stage: "Renovating", arv: "$420,000", offer: "$215,000", profit: "$84,000", date: "Mar 28" },
-              { addr: "534 Oak Blvd, Stockton CA", user: "M. Johnson", stage: "Selling", arv: "$310,000", offer: "$161,000", profit: "$61,000", date: "Feb 14" },
-              { addr: "3421 Poplar Ave, Sacramento CA", user: "S. Park", stage: "Closed", arv: "$385,000", offer: "$195,000", profit: "$78,000", date: "Jan 30" },
-            ].map((deal, index) => (
+            <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 12 }}>All Deals - Platform Wide</div>
+            {dealRows.map((deal, index) => (
               <div key={index} style={{ ...card, marginBottom: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
                   <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold" }}>{deal.addr}</div>
                   <div style={{ fontSize: 8, color: deal.stage === "Closed" ? G.green : deal.stage === "Selling" ? G.gold : G.muted, background: G.greenGlow, borderRadius: 3, padding: "2px 8px", letterSpacing: 1 }}>{deal.stage}</div>
                 </div>
-                <div style={{ display: "flex", gap: 16, fontSize: 9, color: G.muted }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5,minmax(0,1fr))", gap: 6, fontSize: 9, color: G.muted }}>
                   <span>User: <strong style={{ color: G.text }}>{deal.user}</strong></span>
                   <span>ARV: <strong style={{ color: G.green }}>{deal.arv}</strong></span>
                   <span>Offer: <strong style={{ color: G.text }}>{deal.offer}</strong></span>
@@ -181,8 +219,8 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
 
         {adminTab === "contractors" && (
           <div>
-            <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text, marginBottom: 16 }}>Contractor Network</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 12 }}>Contractor Network</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 10 }}>
               {MOCK_CONTRACTORS.map((contractor) => (
                 <div key={contractor.id} style={{ ...card }}>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>

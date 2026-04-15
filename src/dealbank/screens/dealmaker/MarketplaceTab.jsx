@@ -49,6 +49,12 @@ export default function MarketplaceTab({ ctx }) {
 
   const wUpdate = (field, value) => setWForm((prev) => ({ ...prev, [field]: value }));
   const roiColor = (r) => (r >= 25 ? G.green : r >= 18 ? G.gold : G.orange);
+  const contactWholesaler = (listing) => {
+    const subject = encodeURIComponent(`Deal inquiry: ${listing.addr}`);
+    const body = encodeURIComponent(`Hi ${listing.contact.name},\n\nI'm interested in ${listing.addr}. Please share next steps and access details.\n\nThanks.`);
+    const mailto = `mailto:${listing.contact.email}?subject=${subject}&body=${body}`;
+    window.location.href = mailto;
+  };
 
   if (activeListing) {
     return (
@@ -123,7 +129,7 @@ export default function MarketplaceTab({ ctx }) {
               <div style={{ fontFamily: G.serif, fontSize: 14, color: G.text, fontWeight: "bold", marginBottom: 4 }}>{activeListing.contact.name}</div>
               <div style={{ fontSize: 10, color: G.muted, marginBottom: 2 }}>{activeListing.contact.phone}</div>
               <div style={{ fontSize: 10, color: G.muted, marginBottom: 12 }}>{activeListing.contact.email}</div>
-              <button style={{ ...btnG, width: "100%", fontSize: 10, marginBottom: 8 }}>📞 Contact Wholesaler</button>
+              <button onClick={() => contactWholesaler(activeListing)} style={{ ...btnG, width: "100%", fontSize: 10, marginBottom: 8 }}>📞 Contact Wholesaler</button>
               <button onClick={() => setSavedDeals((prev) => (prev.includes(activeListing.id) ? prev : [...prev, activeListing.id]))} style={{ ...btnO, width: "100%", fontSize: 10, borderColor: savedDeals.includes(activeListing.id) ? G.green : G.border, color: savedDeals.includes(activeListing.id) ? G.green : G.muted }}>
                 {savedDeals.includes(activeListing.id) ? "✓ Saved to Watchlist" : "Save to Watchlist"}
               </button>

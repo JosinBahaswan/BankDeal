@@ -1,16 +1,29 @@
-# React + Vite
+# DealBank
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+DealBank is a React + Vite application for real estate deal analysis, pipeline tracking, and investor workflows.
 
-Currently, two official plugins are available:
+## Claude API Proxy (Secure Setup)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Anthropic requests are proxied through a Vercel serverless function at `api/claude.js`.
+The frontend never calls Anthropic directly.
 
-## React Compiler
+### Required Environment Variables
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `ANTHROPIC_API_KEY` (server-side only, set in Vercel project settings)
+- `ANTHROPIC_MODEL` (optional, defaults to `claude-sonnet-4-20250514`)
 
-## Expanding the ESLint configuration
+### Optional Frontend Variable
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `VITE_API_BASE_URL` (optional): base URL for the proxy endpoint when frontend and API are hosted on different origins.
+	- Example: `https://your-app.vercel.app`
+
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+For local Claude proxy testing, run with Vercel runtime (`vercel dev`) so `/api/claude` is available locally.

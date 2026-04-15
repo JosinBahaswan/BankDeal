@@ -51,9 +51,31 @@ export default function LeadsToolTab({ ctx }) {
     setSavedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   };
 
-  const sendSms = (name) => {
-    setSmsToast(`SMS queued for ${name}`);
+  const showToast = (message) => {
+    setSmsToast(message);
     setTimeout(() => setSmsToast(""), 1800);
+  };
+
+  const sendSms = (name) => {
+    showToast(`SMS queued for ${name}`);
+  };
+
+  const parseCredits = (value) => {
+    const str = String(value || "").trim().toUpperCase();
+    if (str.endsWith("K")) return (Number(str.replace("K", "")) || 0) * 1000;
+    return Number(str.replace(/[^0-9]/g, "")) || 0;
+  };
+
+  const callFromDialer = () => {
+    if (!dialLead) return;
+    showToast(`Calling ${dialLead.name}...`);
+  };
+
+  const purchaseCredits = (pack) => {
+    const amount = parseCredits(pack.credits);
+    setCredits((prev) => ({ ...prev, dataCredits: prev.dataCredits + amount }));
+    setShowCreditModal(false);
+    showToast(`Purchased ${pack.credits} credits (${pack.name})`);
   };
 
   return (
@@ -154,7 +176,7 @@ export default function LeadsToolTab({ ctx }) {
           </div>
           <div style={{ fontSize: 10, color: G.text }}>{dialLead.name}</div>
           <div style={{ fontSize: 10, color: G.muted, marginBottom: 10 }}>{dialLead.phone}</div>
-          <button style={{ ...btnG, width: "100%", fontSize: 9 }}>Call {dialLead.phone}</button>
+          <button onClick={callFromDialer} style={{ ...btnG, width: "100%", fontSize: 9 }}>Call {dialLead.phone}</button>
         </div>
       )}
 
@@ -173,7 +195,7 @@ export default function LeadsToolTab({ ctx }) {
                   <div style={{ fontFamily: G.serif, fontSize: 22, color: G.green }}>{pack.credits}</div>
                   <div style={{ fontSize: 10, color: G.muted, marginBottom: 8 }}>credits</div>
                   <div style={{ fontFamily: G.serif, fontSize: 17, color: G.gold, marginBottom: 8 }}>{pack.price}</div>
-                  <button style={{ ...btnG, width: "100%", fontSize: 8, padding: "6px 8px" }}>Purchase</button>
+                  <button onClick={() => purchaseCredits(pack)} style={{ ...btnG, width: "100%", fontSize: 8, padding: "6px 8px" }}>Purchase</button>
                 </div>
               ))}
             </div>
