@@ -34,9 +34,10 @@ export const fmt = (value) => {
 
 export const toNum = (value) => parseFloat(String(value).replace(/[^0-9.]/g, "")) || 0;
 
-export function calcOffer(arv, reno, soft, rate, months, points) {
+export function calcOffer(arv, reno, soft, rate, months, points, offerPct = 60) {
+  const pct = Math.min(100, Math.max(0, Number(offerPct) || 60)) / 100;
   const multiplier = 1 + (rate / 100) * (months / 12) + points / 100;
-  return Math.max(0, Math.round((arv * 0.6 - reno - soft) / multiplier));
+  return Math.max(0, Math.round((arv * pct - reno - soft) / multiplier));
 }
 
 export function extractJSON(raw) {

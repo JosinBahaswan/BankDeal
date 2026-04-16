@@ -124,7 +124,13 @@ function mapDealRowToPipeline(row) {
       foundation: String(row.reno_foundation || 0),
       misc: String(row.reno_misc || 0),
     },
-    softCosts: "",
+    offerPct: String(row.offer_pct || 60),
+    softCosts: String((Number(row.total_holding || 0) + Number(row.total_selling || 0)) || 0),
+    holdMonths: String(row.hold_months || 6),
+    holdMonthly: String(row.hold_monthly || 0),
+    insuranceAnnual: String(row.insurance_annual || 0),
+    agentFeePct: String(row.agent_fee_pct || 5),
+    closingCostPct: String(row.closing_cost_pct || 2),
     hardRate: String(row.hm_rate || ""),
     loanMo: String(row.hm_months || ""),
     loanPts: String(row.hm_points || ""),
@@ -200,7 +206,7 @@ function applySeoMeta({ title, description, robots }) {
   if (typeof document === "undefined" || typeof window === "undefined") return;
 
   const canonicalUrl = `${window.location.origin}/`;
-  const imageUrl = `${window.location.origin}/favicon.svg`;
+  const imageUrl = `${window.location.origin}/image.png`;
   const pageTitle = title || "DealBank";
   const pageDescription = description || "DealBank helps real estate investors analyze, manage, and close deals faster.";
   const robotsValue = robots || "index, follow";
@@ -263,7 +269,7 @@ export default function App() {
     type: "Wholesale",
     description: "",
     highlights: "",
-    condition: "fair",
+    condition: "Light Cosmetic",
     contactName: "",
     contactPhone: "",
     contactEmail: "",
@@ -277,7 +283,12 @@ export default function App() {
   const [avmData, setAvmData] = useState(null);
   const [mktNotes, setMktNotes] = useState("");
   const [reno, setReno] = useState(() => RENO_KEYS.reduce((acc, curr) => ({ ...acc, [curr.key]: "" }), {}));
-  const [softCosts, setSoftCosts] = useState("8000");
+  const [offerPct, setOfferPct] = useState("60");
+  const [holdMonths, setHoldMonths] = useState("6");
+  const [holdMonthly, setHoldMonthly] = useState("1200");
+  const [insuranceAnnual, setInsuranceAnnual] = useState("1800");
+  const [agentFeePct, setAgentFeePct] = useState("5");
+  const [closingCostPct, setClosingCostPct] = useState("2");
   const [hardRate, setHardRate] = useState("12");
   const [loanMo, setLoanMo] = useState("6");
   const [loanPts, setLoanPts] = useState("2");
@@ -289,7 +300,7 @@ export default function App() {
   const [analysis, setAnalysis] = useState("");
   const [anlLoad, setAnlLoad] = useState(false);
   const [anlErr, setAnlErr] = useState("");
-  const [anlTab, setAnlTab] = useState("reno");
+  const [anlTab, setAnlTab] = useState("offer-costs");
   const [targetP, setTargetP] = useState(75000);
   const [pitch, setPitch] = useState("");
   const [pitchLoad, setPitchLoad] = useState(false);
@@ -312,13 +323,25 @@ export default function App() {
   const offerRef = useRef(null);
 
   const totalReno = RENO_KEYS.reduce((sum, key) => sum + toNum(reno[key.key]), 0);
-  const softNum = toNum(softCosts);
+  const offerPctNum = Math.min(100, Math.max(0, parseFloat(offerPct) || 60));
+  const holdMonthsNum = Math.max(0, parseFloat(holdMonths) || 0);
+  const holdMonthlyNum = Math.max(0, parseFloat(holdMonthly) || 0);
+  const insuranceAnnualNum = Math.max(0, parseFloat(insuranceAnnual) || 0);
+  const agentFeePctNum = Math.max(0, parseFloat(agentFeePct) || 0);
+  const closingCostPctNum = Math.max(0, parseFloat(closingCostPct) || 0);
   const rateNum = parseFloat(hardRate) || 12;
   const moNum = parseFloat(loanMo) || 6;
   const ptsNum = parseFloat(loanPts) || 2;
   const arvNum = toNum(arvOvr) || avmData?.price || 0;
-  const sixtyT = Math.round(arvNum * 0.6);
-  const offer = arvNum > 0 ? calcOffer(arvNum, totalReno, softNum, rateNum, moNum, ptsNum) : 0;
+  const holdN = holdMonthsNum * holdMonthlyNum;
+  const insN = holdMonthsNum * (insuranceAnnualNum / 12);
+  const agentN = arvNum * (agentFeePctNum / 100);
+  const closingN = arvNum * (closingCostPctNum / 100);
+  const totalHolding = holdN + insN;
+  const totalSelling = agentN + closingN;
+  const softNum = totalHolding + totalSelling;
+  const sixtyT = Math.round(arvNum * (offerPctNum / 100));
+  const offer = arvNum > 0 ? calcOffer(arvNum, totalReno, softNum, rateNum, moNum, ptsNum, offerPctNum) : 0;
   const hmInt = offer * (rateNum / 100) * (moNum / 12);
   const hmPts = offer * (ptsNum / 100);
   const totalHM = hmInt + hmPts;
@@ -998,6 +1021,7 @@ export default function App() {
       user_id: user.id,
       address,
       arv: arvNum,
+      offer_pct: offerPctNum,
       offer_price: offer,
       stage: "Analyzing",
       saved_at: new Date().toISOString(),
@@ -1016,8 +1040,15 @@ export default function App() {
       hm_rate: rateNum,
       hm_months: moNum,
       hm_points: ptsNum,
+      hold_months: holdMonthsNum,
+      hold_monthly: holdMonthlyNum,
+      insurance_annual: insuranceAnnualNum,
+      agent_fee_pct: agentFeePctNum,
+      closing_cost_pct: closingCostPctNum,
       total_reno: totalReno,
       total_hm: totalHM,
+      total_holding: totalHolding,
+      total_selling: totalSelling,
       all_in_cost: allIn,
       net_profit: projProfit,
       roi: Number(roi.toFixed(2)),
@@ -1120,11 +1151,13 @@ Fill in real numbers for this market.`,
     try {
       const text = await askClaude(
         `Senior fix-and-flip analyst. Direct deal review.
-PROPERTY: ${address} | ARV: ${fmt(arvNum)} | 60%: ${fmt(sixtyT)} | OFFER: ${fmt(offer)}
-COSTS: Rehab ${fmt(Math.round(totalReno))} | Soft ${fmt(softNum)} | HM ${fmt(Math.round(totalHM))} | ALL-IN ${fmt(Math.round(allIn))}
+PROPERTY: ${address} | ARV: ${fmt(arvNum)} | ${offerPctNum}%: ${fmt(sixtyT)} | OFFER: ${fmt(offer)}
+COSTS: Rehab ${fmt(Math.round(totalReno))} | Holding ${fmt(Math.round(totalHolding))} | Selling ${fmt(Math.round(totalSelling))} | Soft Total ${fmt(Math.round(softNum))} | HM ${fmt(Math.round(totalHM))} | ALL-IN ${fmt(Math.round(allIn))}
 PROFIT: ${fmt(Math.round(projProfit))} | ROI: ${roi.toFixed(1)}% | TARGET: ${fmt(targetP)}
 COMPS:\n${compsText}
 RENO: ${RENO_KEYS.map((c) => `${c.label}: ${fmt(toNum(reno[c.key]))}`).join(" | ")}
+HOLDING INPUTS: ${holdMonthsNum} mo @ ${fmt(holdMonthlyNum)}/mo + insurance ${fmt(insuranceAnnualNum)}/yr
+SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
 **1. DEAL VERDICT** **2. OFFER PRICE** **3. ARV CHECK** **4. RENO FLAGS** **5. TOP 3 RISKS** **6. BOTTOM LINE**`,
       );
       setAnalysis(text);
@@ -1154,7 +1187,9 @@ RENO: ${RENO_KEYS.map((c) => `${c.label}: ${fmt(toNum(reno[c.key]))}`).join(" | 
       "COST BREAKDOWN why investor cannot pay more:",
       `- Renovation: ${fmt(Math.round(totalReno))}`,
       `- Hard money loan cost: ${fmt(Math.round(totalHM))}`,
-      `- Closing costs + agent fees: ${fmt(Math.round(softNum))}`,
+      `- Holding costs (carry + insurance): ${fmt(Math.round(totalHolding))}`,
+      `- Selling costs (agent + closing): ${fmt(Math.round(totalSelling))}`,
+      `- Soft costs total: ${fmt(Math.round(softNum))}`,
       `- Total costs above purchase: ${fmt(Math.round(allIn - offer))}`,
       `- Required investor profit margin: ${fmt(Math.round(projProfit))} (${roi.toFixed(1)}% ROI)`,
       "Paragraph 1: Who the investor is, local cash buyer, respects homeowner time.",
@@ -1223,9 +1258,27 @@ RENO: ${RENO_KEYS.map((c) => `${c.label}: ${fmt(toNum(reno[c.key]))}`).join(" | 
     arvNum,
     offerRef,
     offer,
+    offerPct,
+    setOfferPct,
     sixtyT,
     totalReno,
     softNum,
+    holdMonths,
+    setHoldMonths,
+    holdMonthly,
+    setHoldMonthly,
+    insuranceAnnual,
+    setInsuranceAnnual,
+    agentFeePct,
+    setAgentFeePct,
+    closingCostPct,
+    setClosingCostPct,
+    holdN,
+    insN,
+    agentN,
+    closingN,
+    totalHolding,
+    totalSelling,
     totalHM,
     arvOvr,
     setArvOvr,
@@ -1245,8 +1298,6 @@ RENO: ${RENO_KEYS.map((c) => `${c.label}: ${fmt(toNum(reno[c.key]))}`).join(" | 
     setLoanMo,
     loanPts,
     setLoanPts,
-    softCosts,
-    setSoftCosts,
     compsData,
     mktNotes,
     saveDeal,

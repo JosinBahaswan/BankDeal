@@ -1,10 +1,13 @@
+import useIsMobile from "../../core/useIsMobile";
+
 export default function ContractorsTab({ ctx }) {
   const { G, card, btnG, MOCK_CONTRACTORS } = ctx;
+  const isMobile = useIsMobile(820);
 
   return (
     <div>
       <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 14 }}>Local Contractor Network</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
         {MOCK_CONTRACTORS.map((contractor) => (
           <div key={contractor.id} style={{ ...card }}>
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>

@@ -144,9 +144,19 @@ export default function RealtorOnboardingScreen({
     <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
       <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: isMobile ? "12px" : "12px 16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <div>
-            <div style={{ fontFamily: G.serif, fontSize: 18, fontWeight: "bold" }}>Realtor Onboarding</div>
-            <div style={{ fontSize: 9, color: G.muted, letterSpacing: isMobile ? 1 : 2, marginTop: 2 }}>SET UP PROFILE TO RECEIVE DEAL REFERRALS</div>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 12 }}>
+            <div style={{ position: "relative", width: 30, height: 30 }}>
+              <div style={{ position: "absolute", inset: 0, background: "#22c55e", borderRadius: 5, transform: "rotate(45deg) scale(0.7)" }} />
+              <div style={{ position: "absolute", inset: 4, background: "#050a05", borderRadius: 3, transform: "rotate(45deg) scale(0.7)" }} />
+              <div style={{ position: "absolute", inset: 9, background: "#22c55e", borderRadius: 2, transform: "rotate(45deg) scale(0.7)" }} />
+            </div>
+            <div>
+              <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: isMobile ? 18 : 20, fontWeight: 900, letterSpacing: -0.5, lineHeight: 1 }}>
+                Deal<span style={{ color: "#22c55e" }}>Bank</span>
+              </div>
+              <div style={{ fontFamily: G.serif, fontSize: isMobile ? 16 : 18, fontWeight: "bold" }}>Realtor Onboarding</div>
+              <div style={{ fontSize: 9, color: G.muted, letterSpacing: isMobile ? 1 : 2, marginTop: 2 }}>SET UP PROFILE TO RECEIVE DEAL REFERRALS</div>
+            </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 10, color: G.muted, display: "none" }}>{userName || "Realtor"}</div>

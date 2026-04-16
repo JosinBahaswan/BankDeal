@@ -24,7 +24,16 @@ export default function AuthScreen({
     <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono, display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "center", padding: isMobile ? "24px 0" : 0 }}>
       <div style={{ width: "100%", maxWidth: 420, padding: "0 16px" }}>
         <div style={{ textAlign: "center", marginBottom: 20 }}>
-          <div style={{ fontFamily: G.serif, fontSize: isMobile ? 20 : 22, fontWeight: "bold", marginBottom: 3 }}>DealBank</div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <div style={{ position: "relative", width: 30, height: 30 }}>
+              <div style={{ position: "absolute", inset: 0, background: "#22c55e", borderRadius: 5, transform: "rotate(45deg) scale(0.7)" }} />
+              <div style={{ position: "absolute", inset: 4, background: "#050a05", borderRadius: 3, transform: "rotate(45deg) scale(0.7)" }} />
+              <div style={{ position: "absolute", inset: 9, background: "#22c55e", borderRadius: 2, transform: "rotate(45deg) scale(0.7)" }} />
+            </div>
+            <span style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: isMobile ? 24 : 28, fontWeight: 900, letterSpacing: -0.5 }}>
+              Deal<span style={{ color: "#22c55e" }}>Bank</span>
+            </span>
+          </div>
           <div style={{ fontSize: 9, color: G.muted, letterSpacing: 3 }}>{authMode === "signup" ? "CREATE ACCOUNT" : "WELCOME BACK"}</div>
         </div>
         {authMode === "signup" && (

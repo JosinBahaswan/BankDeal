@@ -53,11 +53,13 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
     { id: "j3", address: "2201 Pine Ave, Modesto", flipper: "S. Park", value: 67000, statusNote: "Rough-ins completed, inspections next", progress: 53 },
   ]);
 
-  const leadRows = [
-    { addr: "1842 Maple St, Sacramento", trade: "Kitchen & Bath", budget: "$18,000-$24,000", flipper: "T. Williams", posted: "2h ago", urgent: true },
-    { addr: "534 Oak Blvd, Stockton", trade: "HVAC", budget: "$6,000-$9,000", flipper: "M. Johnson", posted: "5h ago", urgent: false },
-    { addr: "2201 Pine Ave, Modesto", trade: "General Contractor", budget: "$55,000-$70,000", flipper: "S. Park", posted: "1d ago", urgent: false },
-  ];
+  const [leadRows, setLeadRows] = useState([
+    { id: "lead-1", addr: "1842 Maple St, Sacramento", trade: "Kitchen & Bath", budget: "$18,000-$24,000", flipper: "T. Williams", posted: "2h ago", urgent: true, quoteSentAt: "", quoteAmount: "", quoteNotes: "" },
+    { id: "lead-2", addr: "534 Oak Blvd, Stockton", trade: "HVAC", budget: "$6,000-$9,000", flipper: "M. Johnson", posted: "5h ago", urgent: false, quoteSentAt: "", quoteAmount: "", quoteNotes: "" },
+    { id: "lead-3", addr: "2201 Pine Ave, Modesto", trade: "General Contractor", budget: "$55,000-$70,000", flipper: "S. Park", posted: "1d ago", urgent: false, quoteSentAt: "", quoteAmount: "", quoteNotes: "" },
+  ]);
+  const [openQuoteLeadId, setOpenQuoteLeadId] = useState("");
+  const [quoteDraft, setQuoteDraft] = useState({ amount: "", notes: "" });
 
   const reviewRows = [
     { id: "r1", flipper: "T. Williams", title: "Kitchen + bath remodel", date: "Apr 2026", stars: 5, text: "Communicated every day, hit timeline, and gave us clear change-order options." },
@@ -83,6 +85,27 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
     setSelectedTrades((prev) => (prev.includes(trade) ? prev.filter((item) => item !== trade) : [...prev, trade]));
   }
 
+  function openQuoteForm(lead) {
+    if (lead.quoteSentAt) return;
+    setOpenQuoteLeadId(lead.id);
+    setQuoteDraft({ amount: "", notes: "" });
+  }
+
+  function submitQuote(lead) {
+    if (!quoteDraft.amount) return;
+
+    setLeadRows((prev) => prev.map((row) => (row.id === lead.id
+      ? {
+        ...row,
+        quoteSentAt: new Date().toLocaleString(),
+        quoteAmount: quoteDraft.amount,
+        quoteNotes: quoteDraft.notes,
+      }
+      : row)));
+    setOpenQuoteLeadId("");
+    setQuoteDraft({ amount: "", notes: "" });
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
       <TopBar title="CONTRACTOR" tabs={CTABS} active={contractorTab} onTab={setContractorTab} userName={user?.name} onSignOut={onSignOut} G={G} btnO={btnO} />
@@ -91,8 +114,8 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 4 }}>Job Leads</div>
             <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Deal makers nearby are requesting bids in your selected trades.</div>
-            {leadRows.map((lead, index) => (
-              <div key={index} style={{ ...card, marginBottom: 10, borderColor: lead.urgent ? `${G.gold}66` : G.border }}>
+            {leadRows.map((lead) => (
+              <div key={lead.id} style={{ ...card, marginBottom: 10, borderColor: lead.urgent ? `${G.gold}66` : G.border }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 8, flexWrap: "wrap" }}>
                   <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold" }}>{lead.addr}</div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -103,11 +126,50 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
                 <div style={{ fontSize: 10, color: G.muted, marginBottom: 8, lineHeight: 1.6 }}>
                   Trade: <span style={{ color: G.green }}>{lead.trade}</span> · Budget: <span style={{ color: G.text }}>{lead.budget}</span> · Deal Maker: <span style={{ color: G.text }}>{lead.flipper}</span>
                 </div>
+
+                {lead.quoteSentAt && (
+                  <div style={{ background: G.greenGlow, border: `1px solid ${G.green}44`, borderRadius: 6, padding: "8px 10px", marginBottom: 8 }}>
+                    <div style={{ fontSize: 9, color: G.green, letterSpacing: 1, marginBottom: 3 }}>QUOTE SENT</div>
+                    <div style={{ fontSize: 10, color: G.text, marginBottom: 2 }}>Amount: ${Number(lead.quoteAmount || 0).toLocaleString()}</div>
+                    <div style={{ fontSize: 9, color: G.muted }}>Sent: {lead.quoteSentAt}</div>
+                  </div>
+                )}
+
+                {!lead.quoteSentAt && openQuoteLeadId === lead.id && (
+                  <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "10px", marginBottom: 8 }}>
+                    <div style={lbl}>Quote Amount</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
+                      <span style={{ color: G.muted, fontSize: 12 }}>$</span>
+                      <input
+                        value={quoteDraft.amount}
+                        onChange={(event) => setQuoteDraft((prev) => ({ ...prev, amount: event.target.value.replace(/[^0-9]/g, "") }))}
+                        placeholder="18500"
+                        style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${G.border}`, color: G.text, fontSize: 13, fontFamily: G.mono, outline: "none" }}
+                      />
+                    </div>
+                    <div style={lbl}>Notes (optional)</div>
+                    <textarea
+                      value={quoteDraft.notes}
+                      onChange={(event) => setQuoteDraft((prev) => ({ ...prev, notes: event.target.value }))}
+                      rows={2}
+                      placeholder="Scope assumptions, materials, timeline..."
+                      style={{ width: "100%", boxSizing: "border-box", background: G.card, border: `1px solid ${G.border}`, borderRadius: 5, color: G.text, fontSize: 10, fontFamily: G.mono, padding: "8px", marginBottom: 8, resize: "vertical", outline: "none" }}
+                    />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => setOpenQuoteLeadId("")} style={{ ...btnO, flex: 1, fontSize: 8, padding: "6px 10px" }}>Cancel</button>
+                      <button onClick={() => submitQuote(lead)} disabled={!quoteDraft.amount} style={{ ...btnG, flex: 2, fontSize: 8, padding: "6px 10px", background: quoteDraft.amount ? G.green : G.faint, color: quoteDraft.amount ? "#000" : G.muted }}>
+                        Confirm Quote Sent
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <button
-                  onClick={() => window.alert(`Quote draft opened for ${lead.addr}\nTrade: ${lead.trade}\nBudget: ${lead.budget}`)}
-                  style={{ ...btnG, width: "100%", fontSize: 9, padding: "8px" }}
+                  onClick={() => openQuoteForm(lead)}
+                  disabled={Boolean(lead.quoteSentAt)}
+                  style={{ ...btnG, width: "100%", fontSize: 9, padding: "8px", background: lead.quoteSentAt ? G.faint : G.green, color: lead.quoteSentAt ? G.muted : "#000" }}
                 >
-                  Send Quote
+                  {lead.quoteSentAt ? "Quote Sent" : openQuoteLeadId === lead.id ? "Editing Quote" : "Send Quote"}
                 </button>
               </div>
             ))}

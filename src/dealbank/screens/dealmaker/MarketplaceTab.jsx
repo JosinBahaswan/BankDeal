@@ -157,7 +157,7 @@ export default function MarketplaceTab({ ctx }) {
                 <div key={i} style={{ display: "flex", gap: 10, marginBottom: 8, fontSize: 10, color: G.text }}><span style={{ color: G.green, fontWeight: "bold", minWidth: 16 }}>{i + 1}.</span>{s}</div>
               ))}
             </div>
-            <button onClick={() => { setWSubmitted(false); setSubmitStep(1); setWForm({ address: "", city: "", state: "CA", zip: "", beds: "", baths: "", sqft: "", yearBuilt: "", arv: "", askPrice: "", renoEst: "", assignFee: "", earnest: "", closeDate: "", type: "Wholesale", description: "", highlights: "", condition: "fair", contactName: "", contactPhone: "", contactEmail: "" }); }} style={{ ...btnG, fontSize: 10 }}>
+            <button onClick={() => { setWSubmitted(false); setSubmitStep(1); setWForm({ address: "", city: "", state: "CA", zip: "", beds: "", baths: "", sqft: "", yearBuilt: "", arv: "", askPrice: "", renoEst: "", assignFee: "", earnest: "", closeDate: "", type: "Wholesale", description: "", highlights: "", condition: "Light Cosmetic", contactName: "", contactPhone: "", contactEmail: "" }); }} style={{ ...btnG, fontSize: 10 }}>
               Submit Another Deal
             </button>
           </div>
@@ -245,7 +245,7 @@ export default function MarketplaceTab({ ctx }) {
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ ...lbl }}>Property Condition <span style={{ color: G.muted, fontWeight: "normal" }}>(tell buyers what makes this deal)</span></div>
                   <select value={wForm.condition} onChange={(e) => wUpdate("condition", e.target.value)} style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 5, color: G.text, fontSize: 13, fontFamily: G.mono, padding: "9px 11px", outline: "none" }}>
-                    {["cosmetic only", "full cosmetic rehab", "full rehab needed", "major rehab + structural", "distressed / teardown"].map((o) => <option key={o} value={o} style={{ background: G.card }}>{o}</option>)}
+                    {["Light Cosmetic", "Cosmetic Flip", "Full Rehab", "Major Rehab"].map((o) => <option key={o} value={o} style={{ background: G.card }}>{o}</option>)}
                   </select>
                 </div>
                 <div style={{ marginBottom: 12 }}>
@@ -296,7 +296,7 @@ export default function MarketplaceTab({ ctx }) {
       <div>
         <button onClick={() => setMktView("feed")} style={{ ...btnO, marginBottom: 14, padding: "5px 12px", fontSize: 9 }}>← Back to Deals</button>
         <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 4 }}>Active Buyer Network</div>
-        <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>30 verified cash buyers actively looking for deals. Updated weekly.</div>
+        <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>30 verified cash buyers actively looking for deals. Below are 8 active profile samples.</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 14 }}>
           {[{ l: "Active Buyers", v: "30", c: G.green }, { l: "Avg Buy Box", v: "$150K-$350K", c: G.text }, { l: "Deals/Mo Capacity", v: "45+", c: G.gold }, { l: "Avg Close Time", v: "12 days", c: G.green }].map(({ l, v, c }) => (
             <div key={l} style={{ ...card, textAlign: "center" }}>
@@ -311,6 +311,9 @@ export default function MarketplaceTab({ ctx }) {
           { name: "Bay Area Cash Buyers", markets: "Sacramento, Bay Area", buyBox: "$250K-$600K", type: "Fix & Flip / BRRRR", closes: "4-6/mo", cash: true, hm: false, verified: true },
           { name: "Independent Buyer - T. Williams", markets: "Sacramento metro", buyBox: "$150K-$320K", type: "Fix & Flip", closes: "2-3/mo", cash: true, hm: true, verified: true },
           { name: "Golden State Deal Makers", markets: "Statewide CA", buyBox: "$100K-$500K", type: "All types", closes: "15+/mo", cash: true, hm: false, verified: false },
+          { name: "Redwood Capital Partners", markets: "Sacramento, Roseville, Elk Grove", buyBox: "$180K-$450K", type: "Fix & Flip", closes: "6-8/mo", cash: true, hm: false, verified: true },
+          { name: "Delta Turnkey Holdings", markets: "Stockton, Lodi, Tracy", buyBox: "$110K-$300K", type: "BRRRR / Rental", closes: "4-5/mo", cash: false, hm: true, verified: true },
+          { name: "Sierra Equity Buyers", markets: "Fresno, Clovis, Madera", buyBox: "$130K-$340K", type: "Wholesale / Wholetail", closes: "3-4/mo", cash: true, hm: true, verified: true },
         ].map((b, i) => (
           <div key={i} style={{ ...card, marginBottom: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>

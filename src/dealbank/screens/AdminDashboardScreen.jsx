@@ -1,15 +1,29 @@
 import TopBar from "../components/TopBar";
 import useIsMobile from "../core/useIsMobile";
+import { getLaunchIntegrationStatus, integrationStatusColor } from "../core/integrations";
 
 export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACTORS, adminTab, setAdminTab, userName, onSignOut }) {
   const isMobile = useIsMobile(820);
+  const dealMakerCount = 832;
+  const dealMakerMonthlyPrice = 149;
+  const contractorCount = 318;
+  const contractorMonthlyPrice = 79;
+  const dealMakerMrr = dealMakerCount * dealMakerMonthlyPrice;
+  const contractorMrr = contractorCount * contractorMonthlyPrice;
+  const totalMrr = dealMakerMrr + contractorMrr;
+  const arrProjection = totalMrr * 12;
+  const dealMakerSharePct = totalMrr > 0 ? Math.round((dealMakerMrr / totalMrr) * 100) : 0;
+  const contractorSharePct = totalMrr > 0 ? Math.round((contractorMrr / totalMrr) * 100) : 0;
+  const launchIntegrations = getLaunchIntegrationStatus();
+
+  const money = (value) => `$${Number(value || 0).toLocaleString()}`;
 
   const ATABS = [
-    { id: "overview", icon: "📊", label: "Overview" },
-    { id: "users", icon: "👥", label: "Users" },
-    { id: "revenue", icon: "💰", label: "Revenue" },
-    { id: "deals", icon: "🏠", label: "Deals" },
-    { id: "contractors", icon: "🔨", label: "Contractors" },
+    { id: "overview", icon: "OV", label: "Overview" },
+    { id: "users", icon: "US", label: "Users" },
+    { id: "revenue", icon: "RV", label: "Revenue" },
+    { id: "deals", icon: "DL", label: "Deals" },
+    { id: "contractors", icon: "CT", label: "Contractors" },
   ];
 
   const userRows = [
@@ -38,20 +52,21 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
                 { l: "Total Users", v: "1,284", c: G.green, sub: "+47 this week" },
-                { l: "Active Deal Makers", v: "832", c: G.text, sub: "65% of users" },
-                { l: "Contractors", v: "318", c: G.gold, sub: "$79/mo subs" },
+                { l: "Active Deal Makers", v: String(dealMakerCount), c: G.text, sub: "65% of users" },
+                { l: "Contractors", v: String(contractorCount), c: G.gold, sub: "$79/mo subs" },
                 { l: "Realtors", v: "134", c: G.blue, sub: "Rev share only" },
               ].map(({ l, v, c, sub }) => (
                 <div key={l} style={{ ...card }}>
                   <div style={lbl}>{l}</div>
-                    <div style={{ fontFamily: G.serif, fontSize: isMobile ? 22 : 26, color: c, fontWeight: "bold", marginBottom: 2 }}>{v}</div>
+                  <div style={{ fontFamily: G.serif, fontSize: isMobile ? 22 : 26, color: c, fontWeight: "bold", marginBottom: 2 }}>{v}</div>
                   <div style={{ fontSize: 9, color: G.muted }}>{sub}</div>
                 </div>
               ))}
             </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
-                { l: "MRR", v: "$66,840", c: G.green, sub: "Deal Maker + Contractor subs" },
+                { l: "MRR", v: money(totalMrr), c: G.green, sub: "Deal Maker + Contractor subs @ spec pricing" },
                 { l: "Deals Analyzed", v: "4,231", c: G.text, sub: "This month" },
                 { l: "Realtor Splits Earned", v: "$18,400", c: G.gold, sub: "Commission referrals YTD" },
               ].map(({ l, v, c, sub }) => (
@@ -62,10 +77,17 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
                 </div>
               ))}
             </div>
+
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
               <div style={{ ...card }}>
                 <div style={{ ...lbl, marginBottom: 10 }}>Top States by Activity</div>
-                {[["California", "38%", 380], ["Texas", "22%", 220], ["Florida", "16%", 160], ["Arizona", "12%", 120], ["Georgia", "8%", 80]].map(([state, pct, width]) => (
+                {[
+                  ["California", "38%", 380],
+                  ["Texas", "22%", 220],
+                  ["Florida", "16%", 160],
+                  ["Arizona", "12%", 120],
+                  ["Georgia", "8%", 80],
+                ].map(([state, pct, width]) => (
                   <div key={state} style={{ marginBottom: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}>
                       <span style={{ color: G.text }}>{state}</span>
@@ -77,6 +99,7 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
                   </div>
                 ))}
               </div>
+
               <div style={{ ...card }}>
                 <div style={{ ...lbl, marginBottom: 10 }}>Recent Platform Activity</div>
                 {[
@@ -88,11 +111,41 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
                   { e: "New contractor sub", t: "2h ago", c: G.gold },
                 ].map(({ e, t, c }, index) => (
                   <div key={index} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: index < 5 ? `1px solid ${G.faint}` : "none" }}>
-                    <span style={{ fontSize: 10, color: c }}>● {e}</span>
+                    <span style={{ fontSize: 10, color: c }}>- {e}</span>
                     <span style={{ fontSize: 9, color: G.muted }}>{t}</span>
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div style={{ ...card, marginTop: 10 }}>
+              <div style={{ ...lbl, marginBottom: 10 }}>Launch Readiness (Section 9)</div>
+              {launchIntegrations.map((item) => {
+                const color = integrationStatusColor(item.status, G);
+                return (
+                  <div key={item.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: `1px solid ${G.faint}` }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: G.text }}>{item.label}</div>
+                      <div style={{ fontSize: 9, color: G.muted, marginTop: 2 }}>{item.details}</div>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 8,
+                        color,
+                        border: `1px solid ${color}55`,
+                        background: `${color}22`,
+                        borderRadius: 3,
+                        padding: "2px 8px",
+                        letterSpacing: 1,
+                        height: "fit-content",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {item.status}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -103,14 +156,28 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
               <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text }}>User Management</div>
               <div style={{ fontSize: 10, color: G.muted }}>1,284 total users</div>
             </div>
+
             <div style={{ ...card }}>
               {!isMobile && (
                 <>
-                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", padding: "8px 12px", background: G.surface, borderRadius: "4px 4px 0 0", borderBottom: `1px solid ${G.border}`, marginBottom: 0 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+                      padding: "8px 12px",
+                      background: G.surface,
+                      borderRadius: "4px 4px 0 0",
+                      borderBottom: `1px solid ${G.border}`,
+                      marginBottom: 0,
+                    }}
+                  >
                     {["NAME / EMAIL", "TYPE", "STATUS", "JOINED", "ACTION"].map((header) => (
-                      <div key={header} style={{ fontSize: 8, color: G.muted, letterSpacing: 2 }}>{header}</div>
+                      <div key={header} style={{ fontSize: 8, color: G.muted, letterSpacing: 2 }}>
+                        {header}
+                      </div>
                     ))}
                   </div>
+
                   {userRows.map((userRow, index) => (
                     <div key={index} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", padding: "10px 12px", borderBottom: `1px solid ${G.faint}`, alignItems: "center" }}>
                       <div>
@@ -138,8 +205,12 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
                       <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, marginBottom: 2 }}>{userRow.name}</div>
                       <div style={{ fontSize: 9, color: G.muted, marginBottom: 8 }}>{userRow.email}</div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
-                        <div style={{ fontSize: 9, color: G.muted }}>Type: <span style={{ color: userRow.type === "dealmaker" ? G.green : userRow.type === "contractor" ? G.gold : G.blue, textTransform: "capitalize" }}>{userRow.type}</span></div>
-                        <div style={{ fontSize: 9, color: G.muted }}>Status: <span style={{ color: userRow.status === "Active" ? G.green : G.gold }}>{userRow.status}</span></div>
+                        <div style={{ fontSize: 9, color: G.muted }}>
+                          Type: <span style={{ color: userRow.type === "dealmaker" ? G.green : userRow.type === "contractor" ? G.gold : G.blue, textTransform: "capitalize" }}>{userRow.type}</span>
+                        </div>
+                        <div style={{ fontSize: 9, color: G.muted }}>
+                          Status: <span style={{ color: userRow.status === "Active" ? G.green : G.gold }}>{userRow.status}</span>
+                        </div>
                         <div style={{ fontSize: 9, color: G.muted }}>Joined: {userRow.joined}</div>
                       </div>
                       <button
@@ -161,12 +232,12 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
             <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 12 }}>Revenue Dashboard</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
-                { l: "Deal Maker Subs", v: "$41,168", sub: "832 x $49/mo", c: G.green },
-                { l: "Contractor Subs", v: "$25,122", sub: "318 x $79/mo", c: G.gold },
+                { l: "Deal Maker Subs", v: money(dealMakerMrr), sub: `${dealMakerCount} x $${dealMakerMonthlyPrice}/mo`, c: G.green },
+                { l: "Contractor Subs", v: money(contractorMrr), sub: `${contractorCount} x $${contractorMonthlyPrice}/mo`, c: G.gold },
                 { l: "Realtor Splits", v: "$18,400", sub: "YTD commission splits", c: G.blue },
                 { l: "Deal Marketplace", v: "$3,200", sub: "Listing fees", c: G.text },
-                { l: "Total MRR", v: "$66,840", sub: "Monthly recurring", c: G.green },
-                { l: "ARR Projection", v: "$802,080", sub: "Annualized", c: G.green },
+                { l: "Total MRR", v: money(totalMrr), sub: "Monthly recurring", c: G.green },
+                { l: "ARR Projection", v: money(arrProjection), sub: "Annualized", c: G.green },
               ].map(({ l, v, sub, c }) => (
                 <div key={l} style={{ ...card }}>
                   <div style={lbl}>{l}</div>
@@ -175,11 +246,12 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
                 </div>
               ))}
             </div>
+
             <div style={{ ...card }}>
               <div style={{ ...lbl, marginBottom: 12 }}>Revenue Streams Breakdown</div>
               {[
-                ["Deal Maker Subscriptions", "$49/mo per deal maker", "62%", G.green],
-                ["Contractor Subscriptions", "$79/mo per contractor", "38%", G.gold],
+                ["Deal Maker Subscriptions", "$149/mo per deal maker", `${dealMakerSharePct}%`, G.green],
+                ["Contractor Subscriptions", "$79/mo per contractor", `${contractorSharePct}%`, G.gold],
                 ["Realtor Commission Splits", "25% of agent commission", "pending", G.blue],
                 ["Deal Marketplace Fees", "$99 per listing", "5%", G.text],
                 ["Premium Lead Packages", "Future - $299/mo", "-", G.muted],
@@ -203,13 +275,23 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
               <div key={index} style={{ ...card, marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
                   <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold" }}>{deal.addr}</div>
-                  <div style={{ fontSize: 8, color: deal.stage === "Closed" ? G.green : deal.stage === "Selling" ? G.gold : G.muted, background: G.greenGlow, borderRadius: 3, padding: "2px 8px", letterSpacing: 1 }}>{deal.stage}</div>
+                  <div style={{ fontSize: 8, color: deal.stage === "Closed" ? G.green : deal.stage === "Selling" ? G.gold : G.muted, background: G.greenGlow, borderRadius: 3, padding: "2px 8px", letterSpacing: 1 }}>
+                    {deal.stage}
+                  </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5,minmax(0,1fr))", gap: 6, fontSize: 9, color: G.muted }}>
-                  <span>User: <strong style={{ color: G.text }}>{deal.user}</strong></span>
-                  <span>ARV: <strong style={{ color: G.green }}>{deal.arv}</strong></span>
-                  <span>Offer: <strong style={{ color: G.text }}>{deal.offer}</strong></span>
-                  <span>Profit: <strong style={{ color: G.green }}>{deal.profit}</strong></span>
+                  <span>
+                    User: <strong style={{ color: G.text }}>{deal.user}</strong>
+                  </span>
+                  <span>
+                    ARV: <strong style={{ color: G.green }}>{deal.arv}</strong>
+                  </span>
+                  <span>
+                    Offer: <strong style={{ color: G.text }}>{deal.offer}</strong>
+                  </span>
+                  <span>
+                    Profit: <strong style={{ color: G.green }}>{deal.profit}</strong>
+                  </span>
                   <span>Date: {deal.date}</span>
                 </div>
               </div>
@@ -224,15 +306,45 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
               {MOCK_CONTRACTORS.map((contractor) => (
                 <div key={contractor.id} style={{ ...card }}>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: G.greenGlow, border: `1px solid ${G.green}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: G.green, fontWeight: "bold" }}>{contractor.avatar}</div>
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: "50%",
+                        background: G.greenGlow,
+                        border: `1px solid ${G.green}44`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 11,
+                        color: G.green,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {contractor.avatar}
+                    </div>
                     <div>
                       <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold" }}>{contractor.name}</div>
-                      <div style={{ fontSize: 9, color: G.gold }}>{contractor.trade} · {contractor.location}</div>
+                      <div style={{ fontSize: 9, color: G.gold }}>{contractor.trade} | {contractor.location}</div>
                     </div>
-                    {contractor.verified && <div style={{ marginLeft: "auto", fontSize: 7, color: G.green, background: G.greenGlow, border: `1px solid ${G.green}44`, borderRadius: 3, padding: "2px 5px" }}>VERIFIED</div>}
+                    {contractor.verified && (
+                      <div
+                        style={{
+                          marginLeft: "auto",
+                          fontSize: 7,
+                          color: G.green,
+                          background: G.greenGlow,
+                          border: `1px solid ${G.green}44`,
+                          borderRadius: 3,
+                          padding: "2px 5px",
+                        }}
+                      >
+                        VERIFIED
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: "flex", gap: 12, fontSize: 9, color: G.muted }}>
-                    <span>★ {contractor.rating}</span>
+                    <span>Rating {contractor.rating}</span>
                     <span>{contractor.jobs} jobs</span>
                     <span>{contractor.rate}</span>
                   </div>

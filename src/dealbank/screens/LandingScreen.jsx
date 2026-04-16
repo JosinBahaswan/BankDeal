@@ -215,7 +215,7 @@ export default function LandingScreen({
           backdropFilter: scrolled ? "blur(16px)" : "none",
           transition: "all .3s",
           padding: `0 ${px}`,
-          height: 64,
+          height: isMobile ? 74 : 64,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -267,7 +267,7 @@ export default function LandingScreen({
       </nav>
 
       {menuOpen && (
-        <div className="mob-menu" style={{ position: "fixed", top: 64, left: 0, right: 0, zIndex: 190, background: "#0a1a0a", borderBottom: "1px solid #1a2e1a", padding: "20px" }}>
+        <div className="mob-menu" style={{ position: "fixed", top: isMobile ? 74 : 64, left: 0, right: 0, zIndex: 190, background: "#0a1a0a", borderBottom: "1px solid #1a2e1a", padding: "20px" }}>
           {["HOW IT WORKS", "MARKETPLACE", "PRICING", "ABOUT"].map((label) => (
             <div key={label} onClick={() => setMenuOpen(false)} style={{ padding: "14px 0", fontSize: 12, letterSpacing: 3, color: "#6b8f6b", borderBottom: "1px solid #1a2e1a", cursor: "pointer" }}>
               {label}

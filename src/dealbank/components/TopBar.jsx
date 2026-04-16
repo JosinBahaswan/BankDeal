@@ -16,20 +16,29 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
     if (isMobile) setMenuOpen(false);
   }
 
+  function handleSignOut() {
+    setMenuOpen(false);
+    onSignOut();
+  }
+
   return (
-    <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: isMobile ? "0 12px" : "0 24px", position: "sticky", top: 0, zIndex: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: isMobile ? 10 : 12, gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: isMobile ? 22 : 24, height: isMobile ? 22 : 24, background: G.green, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: "bold", color: "#000" }}>
-            G
+    <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: isMobile ? "0 14px" : "0 24px", position: "sticky", top: 0, zIndex: 200 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: isMobile ? 74 : 64, gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          <div style={{ position: "relative", width: isMobile ? 26 : 30, height: isMobile ? 26 : 30 }}>
+            <div style={{ position: "absolute", inset: 0, background: "#22c55e", borderRadius: 5, transform: "rotate(45deg) scale(0.7)" }} />
+            <div style={{ position: "absolute", inset: 4, background: "#050a05", borderRadius: 3, transform: "rotate(45deg) scale(0.7)" }} />
+            <div style={{ position: "absolute", inset: 9, background: "#22c55e", borderRadius: 2, transform: "rotate(45deg) scale(0.7)" }} />
           </div>
-          <span style={{ fontFamily: G.serif, fontSize: isMobile ? 14 : 16, color: G.text, fontWeight: "bold" }}>DealBank</span>
-          <span style={{ fontSize: 8, color: G.muted, letterSpacing: isMobile ? 1 : 3, marginLeft: isMobile ? 0 : 4 }}>- {title}</span>
+          <span style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: isMobile ? 18 : 20, fontWeight: 900, letterSpacing: -0.5, lineHeight: 1 }}>
+            Deal<span style={{ color: "#22c55e" }}>Bank</span>
+          </span>
+          <span style={{ fontSize: isMobile ? 9 : 8, color: G.muted, letterSpacing: isMobile ? 1 : 3, marginLeft: isMobile ? 0 : 4 }}>- {title}</span>
         </div>
         {!isMobile && (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 10, color: G.muted }}>{userName}</div>
-            <button onClick={onSignOut} style={{ ...btnO, padding: "5px 12px", fontSize: 9 }}>
+            <button onClick={handleSignOut} style={{ ...btnO, padding: "5px 12px", fontSize: 9 }}>
               Sign Out
             </button>
           </div>
@@ -37,19 +46,14 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
 
         {isMobile && (
           <button
+            className="hamburger"
             type="button"
             onClick={() => setMenuOpen((prev) => !prev)}
-            style={{
-              ...btnO,
-              padding: "5px 9px",
-              fontSize: 9,
-              letterSpacing: 1,
-              color: menuOpen ? G.green : G.muted,
-              borderColor: menuOpen ? G.green : G.border,
-              background: menuOpen ? G.greenGlow : "transparent",
-            }}
+            style={{ display: "flex", flexDirection: "column", gap: 5, background: "transparent", border: "none", cursor: "pointer", padding: 8 }}
           >
-            ☰
+            <span style={{ display: "block", width: 24, height: 2, background: menuOpen ? "#22c55e" : G.muted, transition: "all .2s", transform: menuOpen ? "rotate(45deg) translate(5px,5px)" : "none" }} />
+            <span style={{ display: "block", width: 24, height: 2, background: menuOpen ? "transparent" : G.muted, transition: "all .2s" }} />
+            <span style={{ display: "block", width: 24, height: 2, background: menuOpen ? "#22c55e" : G.muted, transition: "all .2s", transform: menuOpen ? "rotate(-45deg) translate(5px,-5px)" : "none" }} />
           </button>
         )}
       </div>
@@ -85,32 +89,38 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
       )}
 
       {isMobile && menuOpen && (
-        <div style={{ marginTop: 10, borderTop: `1px solid ${G.border}`, padding: "10px 0 12px", display: "grid", gap: 6 }}>
+        <div style={{ position: "fixed", top: 74, left: 0, right: 0, zIndex: 190, background: "#0a1a0a", borderBottom: `1px solid ${G.border}`, padding: "16px 14px" }}>
           {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => handleTabChange(tab.id)}
               style={{
-                ...btnO,
-                textAlign: "left",
                 width: "100%",
-                fontSize: 9,
-                padding: "8px 10px",
-                borderColor: active === tab.id ? G.green : G.border,
-                color: active === tab.id ? G.green : G.muted,
-                background: active === tab.id ? G.greenGlow : "transparent",
+                textAlign: "left",
+                background: "transparent",
+                border: "none",
+                borderBottom: `1px solid ${G.border}`,
+                color: active === tab.id ? "#22c55e" : G.muted,
+                fontSize: 12,
+                letterSpacing: 2,
+                padding: "12px 0",
+                cursor: "pointer",
+                fontFamily: G.mono,
               }}
             >
-              {tab.icon} {tab.label}
+              {tab.icon} {tab.label.toUpperCase()}
             </button>
           ))}
 
-          <div style={{ height: 1, background: G.border, margin: "4px 0" }} />
-          <div style={{ fontSize: 9, color: G.muted, padding: "2px 6px" }}>{userName || "User"}</div>
-          <button onClick={onSignOut} style={{ ...btnO, width: "100%", padding: "8px 10px", fontSize: 9 }}>
-            Sign Out
-          </button>
+          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            <div style={{ flex: 1, border: `1px solid ${G.border}`, color: G.muted, borderRadius: 6, padding: "12px", fontSize: 10, letterSpacing: 2, fontFamily: G.mono, textAlign: "center" }}>
+              {(userName || "User").toUpperCase()}
+            </div>
+            <button onClick={handleSignOut} style={{ ...btnO, flex: 2, borderRadius: 6, padding: "12px", fontSize: 10, letterSpacing: 2 }}>
+              SIGN OUT
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -1,195 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import ContractsCreateView from "./contracts/ContractsCreateView";
+import ContractsSignView from "./contracts/ContractsSignView";
+import ContractsDashboardView from "./contracts/ContractsDashboardView";
+import {
+  TEMPLATE_CONFIG,
+  TEMPLATE_ORDER,
+  UI_TO_DB_STATUS,
+  toDbTemplate,
+  toUiTemplate,
+  toUiStatus,
+  partyNameFromForm,
+  buildContractName,
+  sha256Hex,
+  makeId,
+  toNum,
+  makeBlankForm,
+  nowLabel,
+  templateParties,
+  contractBody,
+  safeFilename,
+  wrapText,
+} from "./contracts/contractConfig";
 
-const TEMPLATE_CONFIG = {
-  assignment: {
-    id: "assignment",
-    label: "Assignment Agreement",
-    summary: "Assign an existing purchase contract to another buyer.",
-    parties: ["Assignor", "Assignee"],
-    fields: [
-      { key: "assignor", label: "Assignor Name", placeholder: "Ray Torres" },
-      { key: "assignee", label: "Assignee Name", placeholder: "Pacific Equity Group" },
-      { key: "propertyAddress", label: "Property Address", placeholder: "1842 Maple St, Sacramento, CA" },
-      { key: "purchasePrice", label: "Purchase Price", placeholder: "195000", prefix: "$" },
-      { key: "assignmentFee", label: "Assignment Fee", placeholder: "12000", prefix: "$" },
-      { key: "earnestMoney", label: "Earnest Money", placeholder: "2500", prefix: "$" },
-      { key: "closeDate", label: "Close Date", placeholder: "May 30, 2026" },
-      { key: "titleCompany", label: "Title Company", placeholder: "Capital Valley Title" },
-    ],
-    clauses: [
-      "Assignor represents equitable interest in the purchase contract and right to assign.",
-      "Assignee agrees to perform all obligations required under the original contract.",
-      "Inspection period, access terms, and seller communication follow the source contract.",
-      "Section A3: Both parties authorize the closing agent to disburse 1.5% of the assignment fee to DealBank LLC at closing.",
-      "Any default by either party follows state contract law and venue in the county of property location.",
-    ],
-  },
-  purchase: {
-    id: "purchase",
-    label: "Cash Purchase & Sale",
-    summary: "Straight cash purchase agreement between buyer and seller.",
-    parties: ["Buyer", "Seller"],
-    fields: [
-      { key: "buyer", label: "Buyer Name", placeholder: "Cash Offers LLC" },
-      { key: "seller", label: "Seller Name", placeholder: "Maria Ortega" },
-      { key: "propertyAddress", label: "Property Address", placeholder: "4402 Elmwood Ct, Modesto, CA" },
-      { key: "purchasePrice", label: "Purchase Price", placeholder: "172000", prefix: "$" },
-      { key: "earnestMoney", label: "Earnest Money", placeholder: "3000", prefix: "$" },
-      { key: "closeDate", label: "Close Date", placeholder: "June 15, 2026" },
-      { key: "titleCompany", label: "Title Company", placeholder: "North State Escrow" },
-      { key: "condition", label: "Property Condition", placeholder: "As-Is" },
-    ],
-    clauses: [
-      "Buyer purchases property as-is with right to reasonable access during due diligence.",
-      "Seller agrees to provide marketable title at closing.",
-      "Earnest money is credited to buyer at close and refundable only per contract contingencies.",
-      "Close date may be extended by mutual written agreement.",
-    ],
-  },
-  jointventure: {
-    id: "jointventure",
-    label: "Joint Venture Agreement",
-    summary: "Partnership agreement for acquisition, rehab, and disposition.",
-    parties: ["Partner A", "Partner B"],
-    fields: [
-      { key: "partnerA", label: "Partner A", placeholder: "Cash Offers LLC" },
-      { key: "partnerB", label: "Partner B", placeholder: "Central Valley Investments" },
-      { key: "propertyAddress", label: "Target Property", placeholder: "2891 Vista Canyon Rd, Bakersfield, CA" },
-      { key: "capitalCommitment", label: "Capital Commitment", placeholder: "85000", prefix: "$" },
-      { key: "profitSplit", label: "Profit Split", placeholder: "60/40" },
-      { key: "projectTimeline", label: "Timeline", placeholder: "120 days" },
-      { key: "managementRole", label: "Management Role", placeholder: "Partner A manages rehab" },
-      { key: "exitPlan", label: "Exit Plan", placeholder: "Retail resale" },
-    ],
-    clauses: [
-      "Each partner funds and performs responsibilities as listed in schedule A.",
-      "Major decisions require mutual consent in writing.",
-      "Profit and loss allocation follows agreed split after costs and debt service.",
-      "Disputes require mediation before arbitration.",
-    ],
-  },
-};
-
-const TEMPLATE_ORDER = ["assignment", "purchase", "jointventure"];
-
-const UI_TO_DB_TEMPLATE = {
-  assignment: "assignment",
-  purchase: "cash_purchase",
-  jointventure: "joint_venture",
-};
-
-const DB_TO_UI_TEMPLATE = {
-  assignment: "assignment",
-  cash_purchase: "purchase",
-  joint_venture: "jointventure",
-};
-
-const UI_TO_DB_STATUS = {
-  Draft: "draft",
-  "Awaiting Signature": "sent",
-  "Fully Executed": "fully_executed",
-  Voided: "voided",
-};
-
-function toDbTemplate(templateId) {
-  return UI_TO_DB_TEMPLATE[templateId] || "assignment";
-}
-
-function toUiTemplate(templateId) {
-  return DB_TO_UI_TEMPLATE[templateId] || "assignment";
-}
-
-function toUiStatus(status) {
-  if (status === "draft") return "Draft";
-  if (status === "fully_executed") return "Fully Executed";
-  if (status === "voided") return "Voided";
-  return "Awaiting Signature";
-}
-
-function roleFieldKey(templateId, role) {
-  if (templateId === "assignment") {
-    if (role === "Assignor") return "assignor";
-    if (role === "Assignee") return "assignee";
-  }
-  if (templateId === "purchase") {
-    if (role === "Buyer") return "buyer";
-    if (role === "Seller") return "seller";
-  }
-  if (templateId === "jointventure") {
-    if (role === "Partner A") return "partnerA";
-    if (role === "Partner B") return "partnerB";
-  }
-  return "";
-}
-
-function partyNameFromForm(templateId, role, formVals, fallbackName = "") {
-  const fieldKey = roleFieldKey(templateId, role);
-  if (fieldKey && formVals[fieldKey]) return String(formVals[fieldKey]);
-  return fallbackName;
-}
-
-function buildContractName(template, formVals) {
-  const fallbackAddress = formVals.propertyAddress || "Untitled Property";
-  return `${template.label.split(" ")[0]} - ${fallbackAddress.split(",")[0]}`;
-}
-
-async function sha256Hex(input) {
-  try {
-    if (globalThis.crypto?.subtle) {
-      const bytes = new TextEncoder().encode(input);
-      const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-      return Array.from(new Uint8Array(digest))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-    }
-  } catch {
-    // no-op
-  }
-
-  let hash = 0;
-  for (let index = 0; index < input.length; index += 1) {
-    hash = ((hash << 5) - hash + input.charCodeAt(index)) | 0;
-  }
-  return `fallback-${Math.abs(hash)}`;
-}
-
-function makeId(prefix) {
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-}
-
-function toNum(value) {
-  return Number(String(value || "").replace(/[^0-9.]/g, "")) || 0;
-}
-
-function makeBlankForm(template) {
-  const next = {};
-  template.fields.forEach((field) => {
-    next[field.key] = "";
-  });
-  return next;
-}
-
-function nowLabel() {
-  return new Date().toLocaleDateString();
-}
-
-function templateParties(template, userName) {
-  return template.parties.map((role, index) => ({
-    partyId: "",
-    role,
-    signerName: index === 0 ? userName || role : "",
-    status: "Waiting",
-    signedAt: "",
-    method: "",
-  }));
-}
-
-function contractBody(template, formVals) {
-  const lines = template.clauses.map((clause, index) => `${index + 1}. ${clause}`);
-  const fieldLines = template.fields.map((field) => `${field.label}: ${formVals[field.key] || "[pending]"}`);
-  return [...fieldLines, "", ...lines].join("\n");
-}
+const CONTRACTS_BUCKET = String(import.meta.env.VITE_CONTRACTS_BUCKET || "contracts").trim();
+const EXECUTED_CONTRACT_WEBHOOK_URL = String(import.meta.env.VITE_EXECUTED_CONTRACT_WEBHOOK_URL || "").trim();
 
 export default function ContractsTab({ ctx }) {
   const { G, card, lbl, btnG, btnO, fmt, user, isMobile } = ctx;
@@ -209,6 +44,7 @@ export default function ContractsTab({ ctx }) {
   const [contractsError, setContractsError] = useState("");
   const [saveBusy, setSaveBusy] = useState(false);
   const [signBusy, setSignBusy] = useState(false);
+  const [deliveryNote, setDeliveryNote] = useState("");
 
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
@@ -230,6 +66,164 @@ export default function ContractsTab({ ctx }) {
 
   const canApplySignature = sigMode === "type" ? typedName.trim().length > 2 : drawnReady;
 
+  async function uploadDataUrlToStorage(path, dataUrl) {
+    if (!CONTRACTS_BUCKET || !dataUrl) return "";
+
+    try {
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      const { error } = await supabase.storage.from(CONTRACTS_BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || "image/png" });
+      if (error) return "";
+
+      const { data } = supabase.storage.from(CONTRACTS_BUCKET).getPublicUrl(path);
+      return data?.publicUrl || "";
+    } catch {
+      return "";
+    }
+  }
+
+  async function uploadPdfToStorage(contractId, pdfBytes) {
+    if (!CONTRACTS_BUCKET || !pdfBytes?.length || !user?.id) return "";
+
+    try {
+      const path = `contracts/${contractId}/executed-${Date.now()}.pdf`;
+      const { error } = await supabase.storage.from(CONTRACTS_BUCKET).upload(path, pdfBytes, { upsert: true, contentType: "application/pdf" });
+      if (error) return "";
+
+      const { data } = supabase.storage.from(CONTRACTS_BUCKET).getPublicUrl(path);
+      const publicUrl = data?.publicUrl || "";
+
+      if (publicUrl) {
+        await supabase
+          .from("contracts")
+          .update({ pdf_url: publicUrl })
+          .eq("id", contractId)
+          .eq("creator_id", user.id);
+      }
+
+      return publicUrl;
+    } catch {
+      return "";
+    }
+  }
+
+  async function buildContractPdfBytes(contract) {
+    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+
+    const template = TEMPLATE_CONFIG[contract.templateId] || defaultTemplate;
+    const pdfDoc = await PDFDocument.create();
+    let page = pdfDoc.addPage([612, 792]);
+    const titleFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const bodyFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const signFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+
+    let y = 760;
+    const marginLeft = 42;
+
+    const writeLine = (text, options = {}) => {
+      const size = options.size || 10;
+      const lineGap = options.gap || 14;
+      page.drawText(String(text || ""), {
+        x: options.x || marginLeft,
+        y,
+        size,
+        font: options.font || bodyFont,
+        color: options.color || rgb(0.12, 0.12, 0.12),
+      });
+      y -= lineGap;
+    };
+
+    writeLine("DealBank Contract", { font: titleFont, size: 16, gap: 20 });
+    writeLine(`Contract: ${contract.name}`, { font: bodyFont, size: 11 });
+    writeLine(`Template: ${template.label}`, { font: bodyFont, size: 10 });
+    writeLine(`Status: ${contract.status}`, { font: bodyFont, size: 10 });
+    writeLine(`Created: ${contract.created}`, { font: bodyFont, size: 10 });
+    writeLine(`Doc Hash (SHA-256): ${contract.docHash || "pending"}`, { font: bodyFont, size: 9, gap: 18 });
+
+    writeLine("Contract Terms", { font: titleFont, size: 12, gap: 16 });
+    const bodyLines = contractBody(template, contract.formVals).split("\n");
+
+    bodyLines.forEach((line) => {
+      wrapText(line, 96).forEach((wrapped) => {
+        if (y < 110) {
+          y = 760;
+          page = pdfDoc.addPage([612, 792]);
+        }
+        writeLine(wrapped, { font: bodyFont, size: 9, gap: 12 });
+      });
+    });
+
+    y -= 8;
+    writeLine("Signatures", { font: titleFont, size: 12, gap: 16 });
+
+    for (const party of contract.parties) {
+      if (y < 90) {
+        y = 760;
+        page = pdfDoc.addPage([612, 792]);
+      }
+
+      const lineTop = y;
+      writeLine(`${party.role}: ${party.signerName || "Pending"}`, { font: bodyFont, size: 10, gap: 12 });
+      writeLine(`Status: ${party.status}${party.signedAt ? ` at ${party.signedAt}` : ""}`, { font: bodyFont, size: 9, gap: 12 });
+
+      if (party.status === "Signed") {
+        if (party.signatureImageUrl) {
+          try {
+            const response = await fetch(party.signatureImageUrl);
+            const bytes = await response.arrayBuffer();
+            const image = party.signatureImageUrl.toLowerCase().includes(".jpg") || party.signatureImageUrl.toLowerCase().includes("jpeg")
+              ? await pdfDoc.embedJpg(bytes)
+              : await pdfDoc.embedPng(bytes);
+            page.drawImage(image, { x: 380, y: lineTop - 16, width: 150, height: 44 });
+          } catch {
+            page.drawText(party.signerName || "Signed", { x: 380, y: lineTop - 8, size: 16, font: signFont, color: rgb(0.14, 0.35, 0.18) });
+          }
+        } else {
+          page.drawText(party.signerName || "Signed", { x: 380, y: lineTop - 8, size: 16, font: signFont, color: rgb(0.14, 0.35, 0.18) });
+        }
+      }
+
+      y -= 10;
+    }
+
+    return pdfDoc.save();
+  }
+
+  async function notifyExecutedContractDelivery(contract, payload) {
+    if (!EXECUTED_CONTRACT_WEBHOOK_URL) {
+      return { delivered: false, reason: "delivery_webhook_not_configured" };
+    }
+
+    try {
+      const response = await fetch(EXECUTED_CONTRACT_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contractId: contract.id,
+          contractName: contract.name,
+          templateId: contract.templateId,
+          status: contract.status,
+          docHash: contract.docHash,
+          pdfUrl: payload?.pdfUrl || contract.pdfUrl || "",
+          parties: contract.parties.map((party) => ({
+            role: party.role,
+            signerName: party.signerName,
+            status: party.status,
+            signedAt: party.signedAt,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        return { delivered: false, reason: `delivery_http_${response.status}` };
+      }
+
+      return { delivered: true };
+    } catch {
+      return { delivered: false, reason: "delivery_request_failed" };
+    }
+  }
+
   const loadContracts = useCallback(async (options = {}) => {
     const { focusId = "", nextView = "", silent = false } = options;
 
@@ -247,7 +241,7 @@ export default function ContractsTab({ ctx }) {
     try {
       const { data: contractRows, error: contractsQueryError } = await supabase
         .from("contracts")
-        .select("id, template, status, title, fee_amount, fee_pct, created_at")
+        .select("id, template, status, title, fee_amount, fee_pct, created_at, pdf_url")
         .eq("creator_id", user.id)
         .order("created_at", { ascending: false });
 
@@ -271,7 +265,7 @@ export default function ContractsTab({ ctx }) {
             .in("contract_id", contractIds),
           supabase
             .from("contract_signatures")
-            .select("id, contract_id, party_id, party_role, signer_name, sig_method, signed_at")
+            .select("id, contract_id, party_id, party_role, signer_name, sig_method, signed_at, sig_image_url, doc_hash")
             .in("contract_id", contractIds)
             .order("signed_at", { ascending: false }),
         ]);
@@ -343,6 +337,8 @@ export default function ContractsTab({ ctx }) {
             matchedParty.signedAt = signedAtLabel;
             matchedParty.method = signature.sig_method || "";
             matchedParty.signerName = signature.signer_name || matchedParty.signerName;
+            matchedParty.signatureImageUrl = signature.sig_image_url || "";
+            matchedParty.docHash = signature.doc_hash || "";
           }
 
           auditTrail.push({
@@ -351,6 +347,8 @@ export default function ContractsTab({ ctx }) {
             signerName: signature.signer_name || "-",
             method: signature.sig_method || "-",
             signedAt: signedAtLabel,
+            signatureImageUrl: signature.sig_image_url || "",
+            docHash: signature.doc_hash || "",
           });
         });
 
@@ -368,6 +366,8 @@ export default function ContractsTab({ ctx }) {
           created: row.created_at ? new Date(row.created_at).toLocaleDateString() : nowLabel(),
           feeAmount: Math.round(assignmentFee * (feePctNum / 100)),
           feePct: `${feePctNum}%`,
+          pdfUrl: row.pdf_url || "",
+          docHash: auditTrail[0]?.docHash || "",
           formVals: loadedFormVals,
           parties: mappedParties,
           auditTrail,
@@ -543,6 +543,7 @@ export default function ContractsTab({ ctx }) {
 
   function openSign(contractId) {
     setContractsError("");
+    setDeliveryNote("");
     setActiveId(contractId);
     setSigMode("type");
     setTypedName("");
@@ -610,19 +611,25 @@ export default function ContractsTab({ ctx }) {
     const signedAtIso = new Date().toISOString();
     const appliedName = sigMode === "type" ? typedName.trim() : `${nextSigner.role} (drawn)`;
     const method = sigMode === "type" ? "typed" : "drawn";
+    const template = TEMPLATE_CONFIG[activeContract.templateId] || defaultTemplate;
 
     setSignBusy(true);
     setContractsError("");
+    setDeliveryNote("");
 
     try {
       const docHash = await sha256Hex(JSON.stringify({
         contractId: activeContract.id,
         templateId: activeContract.templateId,
-        formVals: activeContract.formVals,
-        role: nextSigner.role,
-        signerName: appliedName,
-        signedAt: signedAtIso,
+        contractBody: contractBody(template, activeContract.formVals),
       }));
+
+      let signatureImageUrl = "";
+      if (method === "draw" && canvasRef.current) {
+        const roleSlug = String(nextSigner.role || "signer").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        const dataUrl = canvasRef.current.toDataURL("image/png");
+        signatureImageUrl = await uploadDataUrlToStorage(`signatures/${activeContract.id}/${roleSlug}-${Date.now()}.png`, dataUrl);
+      }
 
       const fallbackEmailLocal = appliedName
         .toLowerCase()
@@ -639,6 +646,7 @@ export default function ContractsTab({ ctx }) {
           signer_ip: "127.0.0.1",
           signed_at: signedAtIso,
           sig_method: method,
+          sig_image_url: signatureImageUrl || null,
           doc_hash: docHash,
           party_role: nextSigner.role,
         });
@@ -659,7 +667,28 @@ export default function ContractsTab({ ctx }) {
 
       if (statusError) throw statusError;
 
-      await loadContracts({ focusId: activeContract.id, nextView: "sign", silent: true });
+      const refreshedContracts = await loadContracts({ focusId: activeContract.id, nextView: "sign", silent: true });
+      const refreshedContract = refreshedContracts.find((item) => item.id === activeContract.id);
+
+      if (fullyExecuted && refreshedContract) {
+        try {
+          const pdfBytes = await buildContractPdfBytes({ ...refreshedContract, docHash });
+          const uploadedPdfUrl = await uploadPdfToStorage(refreshedContract.id, pdfBytes);
+          const deliveryResult = await notifyExecutedContractDelivery(
+            { ...refreshedContract, docHash, pdfUrl: uploadedPdfUrl || refreshedContract.pdfUrl },
+            { pdfUrl: uploadedPdfUrl || refreshedContract.pdfUrl },
+          );
+
+          if (deliveryResult.delivered) {
+            setDeliveryNote("Contract fully executed. PDF generated and delivery webhook triggered.");
+          } else {
+            setDeliveryNote(`Contract fully executed. Delivery pending (${deliveryResult.reason}).`);
+          }
+        } catch {
+          setDeliveryNote("Contract fully executed. Signature recorded, but PDF generation failed.");
+        }
+      }
+
       setTypedName("");
       clearDrawnSignature();
     } catch (error) {
@@ -669,134 +698,58 @@ export default function ContractsTab({ ctx }) {
     }
   }
 
-  function downloadContract(contract) {
-    const template = TEMPLATE_CONFIG[contract.templateId] || defaultTemplate;
-    const lines = [
-      `Contract: ${contract.name}`,
-      `Template: ${template.label}`,
-      `Status: ${contract.status}`,
-      `Created: ${contract.created}`,
-      "",
-      contractBody(template, contract.formVals),
-      "",
-      "Signatures:",
-      ...contract.parties.map((party) => `${party.role}: ${party.signerName || "Pending"} (${party.status})`),
-    ];
+  async function downloadContract(contract) {
+    try {
+      const pdfBytes = await buildContractPdfBytes(contract);
 
-    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
-    const href = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = href;
-    anchor.download = `${contract.name.replace(/\s+/g, "-").toLowerCase()}.txt`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(href);
+      if (contract.status === "Fully Executed") {
+        const uploadedPdfUrl = await uploadPdfToStorage(contract.id, pdfBytes);
+        if (uploadedPdfUrl) {
+          setContracts((prev) => prev.map((item) => (item.id === contract.id ? { ...item, pdfUrl: uploadedPdfUrl } : item)));
+        }
+      }
+
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = `${safeFilename(contract.name)}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(href);
+    } catch {
+      setContractsError("Failed to generate PDF contract.");
+    }
   }
 
   if (view === "new") {
     return (
-      <div>
-        <button onClick={() => { setView("dashboard"); setEditingId(null); }} style={{ ...btnO, marginBottom: 12, padding: "5px 12px", fontSize: 9 }}>← Back to Contracts</button>
-
-        {contractsError && (
-          <div style={{ ...card, borderColor: `${G.red}55`, color: G.red, fontSize: 10, marginBottom: 12 }}>
-            {contractsError}
-          </div>
-        )}
-
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
-          {TEMPLATE_ORDER.map((id) => {
-            const template = TEMPLATE_CONFIG[id];
-            return (
-              <button
-                key={id}
-                onClick={() => {
-                  if (editingId || saveBusy) return;
-                  resetToTemplate(id);
-                }}
-                style={{
-                  ...btnO,
-                  fontSize: 8,
-                  padding: "8px 10px",
-                  borderColor: templateId === id ? G.green : G.border,
-                  color: templateId === id ? G.green : G.muted,
-                  background: templateId === id ? G.greenGlow : "transparent",
-                }}
-              >
-                {template.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr", gap: 12 }}>
-          <div style={{ ...card }}>
-            <div style={{ fontFamily: G.serif, fontSize: 17, marginBottom: 6 }}>{activeTemplate.label}</div>
-            <div style={{ fontSize: 10, color: G.muted, marginBottom: 10 }}>{activeTemplate.summary}</div>
-
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8, marginBottom: 12 }}>
-              {activeTemplate.fields.map((field) => (
-                <div key={field.key}>
-                  <div style={lbl}>{field.label}</div>
-                  <div style={{ position: "relative" }}>
-                    {field.prefix && <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: G.muted, fontSize: 12 }}>{field.prefix}</span>}
-                    <input
-                      value={formVals[field.key] || ""}
-                      onChange={(event) => setFormVals((prev) => ({ ...prev, [field.key]: event.target.value }))}
-                      placeholder={field.placeholder}
-                      style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: field.prefix ? "8px 10px 8px 20px" : "8px 10px", boxSizing: "border-box", outline: "none" }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {templateId === "assignment" && (
-              <div style={{ background: "#1a1200", border: `1px solid ${G.gold}44`, borderRadius: 7, padding: "10px 12px", marginBottom: 12 }}>
-                <div style={{ ...lbl, color: G.gold, marginBottom: 4 }}>Platform Fee Section A3 (Auto-Inserted)</div>
-                <div style={{ fontSize: 10, color: G.text, lineHeight: 1.7 }}>
-                  Both parties authorize the closing agent to disburse 1.5% of the assignment fee to DealBank LLC at closing. This clause is mandatory and cannot be removed.
-                </div>
-                <div style={{ marginTop: 6, fontSize: 10, color: G.gold }}>
-                  Estimated DealBank fee: <strong>{fmt(previewFee)}</strong>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 8, flexDirection: isMobile ? "column" : "row" }}>
-              <button
-                onClick={() => saveContract("Draft")}
-                disabled={saveBusy}
-                style={{ ...btnO, flex: 1, fontSize: 9, opacity: saveBusy ? 0.6 : 1 }}
-              >
-                {saveBusy ? "Saving..." : "Save as Draft"}
-              </button>
-              <button
-                onClick={() => saveContract("Awaiting Signature")}
-                disabled={saveBusy}
-                style={{ ...btnG, flex: 2, fontSize: 9, opacity: saveBusy ? 0.75 : 1 }}
-              >
-                {saveBusy ? "Saving..." : "Send for Signature"}
-              </button>
-            </div>
-          </div>
-
-          <div style={{ ...card }}>
-            <div style={{ ...lbl, marginBottom: 8 }}>Live Preview</div>
-            <div style={{ fontFamily: G.serif, fontSize: 14, marginBottom: 8 }}>{activeTemplate.label}</div>
-            <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: G.mono, fontSize: 10, color: G.text, lineHeight: 1.7 }}>{previewBody}</pre>
-            <div style={{ marginTop: 12, borderTop: `1px solid ${G.faint}`, paddingTop: 10 }}>
-              <div style={{ fontSize: 10, color: G.muted, marginBottom: 6 }}>Signature Blocks</div>
-              {activeTemplate.parties.map((party) => (
-                <div key={party} style={{ marginBottom: 10, fontSize: 10, color: G.text }}>
-                  {party}: _______________________   Date: ___________
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      <ContractsCreateView
+        G={G}
+        card={card}
+        lbl={lbl}
+        btnG={btnG}
+        btnO={btnO}
+        fmt={fmt}
+        isMobile={isMobile}
+        contractsError={contractsError}
+        deliveryNote={deliveryNote}
+        templateOrder={TEMPLATE_ORDER}
+        templateConfig={TEMPLATE_CONFIG}
+        templateId={templateId}
+        editingId={editingId}
+        saveBusy={saveBusy}
+        activeTemplate={activeTemplate}
+        formVals={formVals}
+        previewFee={previewFee}
+        previewBody={previewBody}
+        onBack={() => { setView("dashboard"); setEditingId(null); }}
+        onSelectTemplate={resetToTemplate}
+        onFieldChange={(key, value) => setFormVals((prev) => ({ ...prev, [key]: value }))}
+        onSaveDraft={() => saveContract("Draft")}
+        onSaveAndSend={() => saveContract("Awaiting Signature")}
+      />
     );
   }
 
@@ -804,241 +757,57 @@ export default function ContractsTab({ ctx }) {
     const template = TEMPLATE_CONFIG[activeContract.templateId] || defaultTemplate;
 
     return (
-      <div>
-        <button onClick={() => setView("dashboard")} style={{ ...btnO, marginBottom: 12, padding: "5px 12px", fontSize: 9 }}>← Back to Contracts</button>
-
-        {contractsError && (
-          <div style={{ ...card, borderColor: `${G.red}55`, color: G.red, fontSize: 10, marginBottom: 12 }}>
-            {contractsError}
-          </div>
-        )}
-
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.3fr 1fr", gap: 12 }}>
-          <div style={{ ...card }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontFamily: G.serif, fontSize: 16 }}>{activeContract.name}</div>
-                <div style={{ fontSize: 10, color: G.muted }}>{template.label} · {activeContract.status}</div>
-              </div>
-              <div style={{ fontSize: 8, color: G.gold, border: `1px solid ${G.gold}55`, background: `${G.gold}22`, borderRadius: 3, padding: "2px 7px", letterSpacing: 1 }}>
-                PLATFORM FEE 1.5%
-              </div>
-            </div>
-            <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: G.mono, fontSize: 10, color: G.text, lineHeight: 1.7 }}>{contractBody(template, activeContract.formVals)}</pre>
-
-            <div style={{ marginTop: 12, borderTop: `1px solid ${G.faint}`, paddingTop: 10 }}>
-              <div style={{ ...lbl, marginBottom: 6 }}>Execution Tracker</div>
-              {activeContract.parties.map((party) => (
-                <div key={party.role} style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", padding: "6px 0", borderBottom: `1px solid ${G.faint}`, gap: 8, flexDirection: isMobile ? "column" : "row" }}>
-                  <div>
-                    <div style={{ fontSize: 10, color: G.text }}>{party.role}</div>
-                    <div style={{ fontSize: 8, color: G.muted }}>{party.signerName || "Pending signer"}</div>
-                  </div>
-                  <div style={{ fontSize: 8, color: party.status === "Signed" ? G.green : nextSigner?.role === party.role ? G.gold : G.muted }}>
-                    {party.status === "Signed" ? `Signed ${party.signedAt}` : nextSigner?.role === party.role ? "Your Turn" : "Waiting"}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ ...card }}>
-            {activeContract.status === "Fully Executed" ? (
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 30, marginBottom: 8 }}>OK</div>
-                <div style={{ fontFamily: G.serif, fontSize: 18, color: G.green, marginBottom: 6 }}>Fully Executed</div>
-                <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.7, marginBottom: 12 }}>
-                  All parties have signed. Title instructions can now be sent with platform fee authorization.
-                </div>
-                <div style={{ ...lbl, marginBottom: 6 }}>Audit Trail</div>
-                {activeContract.auditTrail.map((item) => (
-                  <div key={item.id} style={{ textAlign: "left", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 5, padding: "7px 8px", fontSize: 9, color: G.text, marginBottom: 6 }}>
-                    {item.role}: {item.signerName} · {item.method} · {item.signedAt}
-                  </div>
-                ))}
-                <button onClick={() => downloadContract(activeContract)} style={{ ...btnG, width: "100%", fontSize: 9, marginTop: 6 }}>Download Contract</button>
-              </div>
-            ) : (
-              <div>
-                <div style={{ ...lbl, marginBottom: 6 }}>Sign Contract</div>
-                <div style={{ fontSize: 10, color: G.text, marginBottom: 8 }}>
-                  Next signer: <strong>{nextSigner?.role || "None"}</strong>
-                </div>
-
-                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                  {[
-                    ["type", "Type"],
-                    ["draw", "Draw"],
-                  ].map(([id, label]) => (
-                    <button
-                      key={id}
-                      onClick={() => setSigMode(id)}
-                      style={{ ...btnO, flex: 1, fontSize: 8, padding: "6px 8px", borderColor: sigMode === id ? G.green : G.border, color: sigMode === id ? G.green : G.muted, background: sigMode === id ? G.greenGlow : "transparent" }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                {sigMode === "type" ? (
-                  <div style={{ marginBottom: 8 }}>
-                    <input
-                      value={typedName}
-                      onChange={(event) => setTypedName(event.target.value)}
-                      placeholder="Type full legal name"
-                      style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: "8px 10px", boxSizing: "border-box", outline: "none" }}
-                    />
-                    <div style={{ fontFamily: G.serif, fontStyle: "italic", color: G.green, marginTop: 6, minHeight: 20 }}>{typedName}</div>
-                  </div>
-                ) : (
-                  <div style={{ marginBottom: 8 }}>
-                    <canvas
-                      ref={canvasRef}
-                      width={isMobile ? 320 : 400}
-                      height={120}
-                      onMouseDown={startDraw}
-                      onMouseMove={drawLine}
-                      onMouseUp={endDraw}
-                      onMouseLeave={endDraw}
-                      onTouchStart={startDraw}
-                      onTouchMove={drawLine}
-                      onTouchEnd={endDraw}
-                      style={{ width: "100%", height: 120, borderRadius: 6, border: `1px solid ${G.border}`, background: G.surface, touchAction: "none" }}
-                    />
-                    <button onClick={clearDrawnSignature} style={{ ...btnO, marginTop: 6, fontSize: 8, padding: "4px 8px" }}>Clear</button>
-                  </div>
-                )}
-
-                <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "8px 9px", fontSize: 9, color: G.muted, lineHeight: 1.7, marginBottom: 8 }}>
-                  By applying this signature you agree to contract terms and authorize title/escrow disbursement of the 1.5% DealBank platform fee at close.
-                </div>
-
-                <button
-                  onClick={applySignature}
-                  disabled={!canApplySignature || signBusy}
-                  style={{ ...btnG, width: "100%", fontSize: 9, background: canApplySignature && !signBusy ? G.green : G.faint, color: canApplySignature && !signBusy ? "#000" : G.muted }}
-                >
-                  {signBusy ? "Applying Signature..." : "Apply Signature"}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <ContractsSignView
+        G={G}
+        card={card}
+        lbl={lbl}
+        btnG={btnG}
+        btnO={btnO}
+        isMobile={isMobile}
+        contractsError={contractsError}
+        deliveryNote={deliveryNote}
+        activeContract={activeContract}
+        template={template}
+        contractText={contractBody(template, activeContract.formVals)}
+        nextSigner={nextSigner}
+        sigMode={sigMode}
+        typedName={typedName}
+        canApplySignature={canApplySignature}
+        signBusy={signBusy}
+        canvasRef={canvasRef}
+        onBack={() => setView("dashboard")}
+        onSigModeChange={setSigMode}
+        onTypedNameChange={setTypedName}
+        onStartDraw={startDraw}
+        onDrawLine={drawLine}
+        onEndDraw={endDraw}
+        onClearDrawnSignature={clearDrawnSignature}
+        onApplySignature={applySignature}
+        onDownloadContract={() => downloadContract(activeContract)}
+      />
     );
   }
 
   return (
-    <div>
-      <div style={{ ...card, marginBottom: 12 }}>
-        <div style={{ fontFamily: G.serif, fontSize: 18, marginBottom: 8 }}>Platform Fee Enforcement</div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4,1fr)", gap: 8 }}>
-          {[
-            "Contract created with Section A3 fee clause",
-            "Both parties sign electronically",
-            "Title receives disbursement instructions",
-            "Close disburses 98.5% to wholesaler and 1.5% to DealBank",
-          ].map((step, index) => (
-            <div key={step} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 7, padding: "10px 11px" }}>
-              <div style={{ fontSize: 8, color: G.green, letterSpacing: 2, marginBottom: 4 }}>STEP {index + 1}</div>
-              <div style={{ fontSize: 10, color: G.text, lineHeight: 1.6 }}>{step}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {contractsError && (
-        <div style={{ ...card, borderColor: `${G.red}55`, color: G.red, fontSize: 10, marginBottom: 12 }}>
-          {contractsError}
-        </div>
-      )}
-
-      <div style={{ ...card, marginBottom: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", marginBottom: 8, gap: 8, flexDirection: isMobile ? "column" : "row" }}>
-          <div style={{ fontFamily: G.serif, fontSize: 16 }}>Contracts Dashboard</div>
-          <button onClick={() => openCreate("assignment")} disabled={contractsLoading} style={{ ...btnG, fontSize: 9, padding: "7px 12px", width: isMobile ? "100%" : "auto", opacity: contractsLoading ? 0.75 : 1 }}>+ New Contract</button>
-        </div>
-
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: `1px solid ${G.border}` }}>
-                {[
-                  "Contract",
-                  "Status",
-                  "Parties",
-                  "Created",
-                  "Assignment Fee",
-                  "DealBank Fee",
-                  "Actions",
-                ].map((head) => (
-                  <th key={head} style={{ fontSize: 8, color: G.muted, fontWeight: "normal", letterSpacing: 1, padding: "8px 6px" }}>{head}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {contractsLoading ? (
-                <tr>
-                  <td colSpan={7} style={{ fontSize: 10, color: G.muted, textAlign: "center", padding: "16px 8px" }}>
-                    Loading contracts...
-                  </td>
-                </tr>
-              ) : contracts.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ fontSize: 10, color: G.muted, textAlign: "center", padding: "16px 8px" }}>
-                    No contracts yet. Create your first contract to start tracking signatures.
-                  </td>
-                </tr>
-              ) : contracts.map((contract) => {
-                const template = TEMPLATE_CONFIG[contract.templateId] || defaultTemplate;
-                const assignmentFee = template.id === "assignment" ? fmt(contract.formVals.assignmentFee || 0) : "-";
-                const statusColor = contract.status === "Fully Executed" ? G.green : contract.status === "Awaiting Signature" ? G.gold : G.muted;
-
-                return (
-                  <tr key={contract.id} style={{ borderBottom: `1px solid ${G.faint}` }}>
-                    <td style={{ padding: "9px 6px" }}>
-                      <div style={{ fontSize: 10, color: G.text }}>{contract.name}</div>
-                      <div style={{ fontSize: 8, color: G.muted }}>{template.label}</div>
-                    </td>
-                    <td style={{ padding: "9px 6px" }}>
-                      <span style={{ fontSize: 8, color: statusColor, border: `1px solid ${statusColor}55`, background: `${statusColor}22`, borderRadius: 3, padding: "2px 7px", letterSpacing: 1 }}>{contract.status}</span>
-                    </td>
-                    <td style={{ fontSize: 9, color: G.muted, padding: "9px 6px" }}>{contract.parties.length}</td>
-                    <td style={{ fontSize: 9, color: G.muted, padding: "9px 6px" }}>{contract.created}</td>
-                    <td style={{ fontSize: 9, color: G.text, padding: "9px 6px" }}>{assignmentFee}</td>
-                    <td style={{ fontSize: 9, color: G.gold, padding: "9px 6px" }}>{contract.feeAmount ? fmt(contract.feeAmount) : "-"}</td>
-                    <td style={{ padding: "9px 6px" }}>
-                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                        {contract.status !== "Fully Executed" && contract.auditTrail.length === 0 && (
-                          <button onClick={() => openCreate(contract.templateId, contract)} style={{ ...btnO, fontSize: 8, padding: "4px 8px" }}>Edit & Send</button>
-                        )}
-                        <button onClick={() => openSign(contract.id)} style={{ ...btnO, fontSize: 8, padding: "4px 8px", borderColor: G.gold, color: G.gold }}>
-                          {contract.status === "Fully Executed" ? "View Audit" : "Sign"}
-                        </button>
-                        <button onClick={() => downloadContract(contract)} style={{ ...btnO, fontSize: 8, padding: "4px 8px" }}>View + Download</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,1fr)", gap: 8 }}>
-        {TEMPLATE_ORDER.map((id) => {
-          const template = TEMPLATE_CONFIG[id];
-          return (
-            <div key={template.id} style={{ ...card }}>
-              <div style={{ ...lbl, marginBottom: 4 }}>Template</div>
-              <div style={{ fontFamily: G.serif, fontSize: 15, marginBottom: 4 }}>{template.label}</div>
-              <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.6, marginBottom: 10 }}>{template.summary}</div>
-              <button onClick={() => openCreate(template.id)} disabled={contractsLoading} style={{ ...btnG, width: "100%", fontSize: 9, opacity: contractsLoading ? 0.75 : 1 }}>Use Template</button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <ContractsDashboardView
+      G={G}
+      card={card}
+      lbl={lbl}
+      btnG={btnG}
+      btnO={btnO}
+      fmt={fmt}
+      isMobile={isMobile}
+      contractsError={contractsError}
+      deliveryNote={deliveryNote}
+      contractsLoading={contractsLoading}
+      contracts={contracts}
+      templateOrder={TEMPLATE_ORDER}
+      templateConfig={TEMPLATE_CONFIG}
+      defaultTemplate={defaultTemplate}
+      onCreateNew={(nextTemplateId) => openCreate(nextTemplateId)}
+      onEditAndSend={(contract) => openCreate(contract.templateId, contract)}
+      onOpenSign={openSign}
+      onDownloadPdf={downloadContract}
+    />
   );
 }
