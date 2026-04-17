@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { enforceCors, enforceRateLimit } from "../lib/server/httpSecurity.js";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -48,6 +49,21 @@ function toInt(value, fallback) {
 }
 
 export default async function handler(req, res) {
+  const cors = enforceCors(req, res, {
+    methods: "POST, OPTIONS",
+    headers: "Content-Type, Authorization",
+  });
+  if (cors.handled) return;
+
+  const rateLimit = enforceRateLimit(req, res, {
+    keyPrefix: "claude",
+    max: Number(process.env.RATE_LIMIT_CLAUDE_MAX || 20),
+    windowMs: Number(process.env.RATE_LIMIT_CLAUDE_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+  });
+  if (!rateLimit.allowed) {
+    return res.status(429).json({ error: "Too many requests. Please retry later." });
+  }
+
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });

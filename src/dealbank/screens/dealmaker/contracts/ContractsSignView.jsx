@@ -25,6 +25,7 @@ export default function ContractsSignView({
   onClearDrawnSignature,
   onApplySignature,
   onDownloadContract,
+  escrowPaymentPanel,
 }) {
   return (
     <div>
@@ -161,6 +162,8 @@ export default function ContractsSignView({
               </button>
             </div>
           )}
+
+          {escrowPaymentPanel}
         </div>
       </div>
     </div>

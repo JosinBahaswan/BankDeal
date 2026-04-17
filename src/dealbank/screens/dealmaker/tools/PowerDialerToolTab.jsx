@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Papa from "papaparse";
 import { supabase } from "../../../../lib/supabaseClient";
 import { DIALER_OUTCOMES, DIALER_QUEUE_SEED } from "./toolData";
 
@@ -11,23 +12,75 @@ function fmtClock(totalSec) {
   return `${mm}:${ss}`;
 }
 
+function normalizeCsvHeader(header) {
+  return String(header || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function readCsvField(row, keys) {
+  for (const key of keys) {
+    const value = String(row?.[key] || "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
 function parseCsvRows(text) {
-  const rawLines = String(text || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const rawCsv = String(text || "");
+  if (!rawCsv.trim()) return [];
 
-  if (rawLines.length === 0) return [];
+  const importSeed = Date.now();
+  const headerParse = Papa.parse(rawCsv, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: normalizeCsvHeader,
+  });
 
-  const hasHeader = /name|phone|address/i.test(rawLines[0]);
-  const lines = hasHeader ? rawLines.slice(1) : rawLines;
+  const headerFields = Array.isArray(headerParse.meta?.fields) ? headerParse.meta.fields : [];
+  const hasKnownHeaders = headerFields.some((field) => ["name", "fullname", "phone", "phonenumber", "address", "propertyaddress"].includes(field));
 
-  return lines
-    .map((line, i) => {
-      const cols = line.split(",").map((item) => item.trim());
-      if (cols.length < 2) return null;
+  if (hasKnownHeaders) {
+    return (Array.isArray(headerParse.data) ? headerParse.data : [])
+      .map((row, index) => {
+        const name = readCsvField(row, ["name", "fullname", "ownername", "contactname"]);
+        const phone = readCsvField(row, ["phone", "phonenumber", "mobile", "telephone"]);
+        const address = readCsvField(row, ["address", "propertyaddress", "streetaddress"]) || "Address not provided";
+
+        if (!name || !phone) return null;
+
+        return {
+          id: `imp-${importSeed}-${index}`,
+          name,
+          phone,
+          address,
+          tags: ["Imported"],
+        };
+      })
+      .filter(Boolean);
+  }
+
+  const fallbackParse = Papa.parse(rawCsv, {
+    header: false,
+    skipEmptyLines: true,
+  });
+
+  const rows = Array.isArray(fallbackParse.data) ? fallbackParse.data : [];
+  if (rows.length === 0) return [];
+
+  const firstRowText = (Array.isArray(rows[0]) ? rows[0] : [])
+    .map((cell) => normalizeCsvHeader(cell))
+    .join(" ");
+  const hasFirstRowHeader = /name|phone|address/.test(firstRowText);
+  const dataRows = hasFirstRowHeader ? rows.slice(1) : rows;
+
+  return dataRows
+    .map((row, index) => {
+      const cols = (Array.isArray(row) ? row : []).map((item) => String(item || "").trim());
+      if (cols.length < 2 || !cols[0] || !cols[1]) return null;
       return {
-        id: `imp-${Date.now()}-${i}`,
+        id: `imp-${importSeed}-${index}`,
         name: cols[0],
         phone: cols[1],
         address: cols[2] || "Address not provided",
@@ -238,8 +291,10 @@ export default function PowerDialerToolTab({ ctx }) {
       const liveCall = await device.connect({
         params: {
           To: toTarget,
+          CallerId: String(user?.id || ""),
           LeadName: currentLead.name,
           LeadAddress: currentLead.address,
+          LeadPhone: currentLead.phone,
         },
       });
 
@@ -335,6 +390,7 @@ export default function PowerDialerToolTab({ ctx }) {
 
   const markOutcome = async (outcomeId) => {
     if (!currentLead) return;
+    const wasLiveTwilioCall = !dialerDemoMode;
 
     try {
       twilioCallRef.current?.disconnect();
@@ -366,7 +422,9 @@ export default function PowerDialerToolTab({ ctx }) {
 
     setCallLog((prev) => [newEntry, ...prev].slice(0, 8));
 
-    if (user?.id) {
+    if (wasLiveTwilioCall) {
+      setToast("Outcome saved. Twilio callback is syncing call log details.");
+    } else if (user?.id) {
       const { error } = await supabase.from("call_logs").insert({
         caller_id: user.id,
         lead_name: currentLead.name,

@@ -5,6 +5,7 @@ import {
   normalizeCurrency,
   setCors,
 } from "../lib/server/stripeConnectShared.js";
+import { enforceRateLimit } from "../lib/server/httpSecurity.js";
 
 async function readRawBody(req) {
   if (Buffer.isBuffer(req.body)) return req.body;
@@ -114,7 +115,20 @@ async function syncConnectAccountStatus(supabaseAdmin, account) {
 }
 
 export default async function handler(req, res) {
-  setCors(res, "POST");
+  const cors = setCors(req, res, "POST");
+
+  if (!cors.originAllowed) {
+    return res.status(403).json({ error: "CORS origin is not allowed" });
+  }
+
+  const rateLimit = enforceRateLimit(req, res, {
+    keyPrefix: "stripe-connect-webhook",
+    max: Number(process.env.RATE_LIMIT_STRIPE_WEBHOOK_MAX || 600),
+    windowMs: Number(process.env.RATE_LIMIT_STRIPE_WEBHOOK_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+  });
+  if (!rateLimit.allowed) {
+    return res.status(429).json({ error: "Too many requests. Please retry later." });
+  }
 
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");

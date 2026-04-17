@@ -1,14 +1,362 @@
 import twilio from "twilio";
 import { createClient } from "@supabase/supabase-js";
+import { enforceCors, enforceRateLimit } from "../lib/server/httpSecurity.js";
 
 function asText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function setCors(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+function asBool(value, fallback = false) {
+  const normalized = asText(value).toLowerCase();
+  if (!normalized) return fallback;
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+function asInt(value, fallback = null) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function appBaseUrl(req) {
+  const configured = asText(process.env.APP_URL).replace(/\/$/, "");
+  if (configured) return configured;
+
+  const vercelHost = asText(process.env.VERCEL_URL);
+  if (vercelHost) return `https://${vercelHost}`;
+
+  const proto = asText(req.headers?.["x-forwarded-proto"], "https");
+  const host = asText(req.headers?.["x-forwarded-host"] || req.headers?.host);
+  if (host) return `${proto}://${host}`;
+
+  return "http://localhost:5173";
+}
+
+function resolveAbsoluteUrl(req, pathOrUrl, fallbackPath = "/") {
+  const value = asText(pathOrUrl);
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const base = appBaseUrl(req);
+  const normalizedPath = value
+    ? (value.startsWith("/") ? value : `/${value}`)
+    : fallbackPath;
+
+  return `${base}${normalizedPath}`;
+}
+
+function addQueryParam(url, key, value) {
+  const normalized = asText(value);
+  if (!normalized) return;
+  url.searchParams.set(key, normalized);
+}
+
+function toQueryValue(raw) {
+  if (Array.isArray(raw)) return asText(raw[0]);
+  return asText(raw);
+}
+
+function parseParamsFromText(rawBody) {
+  const parsed = {};
+  const params = new URLSearchParams(rawBody || "");
+  params.forEach((value, key) => {
+    parsed[key] = value;
+  });
+  return parsed;
+}
+
+async function readTwilioPayload(req) {
+  if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body)) {
+    return req.body;
+  }
+
+  if (typeof req.body === "string") {
+    return parseParamsFromText(req.body);
+  }
+
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  const raw = Buffer.concat(chunks).toString("utf8");
+  return parseParamsFromText(raw);
+}
+
+function readTwiMLConfig() {
+  return {
+    callerId: asText(process.env.TWILIO_CALLER_ID),
+    callbackEndpoint: asText(process.env.TWILIO_CALL_WEBHOOK_ENDPOINT, "/api/twilio-access-token?mode=call-webhook"),
+    recordingEnabled: asBool(process.env.TWILIO_RECORD_FROM_ANSWER, true),
+  };
+}
+
+function buildTwilioCallbackUrl(req, config, event, payload) {
+  const callbackBase = resolveAbsoluteUrl(req, config.callbackEndpoint, "/api/twilio-access-token?mode=call-webhook");
+  const callbackUrl = new URL(callbackBase);
+
+  callbackUrl.searchParams.set("mode", "call-webhook");
+  callbackUrl.searchParams.set("event", event);
+  addQueryParam(callbackUrl, "caller_id", payload.callerId);
+  addQueryParam(callbackUrl, "lead_name", payload.leadName);
+  addQueryParam(callbackUrl, "lead_address", payload.leadAddress);
+  addQueryParam(callbackUrl, "lead_phone", payload.to);
+
+  return callbackUrl.toString();
+}
+
+function buildVoiceTwiML(req, config, payload) {
+  const to = asText(payload.To || payload.to || payload.phone);
+  const callerId = asText(payload.CallerId || payload.caller_id || payload.callerId);
+  const leadName = asText(payload.LeadName || payload.lead_name);
+  const leadAddress = asText(payload.LeadAddress || payload.lead_address);
+
+  const response = new twilio.twiml.VoiceResponse();
+
+  if (!to) {
+    response.say("No destination number was provided.");
+    response.hangup();
+    return response.toString();
+  }
+
+  const callbackPayload = {
+    to,
+    callerId,
+    leadName,
+    leadAddress,
+  };
+
+  const dialOptions = {
+    answerOnBridge: true,
+  };
+
+  if (config.recordingEnabled) {
+    dialOptions.record = "record-from-answer";
+    dialOptions.recordingStatusCallback = buildTwilioCallbackUrl(req, config, "recording", callbackPayload);
+    dialOptions.recordingStatusCallbackMethod = "POST";
+    dialOptions.recordingStatusCallbackEvent = "in-progress completed absent";
+  }
+
+  if (config.callerId) {
+    dialOptions.callerId = config.callerId;
+  }
+
+  const dial = response.dial(dialOptions);
+  dial.number(
+    {
+      statusCallback: buildTwilioCallbackUrl(req, config, "call", callbackPayload),
+      statusCallbackMethod: "POST",
+      statusCallbackEvent: "initiated ringing answered completed",
+    },
+    to,
+  );
+
+  return response.toString();
+}
+
+async function maybeServeTwiML(req, res) {
+  const mode = toQueryValue(req.query?.mode).toLowerCase();
+  const shouldServeFromMode = mode === "twiml";
+  const hasAuthHeader = Boolean(asText(req.headers?.authorization));
+  const shouldServeFromPost = req.method === "POST" && !hasAuthHeader;
+
+  if (!shouldServeFromMode && !shouldServeFromPost) {
+    return false;
+  }
+
+  const payload = await readTwilioPayload(req);
+  const twimlConfig = readTwiMLConfig();
+  const twimlXml = buildVoiceTwiML(req, twimlConfig, payload || {});
+
+  res.setHeader("Content-Type", "text/xml; charset=utf-8");
+  res.status(200).send(twimlXml);
+  return true;
+}
+
+function inferWebhookOutcome(callStatus, durationSec) {
+  const normalized = asText(callStatus).toLowerCase();
+  if (["busy", "failed", "no-answer", "canceled"].includes(normalized)) return "No Answer";
+  if (normalized === "completed" && Number(durationSec || 0) <= 0) return "No Answer";
+  return null;
+}
+
+function buildAbsoluteWebhookRequestUrl(req) {
+  const base = appBaseUrl(req);
+  const requestUrl = new URL(req.url || "/api/twilio-access-token?mode=call-webhook", base);
+  return requestUrl.toString();
+}
+
+async function validateTwilioWebhookRequest(req, payload) {
+  const shouldValidate = asBool(process.env.TWILIO_VALIDATE_WEBHOOK_SIGNATURE, false);
+  if (!shouldValidate) return true;
+
+  const authToken = asText(process.env.TWILIO_AUTH_TOKEN);
+  const signature = asText(req.headers?.["x-twilio-signature"]);
+
+  if (!authToken || !signature) return false;
+
+  try {
+    const requestUrl = buildAbsoluteWebhookRequestUrl(req);
+    return twilio.validateRequest(authToken, signature, requestUrl, payload);
+  } catch {
+    return false;
+  }
+}
+
+async function requestWebhookTranscription(recordingSid) {
+  const accountSid = asText(process.env.TWILIO_ACCOUNT_SID);
+  const authToken = asText(process.env.TWILIO_AUTH_TOKEN);
+
+  if (!recordingSid || !accountSid || !authToken) return null;
+
+  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Transcriptions.json`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ RecordingSid: recordingSid }).toString(),
+  });
+
+  const text = await response.text();
+  let payload = {};
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    const reason = asText(payload?.message || text, `HTTP ${response.status}`);
+    throw new Error(`Twilio transcription request failed: ${reason}`);
+  }
+
+  return {
+    sid: asText(payload?.sid),
+    status: asText(payload?.status),
+    text: asText(payload?.transcription_text),
+  };
+}
+
+async function handleTwilioCallWebhook(req, res) {
+  const payload = await readTwilioPayload(req);
+  const valid = await validateTwilioWebhookRequest(req, payload);
+  if (!valid) {
+    return res.status(403).json({ error: "Invalid Twilio webhook signature" });
+  }
+
+  let supabaseAdmin;
+  try {
+    supabaseAdmin = createSupabaseAdminClient();
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || "Unable to initialize Supabase client" });
+  }
+
+  const callSid = asText(payload.CallSid);
+  const callerId = asText(req.query?.caller_id || payload.CallerId || payload.caller_id);
+  const callStatus = asText(payload.CallStatus).toLowerCase();
+  const callDurationSec = asInt(payload.CallDuration, null);
+  const eventType = asText(req.query?.event || "call").toLowerCase();
+
+  if (!callSid) {
+    return res.status(400).json({ error: "Missing CallSid in Twilio webhook payload" });
+  }
+
+  if (!callerId) {
+    return res.status(400).json({ error: "Missing caller_id in callback query parameters" });
+  }
+
+  const leadName = asText(req.query?.lead_name || payload.LeadName);
+  const leadAddress = asText(req.query?.lead_address || payload.LeadAddress);
+  const leadPhone = asText(req.query?.lead_phone || payload.To || payload.Called || payload.ToFormatted);
+
+  const recordingSid = asText(payload.RecordingSid);
+  const recordingUrl = asText(payload.RecordingUrl);
+  const recordingStatus = asText(payload.RecordingStatus).toLowerCase();
+  const recordingDurationSec = asInt(payload.RecordingDuration, null);
+  const transcriptionSid = asText(payload.TranscriptionSid);
+  const transcriptionStatus = asText(payload.TranscriptionStatus).toLowerCase();
+  const transcriptionText = asText(payload.TranscriptionText);
+
+  const calledAtIso = (() => {
+    const timestamp = asText(payload.Timestamp || payload.CallTimestamp);
+    if (!timestamp) return new Date().toISOString();
+    const parsed = new Date(timestamp);
+    if (Number.isNaN(parsed.getTime())) return new Date().toISOString();
+    return parsed.toISOString();
+  })();
+
+  const upsertPayload = {
+    caller_id: callerId,
+    lead_name: leadName || null,
+    phone: leadPhone || null,
+    address: leadAddress || null,
+    outcome: inferWebhookOutcome(callStatus, callDurationSec),
+    duration_sec: callDurationSec,
+    called_at: calledAtIso,
+    twilio_call_sid: callSid,
+    twilio_parent_call_sid: asText(payload.ParentCallSid) || null,
+    twilio_status: callStatus || null,
+    from_number: asText(payload.From) || null,
+    to_number: asText(payload.To) || null,
+    recording_sid: recordingSid || null,
+    recording_url: recordingUrl ? `${recordingUrl}.mp3` : null,
+    recording_status: recordingStatus || null,
+    recording_duration_sec: recordingDurationSec,
+    transcription_sid: transcriptionSid || null,
+    transcription_status: transcriptionStatus || null,
+    transcription_text: transcriptionText || null,
+    raw_payload: payload,
+  };
+
+  const { data: callLogRow, error: upsertError } = await supabaseAdmin
+    .from("call_logs")
+    .upsert(upsertPayload, {
+      onConflict: "twilio_call_sid",
+    })
+    .select("id")
+    .single();
+
+  if (upsertError) {
+    return res.status(500).json({
+      received: false,
+      error: `Unable to upsert Twilio call log: ${upsertError.message}`,
+    });
+  }
+
+  let transcriptionRequested = false;
+  let transcriptionError = "";
+
+  const shouldRequestTranscription = asBool(process.env.TWILIO_ENABLE_TRANSCRIPTION, false)
+    && eventType === "recording"
+    && recordingSid
+    && recordingStatus === "completed";
+
+  if (shouldRequestTranscription) {
+    try {
+      const transcription = await requestWebhookTranscription(recordingSid);
+      transcriptionRequested = Boolean(transcription?.sid);
+
+      if (transcriptionRequested) {
+        await supabaseAdmin
+          .from("call_logs")
+          .update({
+            transcription_sid: transcription.sid,
+            transcription_status: asText(transcription.status, "queued"),
+            transcription_text: transcription.text || null,
+          })
+          .eq("id", callLogRow.id);
+      }
+    } catch (error) {
+      transcriptionError = error?.message || "Transcription request failed";
+    }
+  }
+
+  return res.status(200).json({
+    received: true,
+    callSid,
+    event: eventType,
+    transcriptionRequested,
+    ...(transcriptionError ? { transcriptionError } : {}),
+  });
 }
 
 function createSupabaseAdminClient() {
@@ -68,6 +416,8 @@ function readTwilioConfig() {
   const apiSecret = asText(process.env.TWILIO_API_SECRET);
   const outgoingApplicationSid = asText(process.env.TWILIO_TWIML_APP_SID);
   const pushCredentialSid = asText(process.env.TWILIO_PUSH_CREDENTIAL_SID);
+  const authToken = asText(process.env.TWILIO_AUTH_TOKEN);
+  const syncTwimlApp = asBool(process.env.TWILIO_SYNC_TWIML_APP, false);
 
   if (!accountSid || !apiKey || !apiSecret || !outgoingApplicationSid) {
     throw new Error("Missing Twilio env vars: TWILIO_ACCOUNT_SID, TWILIO_API_KEY, TWILIO_API_SECRET, TWILIO_TWIML_APP_SID");
@@ -79,6 +429,8 @@ function readTwilioConfig() {
     apiSecret,
     outgoingApplicationSid,
     pushCredentialSid,
+    authToken,
+    syncTwimlApp,
   };
 }
 
@@ -104,15 +456,78 @@ function createVoiceToken(config, identity) {
   return accessToken.toJwt();
 }
 
-export default async function handler(req, res) {
-  setCors(res);
+async function maybeSyncTwimlVoiceUrl(req, config) {
+  if (!config.syncTwimlApp || !config.authToken) return;
 
-  if (req.method === "OPTIONS") return res.status(204).end();
+  try {
+    const voiceUrl = resolveAbsoluteUrl(
+      req,
+      asText(process.env.TWILIO_TWIML_VOICE_URL, "/api/twilio-access-token?mode=twiml"),
+      "/api/twilio-access-token?mode=twiml",
+    );
+
+    const restClient = twilio(config.accountSid, config.authToken);
+    await restClient
+      .api
+      .v2010
+      .accounts(config.accountSid)
+      .applications(config.outgoingApplicationSid)
+      .update({
+        voiceUrl,
+        voiceMethod: "POST",
+      });
+  } catch {
+    // no-op: token creation should continue even if app sync fails.
+  }
+}
+
+export default async function handler(req, res) {
+  const cors = enforceCors(req, res, {
+    methods: "GET, POST, OPTIONS",
+    headers: "Content-Type, Authorization",
+  });
+  if (cors.handled) return;
 
   if (req.method !== "GET" && req.method !== "POST") {
     res.setHeader("Allow", "GET, POST, OPTIONS");
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  const mode = toQueryValue(req.query?.mode).toLowerCase();
+  if (mode === "call-webhook") {
+    if (req.method !== "POST") {
+      res.setHeader("Allow", "POST, OPTIONS");
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    const webhookRateLimit = enforceRateLimit(req, res, {
+      keyPrefix: "twilio-call-webhook",
+      max: Number(process.env.RATE_LIMIT_TWILIO_WEBHOOK_MAX || 600),
+      windowMs: Number(process.env.RATE_LIMIT_TWILIO_WEBHOOK_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+    });
+    if (!webhookRateLimit.allowed) {
+      return res.status(429).json({ error: "Too many requests. Please retry later." });
+    }
+
+    return handleTwilioCallWebhook(req, res);
+  }
+
+  const hasAuthHeader = Boolean(asText(req.headers?.authorization));
+  const twimlRequest = mode === "twiml" || (req.method === "POST" && !hasAuthHeader);
+
+  if (!twimlRequest) {
+    const rateLimit = enforceRateLimit(req, res, {
+      keyPrefix: "twilio-access-token",
+      max: Number(process.env.RATE_LIMIT_TWILIO_ACCESS_MAX || 30),
+      windowMs: Number(process.env.RATE_LIMIT_TWILIO_ACCESS_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+    });
+    if (!rateLimit.allowed) {
+      return res.status(429).json({ error: "Too many requests. Please retry later." });
+    }
+  }
+
+  const twimlHandled = await maybeServeTwiML(req, res);
+  if (twimlHandled) return;
 
   let supabaseAdmin;
   try {
@@ -137,6 +552,7 @@ export default async function handler(req, res) {
   }
 
   try {
+    await maybeSyncTwimlVoiceUrl(req, twilioConfig);
     const token = createVoiceToken(twilioConfig, identity);
     return res.status(200).json({ token, identity });
   } catch (error) {

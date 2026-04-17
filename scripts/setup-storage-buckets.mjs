@@ -48,6 +48,7 @@ async function main() {
 
   const contractsBucket = asText(process.env.VITE_CONTRACTS_BUCKET, "contracts");
   const contractorPhotosBucket = asText(process.env.VITE_CONTRACTOR_PHOTOS_BUCKET, "contractor-photos");
+  const propertyImagesBucket = asText(process.env.VITE_PROPERTY_IMAGES_BUCKET, "property-images");
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: {
@@ -67,6 +68,12 @@ async function main() {
       name: contractorPhotosBucket,
       public: false,
       fileSizeLimit: 15 * 1024 * 1024,
+      allowedMimeTypes: ["image/png", "image/jpeg", "image/webp", "image/heic"],
+    },
+    {
+      name: propertyImagesBucket,
+      public: false,
+      fileSizeLimit: 25 * 1024 * 1024,
       allowedMimeTypes: ["image/png", "image/jpeg", "image/webp", "image/heic"],
     },
   ];

@@ -13,6 +13,7 @@ export const TEMPLATE_CONFIG = {
       { key: "earnestMoney", label: "Earnest Money", placeholder: "2500", prefix: "$" },
       { key: "closeDate", label: "Close Date", placeholder: "May 30, 2026" },
       { key: "titleCompany", label: "Title Company", placeholder: "Capital Valley Title" },
+      { key: "titleCompanyEmail", label: "Title Company Email", placeholder: "closings@capitalvalleytitle.com" },
     ],
     clauses: [
       "Assignor represents equitable interest in the purchase contract and right to assign.",
@@ -35,6 +36,7 @@ export const TEMPLATE_CONFIG = {
       { key: "earnestMoney", label: "Earnest Money", placeholder: "3000", prefix: "$" },
       { key: "closeDate", label: "Close Date", placeholder: "June 15, 2026" },
       { key: "titleCompany", label: "Title Company", placeholder: "North State Escrow" },
+      { key: "titleCompanyEmail", label: "Title Company Email", placeholder: "closings@northstateescrow.com" },
       { key: "condition", label: "Property Condition", placeholder: "As-Is" },
     ],
     clauses: [

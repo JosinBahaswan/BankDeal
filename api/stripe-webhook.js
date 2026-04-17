@@ -5,6 +5,7 @@ import {
   mapStripeSubscriptionStatus,
   resolveStripePriceConfig,
 } from "../lib/server/stripeCatalog.js";
+import { enforceRateLimit } from "../lib/server/httpSecurity.js";
 
 function toIsoFromUnix(unixSeconds) {
   const value = Number(unixSeconds);
@@ -206,6 +207,15 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const rateLimit = enforceRateLimit(req, res, {
+    keyPrefix: "stripe-webhook",
+    max: Number(process.env.RATE_LIMIT_STRIPE_WEBHOOK_MAX || 600),
+    windowMs: Number(process.env.RATE_LIMIT_STRIPE_WEBHOOK_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+  });
+  if (!rateLimit.allowed) {
+    return res.status(429).json({ error: "Too many requests. Please retry later." });
   }
 
   const stripeSecret = asText(process.env.STRIPE_SECRET_KEY);

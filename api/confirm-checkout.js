@@ -1,12 +1,7 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { asText, mapStripeSubscriptionStatus, resolveStripePriceConfig } from "../lib/server/stripeCatalog.js";
-
-function setCors(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-}
+import { enforceCors, enforceRateLimit } from "../lib/server/httpSecurity.js";
 
 function jsonBody(req) {
   if (typeof req.body === "string") {
@@ -207,9 +202,20 @@ async function persistCheckoutSession({ stripe, supabase, session, userId }) {
 }
 
 export default async function handler(req, res) {
-  setCors(res);
+  const cors = enforceCors(req, res, {
+    methods: "POST, OPTIONS",
+    headers: "Content-Type, Authorization",
+  });
+  if (cors.handled) return;
 
-  if (req.method === "OPTIONS") return res.status(204).end();
+  const rateLimit = enforceRateLimit(req, res, {
+    keyPrefix: "confirm-checkout",
+    max: Number(process.env.RATE_LIMIT_CHECKOUT_MAX || 40),
+    windowMs: Number(process.env.RATE_LIMIT_CHECKOUT_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+  });
+  if (!rateLimit.allowed) {
+    return res.status(429).json({ error: "Too many requests. Please retry later." });
+  }
 
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST, OPTIONS");

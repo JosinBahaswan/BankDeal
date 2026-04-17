@@ -10,6 +10,7 @@ import {
   syncConnectAccount,
   verifyStripeActor,
 } from "../lib/server/stripeConnectShared.js";
+import { enforceRateLimit } from "../lib/server/httpSecurity.js";
 
 function accountLinkType(account) {
   if (account?.details_submitted) {
@@ -19,9 +20,25 @@ function accountLinkType(account) {
 }
 
 export default async function handler(req, res) {
-  setCors(res, "GET, POST, OPTIONS");
+  const cors = setCors(req, res, "GET, POST, OPTIONS");
 
-  if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method === "OPTIONS") {
+    if (!cors.originAllowed) return res.status(403).json({ error: "CORS origin is not allowed" });
+    return res.status(204).end();
+  }
+
+  if (!cors.originAllowed) {
+    return res.status(403).json({ error: "CORS origin is not allowed" });
+  }
+
+  const rateLimit = enforceRateLimit(req, res, {
+    keyPrefix: "stripe-connect-account-link",
+    max: Number(process.env.RATE_LIMIT_STRIPE_CONNECT_MAX || 30),
+    windowMs: Number(process.env.RATE_LIMIT_STRIPE_CONNECT_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+  });
+  if (!rateLimit.allowed) {
+    return res.status(429).json({ error: "Too many requests. Please retry later." });
+  }
 
   if (req.method !== "GET" && req.method !== "POST") {
     res.setHeader("Allow", "GET, POST, OPTIONS");

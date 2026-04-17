@@ -1,4 +1,8 @@
+import { useState } from "react";
 import useIsMobile from "../core/useIsMobile";
+
+const CSLB_VERIFY_ENDPOINT = String(import.meta.env.VITE_CSLB_VERIFY_ENDPOINT || "").trim();
+const CSLB_VERIFICATION_REQUIRED = String(import.meta.env.VITE_REQUIRE_CSLB_VERIFICATION || "false").toLowerCase() === "true";
 
 const CONTRACTOR_TRADE_OPTIONS = [
   "GC",
@@ -61,8 +65,18 @@ export default function ContractorOnboardingScreen({
   userName,
 }) {
   const isMobile = useIsMobile(820);
+  const [licenseVerification, setLicenseVerification] = useState({
+    state: "idle",
+    message: "",
+  });
 
   const setField = (field, value) => {
+    if (field === "licenseNumber") {
+      setLicenseVerification({
+        state: "idle",
+        message: "",
+      });
+    }
     setOnboarding((prev) => ({ ...prev, [field]: value, error: "" }));
   };
 
@@ -94,6 +108,11 @@ export default function ContractorOnboardingScreen({
         setOnboarding((prev) => ({ ...prev, error: "Complete all details before continuing." }));
         return;
       }
+
+      if (CSLB_VERIFICATION_REQUIRED && licenseVerification.state !== "verified") {
+        setOnboarding((prev) => ({ ...prev, error: "Verify CSLB license before continuing." }));
+        return;
+      }
     }
 
     setOnboarding((prev) => ({ ...prev, step: Math.min(prev.step + 1, 3), error: "" }));
@@ -101,6 +120,63 @@ export default function ContractorOnboardingScreen({
 
   const goBack = () => {
     setOnboarding((prev) => ({ ...prev, step: Math.max(prev.step - 1, 1), error: "" }));
+  };
+
+  const verifyCslbLicense = async () => {
+    if (!CSLB_VERIFY_ENDPOINT) {
+      setLicenseVerification({
+        state: "failed",
+        message: "CSLB verification endpoint is not configured (Phase 2).",
+      });
+      return;
+    }
+
+    const licenseNumber = String(onboarding.licenseNumber || "").trim();
+    if (!licenseNumber) {
+      setOnboarding((prev) => ({ ...prev, error: "Enter CSLB license number first." }));
+      return;
+    }
+
+    setLicenseVerification({
+      state: "checking",
+      message: "Checking CSLB records...",
+    });
+    setOnboarding((prev) => ({ ...prev, error: "" }));
+
+    try {
+      const response = await fetch(CSLB_VERIFY_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ licenseNumber }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.valid) {
+        setLicenseVerification({
+          state: "failed",
+          message: payload?.message || payload?.error || `CSLB verification failed (${response.status}).`,
+        });
+        return;
+      }
+
+      const status = String(payload?.status || "Active").trim();
+      const businessName = String(payload?.legalName || payload?.businessName || "").trim();
+      const message = businessName
+        ? `Verified ${payload.licenseNumber} - ${status} (${businessName})`
+        : `Verified ${payload.licenseNumber} - ${status}`;
+
+      setLicenseVerification({
+        state: "verified",
+        message,
+      });
+    } catch (error) {
+      setLicenseVerification({
+        state: "failed",
+        message: error?.message || "Unable to verify CSLB license right now.",
+      });
+    }
   };
 
   return (
@@ -209,7 +285,10 @@ export default function ContractorOnboardingScreen({
         {onboarding.step === 2 && (
           <div style={card}>
             <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text, fontWeight: "bold", marginBottom: 5 }}>Step 2 - Business Details</div>
-            <div style={{ fontSize: 10, color: G.muted, marginBottom: 16 }}>Fill your profile so deal makers can review and send qualified jobs.</div>
+            <div style={{ fontSize: 10, color: G.muted, marginBottom: 16 }}>
+              Fill your profile so deal makers can review and send qualified jobs.
+              {CSLB_VERIFICATION_REQUIRED ? " CSLB verification is required." : " CSLB verification is optional (Phase 2)."}
+            </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
               <div>
@@ -218,7 +297,29 @@ export default function ContractorOnboardingScreen({
               </div>
               <div>
                 <div style={lbl}>CSLB License #</div>
-                <input value={onboarding.licenseNumber} onChange={(event) => setField("licenseNumber", event.target.value)} style={{ ...smIn, background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "9px 11px" }} />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                  <input value={onboarding.licenseNumber} onChange={(event) => setField("licenseNumber", event.target.value)} style={{ ...smIn, background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "9px 11px" }} />
+                  <button
+                    type="button"
+                    onClick={verifyCslbLicense}
+                    disabled={licenseVerification.state === "checking" || String(onboarding.licenseNumber || "").trim() === "" || !CSLB_VERIFY_ENDPOINT}
+                    style={{
+                      ...btnO,
+                      padding: "0 12px",
+                      fontSize: 9,
+                      minWidth: 88,
+                      opacity: licenseVerification.state === "checking" || !CSLB_VERIFY_ENDPOINT ? 0.75 : 1,
+                      cursor: licenseVerification.state === "checking" ? "wait" : !CSLB_VERIFY_ENDPOINT ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {licenseVerification.state === "checking" ? "Checking..." : !CSLB_VERIFY_ENDPOINT ? "Phase 2" : "Verify"}
+                  </button>
+                </div>
+                {licenseVerification.message && (
+                  <div style={{ marginTop: 5, fontSize: 9, color: licenseVerification.state === "verified" ? G.green : G.red }}>
+                    {licenseVerification.message}
+                  </div>
+                )}
               </div>
               <div>
                 <div style={lbl}>City / Location</div>

@@ -11,6 +11,7 @@ import {
   toMinorUnits,
   verifyStripeActor,
 } from "../lib/server/stripeConnectShared.js";
+import { enforceRateLimit } from "../lib/server/httpSecurity.js";
 
 function sanitizeMetadata(input) {
   if (!input || typeof input !== "object") return {};
@@ -26,9 +27,25 @@ function sanitizeMetadata(input) {
 }
 
 export default async function handler(req, res) {
-  setCors(res, "POST, OPTIONS");
+  const cors = setCors(req, res, "POST, OPTIONS");
 
-  if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method === "OPTIONS") {
+    if (!cors.originAllowed) return res.status(403).json({ error: "CORS origin is not allowed" });
+    return res.status(204).end();
+  }
+
+  if (!cors.originAllowed) {
+    return res.status(403).json({ error: "CORS origin is not allowed" });
+  }
+
+  const rateLimit = enforceRateLimit(req, res, {
+    keyPrefix: "stripe-escrow-create",
+    max: Number(process.env.RATE_LIMIT_STRIPE_ESCROW_MAX || 30),
+    windowMs: Number(process.env.RATE_LIMIT_STRIPE_ESCROW_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+  });
+  if (!rateLimit.allowed) {
+    return res.status(429).json({ error: "Too many requests. Please retry later." });
+  }
 
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST, OPTIONS");

@@ -3,6 +3,7 @@ import { supabase } from "../../../../lib/supabaseClient";
 
 const VARIABLE_TOKENS = ["{{first_name}}", "{{property_address}}", "{{equity_estimate}}", "{{city}}", "{{callback_time}}"];
 const PIPELINE_STAGES = ["New", "Contacted", "Interested", "Offer Sent", "Closed"];
+const SEND_SMS_ENDPOINT = String(import.meta.env.VITE_SEND_SMS_ENDPOINT || "/api/send-sms").trim();
 
 function emptyPipeline() {
   return PIPELINE_STAGES.reduce((acc, stage) => {
@@ -64,7 +65,9 @@ export default function CrmSequencesToolTab({ ctx }) {
   const [pipeline, setPipeline] = useState(() => emptyPipeline());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
+  const [dispatchBusyId, setDispatchBusyId] = useState("");
   const [builderName, setBuilderName] = useState("Motivated Seller Follow-up");
   const [selectedStepId, setSelectedStepId] = useState(null);
   const [builderSteps, setBuilderSteps] = useState([
@@ -254,6 +257,33 @@ export default function CrmSequencesToolTab({ ctx }) {
     setBuilderSteps((prev) => prev.map((step) => (step.id === selectedStepId ? { ...step, message: `${step.message} ${token}`.trim() } : step)));
   };
 
+  const dispatchSequenceSms = async (sequenceId, options = {}) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = String(sessionData?.session?.access_token || "").trim();
+    if (!accessToken) {
+      throw new Error("Session expired. Please sign in again.");
+    }
+
+    const response = await fetch(SEND_SMS_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        sequenceId,
+        allowPaused: Boolean(options.allowPaused),
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.message || payload?.error || `SMS dispatch request failed (${response.status})`);
+    }
+
+    return payload;
+  };
+
   const createSequence = async () => {
     if (!user?.id) {
       setError("Login required before creating a sequence.");
@@ -263,6 +293,7 @@ export default function CrmSequencesToolTab({ ctx }) {
     if (!builderName.trim() || builderSteps.length === 0) return;
 
     setError("");
+  setNotice("");
 
     const leadCount = Object.values(pipeline).reduce((sum, stageRows) => sum + stageRows.length, 0);
     const { data: insertedSequence, error: sequenceInsertError } = await supabase
@@ -298,10 +329,41 @@ export default function CrmSequencesToolTab({ ctx }) {
       return;
     }
 
+    try {
+      const dispatchSummary = await dispatchSequenceSms(insertedSequence.id, { allowPaused: true });
+      const providerSuffix = dispatchSummary.providerConfigured
+        ? ""
+        : " SMS provider not configured, so messages remain queued.";
+      setNotice(`Sequence launched. Sent: ${dispatchSummary.sentCount || 0}, failed: ${dispatchSummary.failedCount || 0}, queued due: ${dispatchSummary.queuedCount || 0}.${providerSuffix}`);
+    } catch (dispatchError) {
+      setError(`Sequence created, but SMS dispatch failed: ${dispatchError.message}`);
+    }
+
     setBuilderName("New Sequence");
     setBuilderSteps([newStepTemplate(0), newStepTemplate(1)]);
     setSelectedStepId(null);
     setRefreshTick((prev) => prev + 1);
+  };
+
+  const runDueSmsDispatch = async (sequenceId) => {
+    if (!sequenceId) return;
+
+    setDispatchBusyId(sequenceId);
+    setError("");
+    setNotice("");
+
+    try {
+      const dispatchSummary = await dispatchSequenceSms(sequenceId);
+      const providerSuffix = dispatchSummary.providerConfigured
+        ? ""
+        : " SMS provider not configured, so messages remain queued.";
+      setNotice(`Dispatch complete. Sent: ${dispatchSummary.sentCount || 0}, failed: ${dispatchSummary.failedCount || 0}, queued due: ${dispatchSummary.queuedCount || 0}.${providerSuffix}`);
+      setRefreshTick((prev) => prev + 1);
+    } catch (dispatchError) {
+      setError(dispatchError?.message || "Failed to dispatch due SMS messages.");
+    } finally {
+      setDispatchBusyId("");
+    }
   };
 
   const toggleSequenceStatus = async (id) => {
@@ -358,6 +420,7 @@ export default function CrmSequencesToolTab({ ctx }) {
       <div style={{ fontFamily: G.serif, fontSize: 18, marginBottom: 4 }}>CRM & Sequences</div>
       <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Track your pipeline and automate personalized follow-up with variable-based templates.</div>
       {error && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{error}</div>}
+      {notice && <div style={{ ...card, marginBottom: 10, borderColor: `${G.green}55`, color: G.green, fontSize: 10 }}>{notice}</div>}
       {loading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading CRM data from Supabase...</div>}
 
       <div style={{ ...card, marginBottom: 12 }}>
@@ -384,9 +447,16 @@ export default function CrmSequencesToolTab({ ctx }) {
                   <td style={{ fontSize: 10, color: G.muted, padding: "8px 6px" }}>{row.replies}</td>
                   <td style={{ fontSize: 10, color: G.green, padding: "8px 6px" }}>{row.conversion}</td>
                   <td style={{ padding: "8px 6px" }}><span style={shortBadge(row.status, G)}>{row.status}</span></td>
-                  <td style={{ padding: "8px 6px" }}>
+                  <td style={{ padding: "8px 6px", display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <button onClick={() => toggleSequenceStatus(row.id)} style={{ ...btnO, fontSize: 8, padding: "3px 8px" }}>
                       {row.status === "Active" ? "Pause" : "Resume"}
+                    </button>
+                    <button
+                      onClick={() => runDueSmsDispatch(row.id)}
+                      disabled={dispatchBusyId === row.id}
+                      style={{ ...btnG, fontSize: 8, padding: "3px 8px", opacity: dispatchBusyId === row.id ? 0.75 : 1 }}
+                    >
+                      {dispatchBusyId === row.id ? "Sending..." : "Send Due SMS"}
                     </button>
                   </td>
                 </tr>

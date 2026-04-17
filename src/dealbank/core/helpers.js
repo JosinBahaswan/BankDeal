@@ -2,32 +2,6 @@ import { supabase } from "../../lib/supabaseClient";
 
 const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
-export async function dbSet(key, value) {
-  try {
-    await window.storage.set(key, JSON.stringify(value));
-  } catch {
-    // no-op in preview/local mode
-  }
-}
-
-export async function dbGet(key) {
-  try {
-    const record = await window.storage.get(key);
-    return record ? JSON.parse(record.value) : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function dbList(prefix) {
-  try {
-    const result = await window.storage.list(prefix);
-    return result ? result.keys : [];
-  } catch {
-    return [];
-  }
-}
-
 export const fmt = (value) => {
   const parsed = parseFloat(String(value).replace(/,/g, ""));
   if (Number.isNaN(parsed) || parsed === 0) return "$0";

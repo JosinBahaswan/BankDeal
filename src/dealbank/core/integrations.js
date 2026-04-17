@@ -11,7 +11,8 @@ export function getLaunchIntegrationStatus() {
   const emailConfigured = hasValue(import.meta.env.VITE_EXECUTED_CONTRACT_WEBHOOK_URL);
   const contractsBucketConfigured = hasValue(import.meta.env.VITE_CONTRACTS_BUCKET);
   const contractorPhotosBucketConfigured = hasValue(import.meta.env.VITE_CONTRACTOR_PHOTOS_BUCKET);
-  const storageConfigured = contractsBucketConfigured && contractorPhotosBucketConfigured;
+  const propertyImagesBucketConfigured = hasValue(import.meta.env.VITE_PROPERTY_IMAGES_BUCKET);
+  const storageConfigured = contractsBucketConfigured && contractorPhotosBucketConfigured && propertyImagesBucketConfigured;
   const capacitorConfigured = String(import.meta.env.VITE_CAPACITOR_ENABLED || "").toLowerCase() === "true";
   const capacitorPushConfigured = String(import.meta.env.VITE_CAPACITOR_PUSH_ENABLED || "").toLowerCase() === "true";
   const capacitorCameraConfigured = String(import.meta.env.VITE_CAPACITOR_CAMERA_ENABLED || "true").toLowerCase() !== "false";
@@ -50,8 +51,8 @@ export function getLaunchIntegrationStatus() {
       label: "Signed File Storage",
       status: storageConfigured ? "wired" : "required",
       details: storageConfigured
-        ? "Contracts and contractor photo buckets are configured."
-        : "Set both VITE_CONTRACTS_BUCKET and VITE_CONTRACTOR_PHOTOS_BUCKET and apply storage policies.",
+        ? "Contracts, contractor photos, and property images buckets are configured."
+        : "Set VITE_CONTRACTS_BUCKET, VITE_CONTRACTOR_PHOTOS_BUCKET, and VITE_PROPERTY_IMAGES_BUCKET, then apply storage policies.",
     },
     {
       id: "capacitor",

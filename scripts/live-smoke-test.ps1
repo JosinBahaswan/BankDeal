@@ -53,7 +53,7 @@ Write-Output "=== PUBLIC / BASIC ==="
 Invoke-Smoke -Name "Landing" -Method "GET" -Url "$BaseUrl/" -Headers @{} -Body $null
 Invoke-Smoke -Name "TermsQuery" -Method "GET" -Url "$BaseUrl/?screen=terms" -Headers @{} -Body $null
 Invoke-Smoke -Name "PrivacyQuery" -Method "GET" -Url "$BaseUrl/?screen=privacy" -Headers @{} -Body $null
-Invoke-Smoke -Name "ClientIP" -Method "GET" -Url "$BaseUrl/api/get-client-ip" -Headers @{} -Body $null
+Invoke-Smoke -Name "LeadListings_GET_NoAuth" -Method "GET" -Url "$BaseUrl/api/lead-listings" -Headers @{} -Body $null
 
 Write-Output "=== API METHOD / AUTH GUARD ==="
 Invoke-Smoke -Name "CreateCheckout_GET" -Method "GET" -Url "$BaseUrl/api/create-checkout" -Headers @{} -Body $null

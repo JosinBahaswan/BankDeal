@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askClaude, calcOffer, extractJSON, fmt, toNum } from "./dealbank/core/helpers";
 import { bootstrapMobileRuntime } from "./dealbank/core/mobileRuntime";
+import {
+  flushPipelineQueue,
+  isLikelyOffline,
+  isPipelineNetworkError,
+  queuePipelineOperation,
+  readCachedPipeline,
+  writeCachedPipeline,
+} from "./dealbank/core/pipelineOffline";
 import { G, card, lbl, smIn, btnG, btnO } from "./dealbank/core/theme";
 import {
   beginCheckout,
@@ -44,7 +52,6 @@ function normalizeUserType(type) {
 const ADMIN_EMAIL_ENV = String(import.meta.env.VITE_ADMIN_EMAIL || "").trim().toLowerCase();
 const ADMIN_PASSWORD_ENV = String(import.meta.env.VITE_ADMIN_PASSWORD || "").trim();
 const ADMIN_BYPASS_ENABLED = String(import.meta.env.VITE_ENABLE_ADMIN_BYPASS || "").toLowerCase() === "true";
-const ADMIN_BYPASS_LOCAL_ONLY = String(import.meta.env.VITE_ADMIN_BYPASS_LOCAL_ONLY || "true").toLowerCase() !== "false";
 const ADMIN_PASSWORD_ALIASES = new Set([ADMIN_PASSWORD_ENV].filter(Boolean));
 
 function toOnboardingTradeLabel(trade) {
@@ -1201,7 +1208,12 @@ export default function App() {
     const normalizedAuthEmail = String(authForm.email || "").trim().toLowerCase();
     const isLocalHost = typeof window !== "undefined"
       && ["localhost", "127.0.0.1"].includes(String(window.location?.hostname || "").toLowerCase());
-    const canUseAdminBypass = ADMIN_BYPASS_ENABLED && (!ADMIN_BYPASS_LOCAL_ONLY || isLocalHost);
+    const canUseAdminBypass = ADMIN_BYPASS_ENABLED && isLocalHost;
+
+    if (ADMIN_BYPASS_ENABLED && !isLocalHost) {
+      // Production hardening: bypass can never activate outside local development.
+      console.warn("Admin bypass env is enabled but blocked because host is not localhost.");
+    }
 
     if (canUseAdminBypass && ADMIN_EMAIL_ENV && normalizedAuthEmail === ADMIN_EMAIL_ENV && ADMIN_PASSWORD_ALIASES.has(authForm.password)) {
       const adminUser = { name: "Admin", email: ADMIN_EMAIL_ENV, type: "admin" };
@@ -1374,6 +1386,21 @@ export default function App() {
       return;
     }
 
+    const cachedPipeline = readCachedPipeline(userId);
+    if (cachedPipeline.length > 0) {
+      setPipeline(cachedPipeline);
+      if (focusDealId) {
+        setPipelineFocusDealId(focusDealId);
+      }
+    }
+
+    if (isLikelyOffline()) {
+      if (cachedPipeline.length === 0) {
+        pushToast("Offline mode: no cached pipeline found yet.", "error");
+      }
+      return;
+    }
+
     const { data, error } = await supabase
       .from("deals")
       .select("*")
@@ -1381,11 +1408,18 @@ export default function App() {
       .order("saved_at", { ascending: false });
 
     if (error) {
+      if (cachedPipeline.length > 0 && isPipelineNetworkError(error)) {
+        pushToast("Offline mode: showing cached pipeline. Changes will sync on reconnect.", "info");
+        return;
+      }
+
       pushToast(`Pipeline sync failed: ${error.message}`, "error");
       return;
     }
 
-    setPipeline((data || []).map(mapDealRowToPipeline));
+    const mappedPipeline = (data || []).map(mapDealRowToPipeline);
+    setPipeline(mappedPipeline);
+    writeCachedPipeline(userId, mappedPipeline);
 
     if (focusDealId) {
       setPipelineFocusDealId(focusDealId);
@@ -1446,6 +1480,35 @@ export default function App() {
       roi: Number(roi.toFixed(2)),
     };
 
+    const queueDealInsert = () => {
+      const localDealId = `local-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+      const localPipelineDeal = mapDealRowToPipeline({
+        id: localDealId,
+        ...payload,
+      });
+
+      queuePipelineOperation(user.id, {
+        type: "insert",
+        localId: localDealId,
+        payload: {
+          localId: localDealId,
+          dbRow: payload,
+        },
+      });
+
+      setPipeline((prev) => [localPipelineDeal, ...prev]);
+      setPipelineFocusDealId(localDealId);
+      setFlipTab("pipeline");
+      setSavedMsg("Offline mode: deal queued and will sync automatically.");
+      pushToast("Offline mode: deal queued for sync.", "info");
+      setTimeout(() => setSavedMsg(""), 3000);
+    };
+
+    if (isLikelyOffline()) {
+      queueDealInsert();
+      return;
+    }
+
     const { data: insertedDeal, error } = await supabase
       .from("deals")
       .insert(payload)
@@ -1453,6 +1516,11 @@ export default function App() {
       .single();
 
     if (error) {
+      if (isPipelineNetworkError(error)) {
+        queueDealInsert();
+        return;
+      }
+
       setSavedMsg(`Save failed: ${error.message}`);
       pushToast(`Deal save failed: ${error.message}`, "error");
       return;
@@ -1477,6 +1545,16 @@ export default function App() {
     setActiveDeal((prev) => (prev?.id === deal.id ? updated : prev));
     if (stage === "Selling") setShowRealtor(true);
 
+    if (isLikelyOffline()) {
+      queuePipelineOperation(user.id, {
+        type: "update-stage",
+        dealId: deal.id,
+        stage,
+      });
+      pushToast("Offline mode: stage change queued for sync.", "info");
+      return;
+    }
+
     const { error } = await supabase
       .from("deals")
       .update({ stage })
@@ -1484,6 +1562,16 @@ export default function App() {
       .eq("user_id", user.id);
 
     if (error) {
+      if (isPipelineNetworkError(error)) {
+        queuePipelineOperation(user.id, {
+          type: "update-stage",
+          dealId: deal.id,
+          stage,
+        });
+        pushToast("Network issue detected. Stage change queued for sync.", "info");
+        return;
+      }
+
       setPipeline(prevPipeline);
       setActiveDeal(prevActiveDeal);
       setShowRealtor(prevShowRealtor);
@@ -1510,6 +1598,15 @@ export default function App() {
       setShowRealtor(false);
     }
 
+    if (isLikelyOffline()) {
+      queuePipelineOperation(user.id, {
+        type: "delete",
+        dealId,
+      });
+      pushToast("Offline mode: delete queued for sync.", "info");
+      return;
+    }
+
     const { error } = await supabase
       .from("deals")
       .delete()
@@ -1517,6 +1614,15 @@ export default function App() {
       .eq("user_id", user.id);
 
     if (error) {
+      if (isPipelineNetworkError(error)) {
+        queuePipelineOperation(user.id, {
+          type: "delete",
+          dealId,
+        });
+        pushToast("Network issue detected. Delete queued for sync.", "info");
+        return;
+      }
+
       setPipeline(prevPipeline);
       setActiveDeal(prevActiveDeal);
       setShowRealtor(prevShowRealtor);
@@ -1553,6 +1659,51 @@ export default function App() {
 
     return () => {
       supabase.removeChannel(channel);
+    };
+  }, [user?.id, loadPipeline, pushToast]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    writeCachedPipeline(user.id, pipeline);
+  }, [user?.id, pipeline]);
+
+  useEffect(() => {
+    if (!user?.id || typeof window === "undefined") return undefined;
+
+    let syncing = false;
+
+    const syncQueuedPipeline = async () => {
+      if (syncing) return;
+      if (isLikelyOffline()) return;
+
+      syncing = true;
+      try {
+        const syncResult = await flushPipelineQueue({
+          userId: user.id,
+          supabase,
+        });
+
+        if (syncResult.processed > 0) {
+          pushToast(`Synced ${syncResult.processed} offline pipeline change(s).`, "success");
+        }
+
+        if (syncResult.failed > 0) {
+          pushToast(`Some queued pipeline changes failed (${syncResult.failed}).`, "error");
+        }
+
+        if (syncResult.processed > 0 || syncResult.failed > 0) {
+          await loadPipeline(user.id);
+        }
+      } finally {
+        syncing = false;
+      }
+    };
+
+    syncQueuedPipeline();
+    window.addEventListener("online", syncQueuedPipeline);
+
+    return () => {
+      window.removeEventListener("online", syncQueuedPipeline);
     };
   }, [user?.id, loadPipeline, pushToast]);
 

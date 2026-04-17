@@ -3,6 +3,7 @@ import { supabase } from "../../../lib/supabaseClient";
 import ContractsCreateView from "./contracts/ContractsCreateView";
 import ContractsSignView from "./contracts/ContractsSignView";
 import ContractsDashboardView from "./contracts/ContractsDashboardView";
+import ContractsEscrowPaymentPanel from "./contracts/ContractsEscrowPaymentPanel";
 import {
   TEMPLATE_CONFIG,
   TEMPLATE_ORDER,
@@ -260,6 +261,13 @@ export default function ContractsTab({ ctx }) {
           status: contract.status,
           docHash: contract.docHash,
           pdfUrl: payload?.pdfUrl || contract.pdfUrl || "",
+          propertyAddress: contract.formVals?.propertyAddress || "",
+          closeDate: contract.formVals?.closeDate || "",
+          assignmentFee: contract.formVals?.assignmentFee || "",
+          platformFeePct: contract.feePct || "1.5%",
+          platformFeeAmount: contract.feeAmount || 0,
+          titleCompany: contract.formVals?.titleCompany || "",
+          titleCompanyEmail: contract.formVals?.titleCompanyEmail || "",
           parties: contract.parties.map((party) => ({
             role: party.role,
             signerName: party.signerName,
@@ -669,19 +677,7 @@ export default function ContractsTab({ ctx }) {
   }
 
   async function resolveSignerIp() {
-    try {
-      const response = await fetch("/api/get-client-ip", {
-        method: "GET",
-      });
-
-      if (!response.ok) return "";
-
-      const payload = await response.json().catch(() => null);
-      const ip = String(payload?.ip || "").trim();
-      return ip;
-    } catch {
-      return "";
-    }
+    return "";
   }
 
   async function applySignature() {
@@ -876,6 +872,16 @@ export default function ContractsTab({ ctx }) {
         onClearDrawnSignature={clearDrawnSignature}
         onApplySignature={applySignature}
         onDownloadContract={() => downloadContract(activeContract)}
+        escrowPaymentPanel={(
+          <ContractsEscrowPaymentPanel
+            G={G}
+            card={card}
+            lbl={lbl}
+            btnG={btnG}
+            btnO={btnO}
+            activeContract={activeContract}
+          />
+        )}
       />
     );
   }

@@ -3,43 +3,22 @@ import { supabase } from "../../../../lib/supabaseClient";
 import { beginCheckout, getCreditPackPriceId } from "../../../core/billing";
 import { LEAD_FILTERS, LEAD_LIST_TYPES } from "./toolData";
 
-const GENERATED_FIRST_NAMES = ["Maria", "Jason", "Helen", "Ramon", "Lydia", "Noah", "Ariana", "Carlos", "Nina", "Brandon"];
-const GENERATED_LAST_NAMES = ["Ortega", "Kim", "Fox", "Diaz", "Shaw", "Brooks", "Cole", "Rivera", "Tran", "Howard"];
-const GENERATED_STREET_NAMES = ["Maple St", "Birchwood Dr", "Elmwood Ct", "Poplar Ave", "Vista Canyon Rd", "Oak Grove Blvd"];
+const LEAD_LISTINGS_ENDPOINT = String(import.meta.env.VITE_LEAD_LISTINGS_ENDPOINT || "/api/lead-listings").trim();
 
-function randomInt(max) {
-  return Math.floor(Math.random() * max);
-}
-
-function estimateListPull(minEquityRaw) {
-  const minEquity = Number(minEquityRaw || 0);
-  const equityBoost = Math.max(1, Math.floor(minEquity / 50000));
-  const randomBase = randomInt(120) + 60;
-  const estimatedCount = Math.max(15, Math.floor(randomBase / equityBoost));
-  const creditCost = Math.ceil(estimatedCount * 1.2);
-
+function estimateListPull(candidateCount) {
+  const estimatedCount = Math.max(0, Number(candidateCount || 0));
+  const creditCost = Math.max(0, Math.ceil(estimatedCount * 1.2));
   return { estimatedCount, creditCost };
 }
 
-function buildGeneratedLead(buildForm) {
-  const firstName = GENERATED_FIRST_NAMES[randomInt(GENERATED_FIRST_NAMES.length)];
-  const lastName = GENERATED_LAST_NAMES[randomInt(GENERATED_LAST_NAMES.length)];
-  const street = GENERATED_STREET_NAMES[randomInt(GENERATED_STREET_NAMES.length)];
-  const houseNo = 100 + randomInt(9800);
-  const minEquity = Number(buildForm.minEquity || 50000);
-  const equity = minEquity + randomInt(80000);
-  const avm = equity + 180000 + randomInt(220000);
-
-  return {
-    name: `${firstName} ${lastName}`,
-    address: `${houseNo} ${street}, ${buildForm.city}`,
-    phone: `(9${randomInt(9)}${randomInt(10)}) 555-${String(randomInt(10000)).padStart(4, "0")}`,
-    equity,
-    avm,
-    status: "New",
-    listType: buildForm.listType,
-    tags: [buildForm.propertyType, buildForm.listType],
-  };
+function buildLeadListingsQuery(buildForm) {
+  const params = new URLSearchParams();
+  params.set("city", String(buildForm.city || ""));
+  params.set("propertyType", String(buildForm.propertyType || ""));
+  params.set("listType", String(buildForm.listType || ""));
+  params.set("minEquity", String(buildForm.minEquity || "0"));
+  params.set("limit", "120");
+  return params.toString();
 }
 
 function statusBadge(status, G) {
@@ -87,6 +66,7 @@ export default function LeadsToolTab({ ctx }) {
   function mapLeadRow(row) {
     return {
       id: row.id,
+      listingId: row.listing_id || "",
       name: row.name || "Unknown Owner",
       address: row.address || "Address not provided",
       phone: row.phone || "Phone not provided",
@@ -95,6 +75,7 @@ export default function LeadsToolTab({ ctx }) {
       status: row.status || "New",
       listType: row.lead_type || "High Equity",
       tags: Array.isArray(row.tags) ? row.tags : [],
+      addedAt: row.added_at || "",
     };
   }
 
@@ -229,14 +210,38 @@ export default function LeadsToolTab({ ctx }) {
     window.history.replaceState({}, document.title, cleanUrl);
   }, []);
 
-  async function saveLead(lead) {
-    if (!user?.id) {
-      showToast("Login required before saving leads");
-      return null;
+  async function fetchLeadCandidatesFromApi() {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = String(sessionData?.session?.access_token || "").trim();
+    if (!accessToken) {
+      throw new Error("Session expired. Please sign in again.");
     }
 
-    const payload = {
+    const query = buildLeadListingsQuery(buildForm);
+    const response = await fetch(`${LEAD_LISTINGS_ENDPOINT}?${query}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || `Lead source request failed (${response.status})`);
+    }
+
+    return Array.isArray(payload?.candidates) ? payload.candidates : [];
+  }
+
+  async function persistLeads(candidates) {
+    if (!user?.id || !Array.isArray(candidates) || candidates.length === 0) {
+      return { savedCount: 0 };
+    }
+
+    const nowIso = new Date().toISOString();
+    const rows = candidates.map((lead) => ({
       owner_id: user.id,
+      listing_id: lead.listingId || null,
       name: lead.name,
       phone: lead.phone,
       address: lead.address,
@@ -244,45 +249,123 @@ export default function LeadsToolTab({ ctx }) {
       avm_value: Number(lead.avm || 0),
       status: lead.status || "New",
       lead_type: lead.listType || "High Equity",
-      tags: Array.isArray(lead.tags) ? lead.tags : [],
-      source: "lead_builder",
-      added_at: new Date().toISOString(),
-    };
+      tags: Array.isArray(lead.tags) ? Array.from(new Set(lead.tags.filter(Boolean))) : [],
+      source: lead.source || "marketplace_listing",
+      added_at: nowIso,
+    }));
 
-    const { data, error } = await supabase
+    let writeResult = await supabase
       .from("leads")
-      .insert(payload)
-      .select("*")
-      .single();
+      .upsert(rows, { onConflict: "owner_id,listing_id" })
+      .select("*");
 
-    if (error) {
-      setLeadsError(`Failed to save lead: ${error.message}`);
-      showToast("Failed to save lead");
-      return null;
+    if (writeResult.error) {
+      const legacyRows = rows.map((row) => {
+        const next = { ...row };
+        delete next.listing_id;
+        return next;
+      });
+      writeResult = await supabase
+        .from("leads")
+        .insert(legacyRows)
+        .select("*");
     }
 
-    const mapped = mapLeadRow(data);
-    setLeadRows((prev) => [mapped, ...prev]);
-    return mapped;
+    if (writeResult.error) {
+      throw new Error(writeResult.error.message || "Failed to persist leads");
+    }
+
+    const { data: refreshedRows, error: refreshError } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("owner_id", user.id)
+      .order("added_at", { ascending: false });
+
+    if (!refreshError) {
+      const mapped = (refreshedRows || []).map(mapLeadRow);
+      setLeadRows(mapped);
+      setCredits((prev) => ({ ...prev, leadsPulled: mapped.length }));
+    }
+
+    return {
+      savedCount: Array.isArray(writeResult.data) ? writeResult.data.length : 0,
+    };
   }
 
   const onPullList = async () => {
-    const { estimatedCount, creditCost } = estimateListPull(buildForm.minEquity);
-    setPullEstimate({ estimatedCount, creditCost });
-    const generateCount = Math.min(4, Math.max(1, Math.floor(estimatedCount / 40)));
-
-    let created = 0;
-
-    for (let i = 0; i < generateCount; i += 1) {
-      const lead = buildGeneratedLead(buildForm);
-
-      const saved = await saveLead(lead);
-      if (saved) created += 1;
+    if (!user?.id) {
+      showToast("Login required before pulling lists");
+      return;
     }
 
-    if (created > 0) {
-      setCredits((prev) => ({ ...prev, leadsPulled: prev.leadsPulled + created }));
-      showToast(`${created} leads saved to database`);
+    setLeadsLoading(true);
+    setLeadsError("");
+
+    let leadCandidates = [];
+
+    try {
+      leadCandidates = await fetchLeadCandidatesFromApi();
+    } catch (error) {
+      setLeadsLoading(false);
+      setLeadsError(error?.message || "Failed to pull production lead candidates.");
+      showToast("Failed to pull production lead candidates");
+      return;
+    }
+
+    const { estimatedCount, creditCost } = estimateListPull(leadCandidates.length);
+    setPullEstimate({ estimatedCount, creditCost });
+
+    if (leadCandidates.length === 0) {
+      setLeadsLoading(false);
+      showToast("No lead candidates found for current filters");
+      return;
+    }
+
+    const creditsToConsume = Math.max(1, creditCost);
+
+    if (credits.dataCredits < creditsToConsume) {
+      setLeadsLoading(false);
+      setLeadsError(`Insufficient data credits. Need ${creditsToConsume}, available ${credits.dataCredits}.`);
+      setShowCreditModal(true);
+      showToast("Insufficient credits for this list pull");
+      return;
+    }
+
+    const { data: consumeRows, error: consumeError } = await supabase
+      .rpc("consume_data_credits", { p_credits: creditsToConsume });
+
+    if (consumeError) {
+      setLeadsLoading(false);
+      setLeadsError(`Failed to consume credits: ${consumeError.message}`);
+      if (String(consumeError.message || "").toLowerCase().includes("insufficient")) {
+        setShowCreditModal(true);
+      }
+      showToast("Unable to consume credits");
+      return;
+    }
+
+    const remainingFromRpc = Number(consumeRows?.[0]?.remaining);
+    setCredits((prev) => ({
+      ...prev,
+      dataCredits: Number.isFinite(remainingFromRpc)
+        ? remainingFromRpc
+        : Math.max(0, prev.dataCredits - creditsToConsume),
+    }));
+
+    try {
+      const result = await persistLeads(leadCandidates);
+      setLeadsLoading(false);
+
+      if (result.savedCount > 0) {
+        showToast(`${result.savedCount} leads synced from production data. ${creditsToConsume} credits used.`);
+        return;
+      }
+
+      showToast(`Lead pull completed. ${creditsToConsume} credits used.`);
+    } catch (error) {
+      setLeadsLoading(false);
+      setLeadsError(error?.message || "Failed to save pulled leads.");
+      showToast("Failed to persist pulled leads");
     }
   };
 
