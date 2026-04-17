@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { askClaude, calcOffer, extractJSON, fmt, toNum } from "./dealbank/core/helpers";
 import { G, card, lbl, smIn, btnG, btnO } from "./dealbank/core/theme";
 import {
@@ -241,6 +241,8 @@ export default function App() {
   const [flipTab, setFlipTab] = useState("analyze");
   const [pipeline, setPipeline] = useState([]);
   const [savedMsg, setSavedMsg] = useState("");
+  const [pipelineFocusDealId, setPipelineFocusDealId] = useState("");
+  const [toast, setToast] = useState({ text: "", tone: "info" });
   const [activeDeal, setActiveDeal] = useState(null);
   const [showRealtor, setShowRealtor] = useState(false);
 
@@ -321,6 +323,23 @@ export default function App() {
   const [realtorOnboarding, setRealtorOnboarding] = useState(() => createRealtorOnboardingState());
 
   const offerRef = useRef(null);
+
+  const pushToast = useCallback((text, tone = "info") => {
+    if (!text) return;
+    setToast({ text, tone });
+  }, []);
+
+  useEffect(() => {
+    if (!toast.text) return;
+    const timer = setTimeout(() => {
+      setToast({ text: "", tone: "info" });
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [toast.text]);
+
+  function clearPipelineFocusDeal() {
+    setPipelineFocusDealId("");
+  }
 
   const totalReno = RENO_KEYS.reduce((sum, key) => sum + toNum(reno[key.key]), 0);
   const offerPctNum = Math.min(100, Math.max(0, parseFloat(offerPct) || 60));
@@ -991,7 +1010,9 @@ export default function App() {
     }
   }
 
-  async function loadPipeline(userId) {
+  const loadPipeline = useCallback(async (userId, options = {}) => {
+    const { focusDealId = "" } = options;
+
     if (!userId) {
       setPipeline([]);
       return;
@@ -1004,22 +1025,37 @@ export default function App() {
       .order("saved_at", { ascending: false });
 
     if (error) {
-      setPipeline([]);
+      pushToast(`Pipeline sync failed: ${error.message}`, "error");
       return;
     }
 
     setPipeline((data || []).map(mapDealRowToPipeline));
-  }
+
+    if (focusDealId) {
+      setPipelineFocusDealId(focusDealId);
+    }
+  }, [pushToast]);
 
   async function saveDeal() {
-    if (!address || !arvNum || !user?.id) {
-      setSavedMsg("Look up a property first.");
+    if (!user?.id) {
+      setSavedMsg("Please login first.");
+      return;
+    }
+
+    const trimmedAddress = String(address || "").trim();
+    if (!trimmedAddress) {
+      setSavedMsg("Address is required before saving.");
+      return;
+    }
+
+    if (arvNum <= 0) {
+      setSavedMsg("ARV must be greater than 0 before saving.");
       return;
     }
 
     const payload = {
       user_id: user.id,
-      address,
+      address: trimmedAddress,
       arv: arvNum,
       offer_pct: offerPctNum,
       offer_price: offer,
@@ -1054,20 +1090,36 @@ export default function App() {
       roi: Number(roi.toFixed(2)),
     };
 
-    const { error } = await supabase.from("deals").insert(payload);
+    const { data: insertedDeal, error } = await supabase
+      .from("deals")
+      .insert(payload)
+      .select("id")
+      .single();
+
     if (error) {
       setSavedMsg(`Save failed: ${error.message}`);
+      pushToast(`Deal save failed: ${error.message}`, "error");
       return;
     }
 
-    await loadPipeline(user.id);
-    setSavedMsg("Saved to pipeline!");
+    await loadPipeline(user.id, { focusDealId: insertedDeal?.id || "" });
+    setFlipTab("pipeline");
+    setSavedMsg("Saved to pipeline! Opening Pipeline tab...");
+    pushToast("Deal saved to pipeline.", "success");
     setTimeout(() => setSavedMsg(""), 3000);
   }
 
   async function updateDealStage(deal, stage) {
     if (!user?.id) return;
+
     const updated = { ...deal, stage };
+    const prevPipeline = pipeline;
+    const prevActiveDeal = activeDeal;
+    const prevShowRealtor = showRealtor;
+
+    setPipeline((prev) => prev.map((item) => (item.id === deal.id ? { ...item, stage } : item)));
+    setActiveDeal((prev) => (prev?.id === deal.id ? updated : prev));
+    if (stage === "Selling") setShowRealtor(true);
 
     const { error } = await supabase
       .from("deals")
@@ -1075,12 +1127,78 @@ export default function App() {
       .eq("id", deal.id)
       .eq("user_id", user.id);
 
-    if (error) return;
+    if (error) {
+      setPipeline(prevPipeline);
+      setActiveDeal(prevActiveDeal);
+      setShowRealtor(prevShowRealtor);
+      pushToast(`Failed to update stage: ${error.message}`, "error");
+      return;
+    }
 
-    await loadPipeline(user.id);
+    await loadPipeline(user.id, { focusDealId: deal.id });
     setActiveDeal(updated);
     if (stage === "Selling") setShowRealtor(true);
   }
+
+  async function deleteDeal(dealId) {
+    if (!user?.id || !dealId) return;
+    if (typeof window !== "undefined" && !window.confirm("Delete this deal from your pipeline?")) return;
+
+    const prevPipeline = pipeline;
+    const prevActiveDeal = activeDeal;
+    const prevShowRealtor = showRealtor;
+
+    setPipeline((prev) => prev.filter((deal) => deal.id !== dealId));
+    if (activeDeal?.id === dealId) {
+      setActiveDeal(null);
+      setShowRealtor(false);
+    }
+
+    const { error } = await supabase
+      .from("deals")
+      .delete()
+      .eq("id", dealId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      setPipeline(prevPipeline);
+      setActiveDeal(prevActiveDeal);
+      setShowRealtor(prevShowRealtor);
+      pushToast(`Failed to delete deal: ${error.message}`, "error");
+      return;
+    }
+
+    await loadPipeline(user.id);
+    pushToast("Deal deleted.", "success");
+  }
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    const channel = supabase
+      .channel(`deals-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "deals",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadPipeline(user.id);
+        },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          pushToast("Realtime pipeline sync disconnected. Refresh page if changes stop appearing.", "error");
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, loadPipeline, pushToast]);
 
   async function lookupProperty() {
     if (!address.trim()) {
@@ -1132,7 +1250,7 @@ Fill in real numbers for this market.`,
       });
       setReno(updated);
       if (parsed.notes) setRenoNote(parsed.notes);
-    } catch (err) {
+    } catch {
       // no-op
     }
     setRenoLoad(false);
@@ -1213,6 +1331,8 @@ SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
     setUserType("");
     setScreen("landing");
     setPipeline([]);
+    setPipelineFocusDealId("");
+    setToast({ text: "", tone: "info" });
     setContractorTab("leads");
     setRealtorTab("referrals");
     setActiveDeal(null);
@@ -1317,11 +1437,15 @@ SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
     showRealtor,
     setShowRealtor,
     updateDealStage,
+    deleteDeal,
     wDeal,
     setWDeal,
     wLive,
     setWLive,
     pipeline,
+    pipelineFocusDealId,
+    clearPipelineFocusDeal,
+    toast,
     selectedState,
     setSelectedState,
     lawSection,

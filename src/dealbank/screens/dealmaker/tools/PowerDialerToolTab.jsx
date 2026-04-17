@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "../../../../lib/supabaseClient";
 import { DIALER_OUTCOMES, DIALER_QUEUE_SEED } from "./toolData";
 
 function fmtClock(totalSec) {
@@ -35,20 +36,22 @@ function parseCsvRows(text) {
 }
 
 export default function PowerDialerToolTab({ ctx }) {
-  const { G, card, btnG, btnO } = ctx;
+  const { G, card, btnG, btnO, user } = ctx;
 
   const [queue, setQueue] = useState(DIALER_QUEUE_SEED);
   const [activeIndex, setActiveIndex] = useState(0);
   const [callState, setCallState] = useState("idle");
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [sessionElapsedSec, setSessionElapsedSec] = useState(0);
+  const [sessionActive, setSessionActive] = useState(false);
   const [notes, setNotes] = useState("");
   const [csvName, setCsvName] = useState("");
-  const [sessionStartedAt, setSessionStartedAt] = useState(null);
   const [stats, setStats] = useState({ calls: 0, connects: 0, voicemails: 0, callbacks: 0, interested: 0 });
   const [callLog, setCallLog] = useState([]);
   const [toast, setToast] = useState("");
   const [waveSeed, setWaveSeed] = useState(0);
   const fileRef = useRef(null);
+  const callLogSeqRef = useRef(0);
 
   const currentLead = queue[activeIndex] || null;
 
@@ -61,11 +64,13 @@ export default function PowerDialerToolTab({ ctx }) {
     return bars;
   }, [elapsedSec, waveSeed]);
 
-  const sessionMins = useMemo(() => {
-    if (!sessionStartedAt) return "00:00";
-    const total = Math.floor((Date.now() - sessionStartedAt) / 1000);
-    return fmtClock(total);
-  }, [sessionStartedAt, elapsedSec]);
+  const sessionMins = useMemo(() => fmtClock(sessionElapsedSec), [sessionElapsedSec]);
+
+  useEffect(() => {
+    if (!sessionActive) return undefined;
+    const timer = setInterval(() => setSessionElapsedSec((prev) => prev + 1), 1000);
+    return () => clearInterval(timer);
+  }, [sessionActive]);
 
   useEffect(() => {
     if (callState !== "live") return undefined;
@@ -90,7 +95,7 @@ export default function PowerDialerToolTab({ ctx }) {
 
   const startCall = () => {
     if (!currentLead) return;
-    if (!sessionStartedAt) setSessionStartedAt(Date.now());
+    if (!sessionActive) setSessionActive(true);
     setCallState("ringing");
     setElapsedSec(0);
     setNotes("");
@@ -114,15 +119,30 @@ export default function PowerDialerToolTab({ ctx }) {
     setActiveIndex(0);
     setCallState("idle");
     setElapsedSec(0);
+    setSessionElapsedSec(0);
+    setSessionActive(false);
     setNotes("");
-    setSessionStartedAt(null);
     setStats({ calls: 0, connects: 0, voicemails: 0, callbacks: 0, interested: 0 });
     setCallLog([]);
+    callLogSeqRef.current = 0;
     setCsvName("");
     setToast("Session reset");
   };
 
-  const markOutcome = (outcomeId) => {
+  function mapOutcomeToDb(outcomeId) {
+    const map = {
+      Interested: "Deal Potential",
+      Voicemail: "Left Voicemail",
+      "Not Interested": "Not Interested",
+      "Call Back": "Callback Scheduled",
+      "Offer Sent": "Offer Sent",
+      "Wrong Number": "Wrong Number",
+    };
+
+    return map[outcomeId] || "No Answer";
+  }
+
+  const markOutcome = async (outcomeId) => {
     if (!currentLead) return;
 
     setStats((prev) => ({
@@ -134,7 +154,7 @@ export default function PowerDialerToolTab({ ctx }) {
     }));
 
     const newEntry = {
-      id: `${currentLead.id}-${Date.now()}`,
+      id: `${currentLead.id}-${callLogSeqRef.current}`,
       lead: currentLead.name,
       phone: currentLead.phone,
       outcome: outcomeId,
@@ -143,7 +163,26 @@ export default function PowerDialerToolTab({ ctx }) {
       at: new Date().toLocaleTimeString(),
     };
 
+    callLogSeqRef.current += 1;
+
     setCallLog((prev) => [newEntry, ...prev].slice(0, 8));
+
+    if (user?.id) {
+      const { error } = await supabase.from("call_logs").insert({
+        caller_id: user.id,
+        lead_name: currentLead.name,
+        phone: currentLead.phone,
+        address: currentLead.address,
+        outcome: mapOutcomeToDb(outcomeId),
+        notes: notes || null,
+        duration_sec: elapsedSec,
+        called_at: new Date().toISOString(),
+      });
+
+      if (error) {
+        setToast(`Call log save failed: ${error.message}`);
+      }
+    }
 
     if (activeIndex + 1 < queue.length) {
       setActiveIndex((prev) => prev + 1);

@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 export default function PipelineTab({ ctx }) {
   const {
     G,
@@ -11,6 +13,7 @@ export default function PipelineTab({ ctx }) {
     setShowRealtor,
     PIPELINE_STAGES,
     updateDealStage,
+    deleteDeal,
     showRealtor,
     MOCK_REALTORS,
     wLive,
@@ -19,9 +22,24 @@ export default function PipelineTab({ ctx }) {
     setWDeal,
     toNum,
     pipeline,
+    pipelineFocusDealId,
+    clearPipelineFocusDeal,
     setFlipTab,
     isMobile,
   } = ctx;
+
+  const dealCardRefs = useRef({});
+
+  useEffect(() => {
+    if (!pipelineFocusDealId) return;
+
+    const node = dealCardRefs.current[pipelineFocusDealId];
+    if (node) {
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    clearPipelineFocusDeal();
+  }, [pipelineFocusDealId, pipeline, clearPipelineFocusDeal]);
 
   const summary = pipeline.reduce(
     (acc, deal) => {
@@ -83,6 +101,22 @@ export default function PipelineTab({ ctx }) {
                 {stage}
               </div>
             ))}
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <button
+              onClick={() => deleteDeal(activeDeal.id)}
+              style={{
+                ...btnO,
+                padding: "6px 12px",
+                fontSize: 8,
+                color: G.red,
+                borderColor: `${G.red}66`,
+                background: `${G.red}12`,
+              }}
+            >
+              Delete Deal
+            </button>
           </div>
         </div>
 
@@ -286,7 +320,21 @@ export default function PipelineTab({ ctx }) {
             <div key={stage} style={{ marginBottom: 14 }}>
               <div style={{ ...lbl, color: G.green, marginBottom: 8 }}>{stage} ({stageDeals.length})</div>
               {stageDeals.map((deal) => (
-                <div key={deal.id} style={{ ...card, marginBottom: 7, borderColor: deal.stage === "Under Contract" ? `${G.gold}44` : G.border }}>
+                <div
+                  key={deal.id}
+                  ref={(node) => {
+                    if (node) {
+                      dealCardRefs.current[deal.id] = node;
+                    } else {
+                      delete dealCardRefs.current[deal.id];
+                    }
+                  }}
+                  style={{
+                    ...card,
+                    marginBottom: 7,
+                    borderColor: pipelineFocusDealId === deal.id ? `${G.green}77` : (deal.stage === "Under Contract" ? `${G.gold}44` : G.border),
+                  }}
+                >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }} onClick={() => setActiveDeal(deal)}>
                     <div>
                         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 2, flexWrap: "wrap" }}>

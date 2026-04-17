@@ -13,7 +13,7 @@ import ToolsTab from "./dealmaker/tools/ToolsTab";
 export default function DealMakerDashboardScreen({ ctx }) {
   const isMobile = useIsMobile(820);
 
-  const { G, flipTab, setFlipTab, user, onSignOut, btnO } = ctx;
+  const { G, flipTab, setFlipTab, user, onSignOut, btnO, toast } = ctx;
   const mergedCtx = { ...ctx, isMobile };
 
   const FTABS = [
@@ -42,6 +42,27 @@ export default function DealMakerDashboardScreen({ ctx }) {
         {flipTab === "laws" && <LawsTab ctx={mergedCtx} />}
         {flipTab === "marketplace" && <MarketplaceTab ctx={mergedCtx} />}
       </div>
+
+      {toast?.text && (
+        <div
+          style={{
+            position: "fixed",
+            right: 14,
+            bottom: 14,
+            zIndex: 60,
+            background: G.surface,
+            border: `1px solid ${toast.tone === "error" ? `${G.red}66` : `${G.green}55`}`,
+            borderRadius: 8,
+            padding: "8px 12px",
+            color: toast.tone === "error" ? G.red : G.green,
+            fontSize: 10,
+            maxWidth: 420,
+            lineHeight: 1.5,
+          }}
+        >
+          {toast.text}
+        </div>
+      )}
     </div>
   );
 }

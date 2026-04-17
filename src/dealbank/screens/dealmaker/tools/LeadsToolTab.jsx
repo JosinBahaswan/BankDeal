@@ -1,5 +1,45 @@
-import { useMemo, useState } from "react";
-import { LEAD_FILTERS, LEAD_LIST_TYPES, LEAD_SEED } from "./toolData";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../../../../lib/supabaseClient";
+import { LEAD_FILTERS, LEAD_LIST_TYPES } from "./toolData";
+
+const GENERATED_FIRST_NAMES = ["Maria", "Jason", "Helen", "Ramon", "Lydia", "Noah", "Ariana", "Carlos", "Nina", "Brandon"];
+const GENERATED_LAST_NAMES = ["Ortega", "Kim", "Fox", "Diaz", "Shaw", "Brooks", "Cole", "Rivera", "Tran", "Howard"];
+const GENERATED_STREET_NAMES = ["Maple St", "Birchwood Dr", "Elmwood Ct", "Poplar Ave", "Vista Canyon Rd", "Oak Grove Blvd"];
+
+function randomInt(max) {
+  return Math.floor(Math.random() * max);
+}
+
+function estimateListPull(minEquityRaw) {
+  const minEquity = Number(minEquityRaw || 0);
+  const equityBoost = Math.max(1, Math.floor(minEquity / 50000));
+  const randomBase = randomInt(120) + 60;
+  const estimatedCount = Math.max(15, Math.floor(randomBase / equityBoost));
+  const creditCost = Math.ceil(estimatedCount * 1.2);
+
+  return { estimatedCount, creditCost };
+}
+
+function buildGeneratedLead(buildForm) {
+  const firstName = GENERATED_FIRST_NAMES[randomInt(GENERATED_FIRST_NAMES.length)];
+  const lastName = GENERATED_LAST_NAMES[randomInt(GENERATED_LAST_NAMES.length)];
+  const street = GENERATED_STREET_NAMES[randomInt(GENERATED_STREET_NAMES.length)];
+  const houseNo = 100 + randomInt(9800);
+  const minEquity = Number(buildForm.minEquity || 50000);
+  const equity = minEquity + randomInt(80000);
+  const avm = equity + 180000 + randomInt(220000);
+
+  return {
+    name: `${firstName} ${lastName}`,
+    address: `${houseNo} ${street}, ${buildForm.city}`,
+    phone: `(9${randomInt(9)}${randomInt(10)}) 555-${String(randomInt(10000)).padStart(4, "0")}`,
+    equity,
+    avm,
+    status: "New",
+    listType: buildForm.listType,
+    tags: [buildForm.propertyType, buildForm.listType],
+  };
+}
 
 function statusBadge(status, G) {
   const map = {
@@ -21,13 +61,15 @@ function statusBadge(status, G) {
 }
 
 export default function LeadsToolTab({ ctx }) {
-  const { G, card, lbl, btnG, btnO, fmt } = ctx;
+  const { G, card, lbl, btnG, btnO, fmt, user } = ctx;
 
   const [credits, setCredits] = useState({ dataCredits: 2500, skipTracesUsed: 132, leadsPulled: 487 });
   const [buildForm, setBuildForm] = useState({ city: "Sacramento", propertyType: "Single Family", listType: "Absentee Owner", minEquity: "50000" });
   const [pullEstimate, setPullEstimate] = useState(null);
   const [filterType, setFilterType] = useState("All");
-  const [leadRows, setLeadRows] = useState(LEAD_SEED);
+  const [leadRows, setLeadRows] = useState([]);
+  const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsError, setLeadsError] = useState("");
   const [savedIds, setSavedIds] = useState([]);
   const [showCreditModal, setShowCreditModal] = useState(false);
   const [dialLead, setDialLead] = useState(null);
@@ -38,13 +80,118 @@ export default function LeadsToolTab({ ctx }) {
     return leadRows.filter((lead) => lead.listType === filterType);
   }, [leadRows, filterType]);
 
-  const onPullList = () => {
-    const equityBoost = Math.max(1, Math.floor(Number(buildForm.minEquity || 0) / 50000));
-    const randomBase = Math.floor(Math.random() * 120) + 60;
-    const estimatedCount = Math.max(15, Math.floor(randomBase / equityBoost));
-    const creditCost = Math.ceil(estimatedCount * 1.2);
+  function mapLeadRow(row) {
+    return {
+      id: row.id,
+      name: row.name || "Unknown Owner",
+      address: row.address || "Address not provided",
+      phone: row.phone || "Phone not provided",
+      equity: Number(row.equity || 0),
+      avm: Number(row.avm_value || 0),
+      status: row.status || "New",
+      listType: row.lead_type || "High Equity",
+      tags: Array.isArray(row.tags) ? row.tags : [],
+    };
+  }
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadLeads() {
+      if (!user?.id) {
+        if (!active) return;
+        setLeadRows([]);
+        setLeadsLoading(false);
+        setLeadsError("");
+        return;
+      }
+
+      setLeadsLoading(true);
+      setLeadsError("");
+
+      const { data, error } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("owner_id", user.id)
+        .order("added_at", { ascending: false });
+
+      if (!active) return;
+
+      if (error) {
+        setLeadsError(`Failed to load leads: ${error.message}`);
+        setLeadRows([]);
+        setLeadsLoading(false);
+        return;
+      }
+
+      const mapped = (data || []).map(mapLeadRow);
+      setLeadRows(mapped);
+      setCredits((prev) => ({ ...prev, leadsPulled: mapped.length }));
+      setLeadsLoading(false);
+    }
+
+    loadLeads();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  async function saveLead(lead) {
+    if (!user?.id) {
+      showToast("Login required before saving leads");
+      return null;
+    }
+
+    const payload = {
+      owner_id: user.id,
+      name: lead.name,
+      phone: lead.phone,
+      address: lead.address,
+      equity: Number(lead.equity || 0),
+      avm_value: Number(lead.avm || 0),
+      status: lead.status || "New",
+      lead_type: lead.listType || "High Equity",
+      tags: Array.isArray(lead.tags) ? lead.tags : [],
+      source: "lead_builder",
+      added_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from("leads")
+      .insert(payload)
+      .select("*")
+      .single();
+
+    if (error) {
+      setLeadsError(`Failed to save lead: ${error.message}`);
+      showToast("Failed to save lead");
+      return null;
+    }
+
+    const mapped = mapLeadRow(data);
+    setLeadRows((prev) => [mapped, ...prev]);
+    return mapped;
+  }
+
+  const onPullList = async () => {
+    const { estimatedCount, creditCost } = estimateListPull(buildForm.minEquity);
     setPullEstimate({ estimatedCount, creditCost });
-    setCredits((prev) => ({ ...prev, leadsPulled: prev.leadsPulled + estimatedCount }));
+    const generateCount = Math.min(4, Math.max(1, Math.floor(estimatedCount / 40)));
+
+    let created = 0;
+
+    for (let i = 0; i < generateCount; i += 1) {
+      const lead = buildGeneratedLead(buildForm);
+
+      const saved = await saveLead(lead);
+      if (saved) created += 1;
+    }
+
+    if (created > 0) {
+      setCredits((prev) => ({ ...prev, leadsPulled: prev.leadsPulled + created }));
+      showToast(`${created} leads saved to database`);
+    }
   };
 
   const toggleSave = (id) => {
@@ -82,6 +229,7 @@ export default function LeadsToolTab({ ctx }) {
     <div>
       <div style={{ fontFamily: G.serif, fontSize: 18, marginBottom: 4 }}>Lead Lists</div>
       <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Build targeted lists, manage credits, and action leads fast.</div>
+      {leadsError && <div style={{ fontSize: 10, color: G.red, marginBottom: 10 }}>{leadsError}</div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginBottom: 12 }}>
         <div style={{ ...card, textAlign: "center" }}><div style={{ ...lbl, marginBottom: 3 }}>Data Credits</div><div style={{ fontFamily: G.serif, fontSize: 18, color: G.green }}>{credits.dataCredits.toLocaleString()}</div></div>
@@ -132,6 +280,19 @@ export default function LeadsToolTab({ ctx }) {
       </div>
 
       <div style={{ display: "grid", gap: 8 }}>
+        {leadsLoading && (
+          <div style={{ ...card, textAlign: "center", fontSize: 10, color: G.muted }}>
+            Loading leads from database...
+          </div>
+        )}
+
+        {!leadsLoading && filteredLeads.length === 0 && (
+          <div style={{ ...card, textAlign: "center", padding: "16px 12px" }}>
+            <div style={{ fontFamily: G.serif, fontSize: 14, marginBottom: 5 }}>No leads yet</div>
+            <div style={{ fontSize: 10, color: G.muted }}>Pull a list to save leads into Supabase.</div>
+          </div>
+        )}
+
         {filteredLeads.map((lead) => (
           <div key={lead.id} style={{ ...card }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>

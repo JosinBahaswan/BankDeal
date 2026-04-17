@@ -132,23 +132,19 @@ export function buildContractName(template, formVals) {
 }
 
 export async function sha256Hex(input) {
-  try {
-    if (globalThis.crypto?.subtle) {
-      const bytes = new TextEncoder().encode(input);
-      const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-      return Array.from(new Uint8Array(digest))
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
-    }
-  } catch {
-    // no-op
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("Secure crypto engine is not available. Open DealBank over HTTPS to sign contracts.");
   }
 
-  let hash = 0;
-  for (let index = 0; index < input.length; index += 1) {
-    hash = ((hash << 5) - hash + input.charCodeAt(index)) | 0;
+  try {
+    const bytes = new TextEncoder().encode(input);
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  } catch {
+    throw new Error("Failed to compute SHA-256 document hash.");
   }
-  return `fallback-${Math.abs(hash)}`;
 }
 
 export function makeId(prefix) {
@@ -176,6 +172,7 @@ export function templateParties(template, userName) {
     partyId: "",
     role,
     signerName: index === 0 ? userName || role : "",
+    email: "",
     status: "Waiting",
     signedAt: "",
     method: "",

@@ -24,7 +24,25 @@ import {
 } from "./contracts/contractConfig";
 
 const CONTRACTS_BUCKET = String(import.meta.env.VITE_CONTRACTS_BUCKET || "contracts").trim();
-const EXECUTED_CONTRACT_WEBHOOK_URL = String(import.meta.env.VITE_EXECUTED_CONTRACT_WEBHOOK_URL || "").trim();
+const EXECUTED_CONTRACT_WEBHOOK_URL = String(import.meta.env.VITE_EXECUTED_CONTRACT_WEBHOOK_URL || "/api/notify-contract").trim();
+
+function isHttpUrl(value) {
+  return /^https?:\/\//i.test(String(value || ""));
+}
+
+async function resolveStorageUrl(pathOrUrl, expiresInSeconds = 60 * 60) {
+  if (!pathOrUrl) return "";
+  if (isHttpUrl(pathOrUrl)) return pathOrUrl;
+  if (!CONTRACTS_BUCKET) return "";
+
+  try {
+    const { data, error } = await supabase.storage.from(CONTRACTS_BUCKET).createSignedUrl(pathOrUrl, expiresInSeconds);
+    if (error) return "";
+    return data?.signedUrl || "";
+  } catch {
+    return "";
+  }
+}
 
 export default function ContractsTab({ ctx }) {
   const { G, card, lbl, btnG, btnO, fmt, user, isMobile } = ctx;
@@ -74,9 +92,7 @@ export default function ContractsTab({ ctx }) {
       const blob = await response.blob();
       const { error } = await supabase.storage.from(CONTRACTS_BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || "image/png" });
       if (error) return "";
-
-      const { data } = supabase.storage.from(CONTRACTS_BUCKET).getPublicUrl(path);
-      return data?.publicUrl || "";
+      return path;
     } catch {
       return "";
     }
@@ -90,18 +106,15 @@ export default function ContractsTab({ ctx }) {
       const { error } = await supabase.storage.from(CONTRACTS_BUCKET).upload(path, pdfBytes, { upsert: true, contentType: "application/pdf" });
       if (error) return "";
 
-      const { data } = supabase.storage.from(CONTRACTS_BUCKET).getPublicUrl(path);
-      const publicUrl = data?.publicUrl || "";
+      const { error: updateError } = await supabase
+        .from("contracts")
+        .update({ pdf_url: path })
+        .eq("id", contractId)
+        .eq("creator_id", user.id);
 
-      if (publicUrl) {
-        await supabase
-          .from("contracts")
-          .update({ pdf_url: publicUrl })
-          .eq("id", contractId)
-          .eq("creator_id", user.id);
-      }
+      if (updateError) return "";
 
-      return publicUrl;
+      return resolveStorageUrl(path, 60 * 60 * 24 * 7);
     } catch {
       return "";
     }
@@ -132,6 +145,18 @@ export default function ContractsTab({ ctx }) {
       });
       y -= lineGap;
     };
+
+    writeLine("DEALBANK", { font: titleFont, size: 24, gap: 30 });
+    writeLine("REAL ESTATE INVESTMENT PLATFORM", { font: bodyFont, size: 10, gap: 18 });
+    writeLine(`Document: ${contract.name}`, { font: titleFont, size: 14, gap: 18 });
+    writeLine(`Template: ${template.label}`, { font: bodyFont, size: 10 });
+    writeLine(`Status: ${contract.status}`, { font: bodyFont, size: 10 });
+    writeLine(`Generated: ${new Date().toLocaleString()}`, { font: bodyFont, size: 10 });
+    writeLine(`Document Hash: ${contract.docHash || "pending"}`, { font: bodyFont, size: 9, gap: 18 });
+    writeLine("This file includes immutable signature records from DealBank.", { font: bodyFont, size: 9, gap: 12 });
+
+    page = pdfDoc.addPage([612, 792]);
+    y = 760;
 
     writeLine("DealBank Contract", { font: titleFont, size: 16, gap: 20 });
     writeLine(`Contract: ${contract.name}`, { font: bodyFont, size: 11 });
@@ -169,9 +194,12 @@ export default function ContractsTab({ ctx }) {
       if (party.status === "Signed") {
         if (party.signatureImageUrl) {
           try {
-            const response = await fetch(party.signatureImageUrl);
+            const signatureUrl = await resolveStorageUrl(party.signatureImageUrl, 60 * 60 * 24);
+            const response = await fetch(signatureUrl || party.signatureImageUrl);
             const bytes = await response.arrayBuffer();
-            const image = party.signatureImageUrl.toLowerCase().includes(".jpg") || party.signatureImageUrl.toLowerCase().includes("jpeg")
+            const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+            const lowerSource = String(signatureUrl || party.signatureImageUrl).toLowerCase();
+            const image = contentType.includes("jpeg") || lowerSource.includes(".jpg") || lowerSource.includes("jpeg")
               ? await pdfDoc.embedJpg(bytes)
               : await pdfDoc.embedPng(bytes);
             page.drawImage(image, { x: 380, y: lineTop - 16, width: 150, height: 44 });
@@ -208,6 +236,7 @@ export default function ContractsTab({ ctx }) {
           parties: contract.parties.map((party) => ({
             role: party.role,
             signerName: party.signerName,
+            email: party.email || "",
             status: party.status,
             signedAt: party.signedAt,
           })),
@@ -256,7 +285,7 @@ export default function ContractsTab({ ctx }) {
         const [partyResult, formResult, signatureResult] = await Promise.all([
           supabase
             .from("contract_parties")
-            .select("id, contract_id, role, name, party_order")
+            .select("id, contract_id, role, name, email, party_order")
             .in("contract_id", contractIds)
             .order("party_order", { ascending: true }),
           supabase
@@ -265,7 +294,7 @@ export default function ContractsTab({ ctx }) {
             .in("contract_id", contractIds),
           supabase
             .from("contract_signatures")
-            .select("id, contract_id, party_id, party_role, signer_name, sig_method, signed_at, sig_image_url, doc_hash")
+            .select("id, contract_id, party_id, party_role, signer_name, signer_email, sig_method, signed_at, sig_image_url, doc_hash")
             .in("contract_id", contractIds)
             .order("signed_at", { ascending: false }),
         ]);
@@ -302,7 +331,7 @@ export default function ContractsTab({ ctx }) {
         return acc;
       }, {});
 
-      const parsedContracts = (contractRows || []).map((row) => {
+      const parsedContracts = await Promise.all((contractRows || []).map(async (row) => {
         const uiTemplateId = toUiTemplate(row.template);
         const template = TEMPLATE_CONFIG[uiTemplateId] || defaultTemplate;
 
@@ -322,6 +351,7 @@ export default function ContractsTab({ ctx }) {
           return {
             ...party,
             partyId: partyRow?.id || "",
+            email: partyRow?.email || "",
             signerName: partyRow?.name || partyNameFromForm(uiTemplateId, party.role, loadedFormVals, index === 0 ? user?.name || party.role : ""),
           };
         });
@@ -337,6 +367,7 @@ export default function ContractsTab({ ctx }) {
             matchedParty.signedAt = signedAtLabel;
             matchedParty.method = signature.sig_method || "";
             matchedParty.signerName = signature.signer_name || matchedParty.signerName;
+            matchedParty.email = signature.signer_email || matchedParty.email;
             matchedParty.signatureImageUrl = signature.sig_image_url || "";
             matchedParty.docHash = signature.doc_hash || "";
           }
@@ -345,6 +376,7 @@ export default function ContractsTab({ ctx }) {
             id: signature.id || makeId("audit"),
             role,
             signerName: signature.signer_name || "-",
+            signerEmail: signature.signer_email || "",
             method: signature.sig_method || "-",
             signedAt: signedAtLabel,
             signatureImageUrl: signature.sig_image_url || "",
@@ -357,6 +389,8 @@ export default function ContractsTab({ ctx }) {
           : 0;
         const feePctNum = Number(row.fee_pct || 1.5);
         const statusLabel = toUiStatus(row.status);
+        const pdfPath = row.pdf_url || "";
+        const resolvedPdfUrl = await resolveStorageUrl(pdfPath);
 
         return {
           id: row.id,
@@ -366,13 +400,14 @@ export default function ContractsTab({ ctx }) {
           created: row.created_at ? new Date(row.created_at).toLocaleDateString() : nowLabel(),
           feeAmount: Math.round(assignmentFee * (feePctNum / 100)),
           feePct: `${feePctNum}%`,
-          pdfUrl: row.pdf_url || "",
+          pdfPath,
+          pdfUrl: resolvedPdfUrl || (isHttpUrl(pdfPath) ? pdfPath : ""),
           docHash: auditTrail[0]?.docHash || "",
           formVals: loadedFormVals,
           parties: mappedParties,
           auditTrail,
         };
-      });
+      }));
 
       setContracts(parsedContracts);
       setActiveId((prev) => {
@@ -487,7 +522,7 @@ export default function ContractsTab({ ctx }) {
         contract_id: contractId,
         role,
         name: partyNameFromForm(templateId, role, formVals, index === 0 ? user?.name || role : ""),
-        email: "",
+        email: index === 0 ? user?.email || "" : "",
         phone: "",
         party_order: index + 1,
       }));
@@ -618,10 +653,18 @@ export default function ContractsTab({ ctx }) {
     setDeliveryNote("");
 
     try {
+      const fallbackEmailLocal = appliedName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ".")
+        .replace(/^\.+|\.+$/g, "") || "signer";
+      const signerEmail = user?.email || `${fallbackEmailLocal}@dealbank.local`;
+
       const docHash = await sha256Hex(JSON.stringify({
         contractId: activeContract.id,
         templateId: activeContract.templateId,
         contractBody: contractBody(template, activeContract.formVals),
+        signerEmail,
+        timestamp: signedAtIso,
       }));
 
       let signatureImageUrl = "";
@@ -631,18 +674,13 @@ export default function ContractsTab({ ctx }) {
         signatureImageUrl = await uploadDataUrlToStorage(`signatures/${activeContract.id}/${roleSlug}-${Date.now()}.png`, dataUrl);
       }
 
-      const fallbackEmailLocal = appliedName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, ".")
-        .replace(/^\.+|\.+$/g, "") || "signer";
-
       const { error: signatureError } = await supabase
         .from("contract_signatures")
         .insert({
           contract_id: activeContract.id,
           party_id: nextSigner.partyId || null,
           signer_name: appliedName,
-          signer_email: user?.email || `${fallbackEmailLocal}@dealbank.local`,
+          signer_email: signerEmail,
           signer_ip: "127.0.0.1",
           signed_at: signedAtIso,
           sig_method: method,
