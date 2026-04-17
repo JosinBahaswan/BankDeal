@@ -85,26 +85,46 @@ export default function ContractsTab({ ctx }) {
   const canApplySignature = sigMode === "type" ? typedName.trim().length > 2 : drawnReady;
 
   async function uploadDataUrlToStorage(path, dataUrl) {
-    if (!CONTRACTS_BUCKET || !dataUrl) return "";
+    if (!CONTRACTS_BUCKET) {
+      throw new Error("VITE_CONTRACTS_BUCKET is not configured for signature uploads.");
+    }
+
+    if (!dataUrl) {
+      throw new Error("Missing signature image data.");
+    }
 
     try {
       const response = await fetch(dataUrl);
       const blob = await response.blob();
       const { error } = await supabase.storage.from(CONTRACTS_BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || "image/png" });
-      if (error) return "";
+      if (error) {
+        throw new Error(error.message || "Supabase signature upload failed");
+      }
       return path;
-    } catch {
-      return "";
+    } catch (error) {
+      throw new Error(error?.message || "Signature upload failed");
     }
   }
 
   async function uploadPdfToStorage(contractId, pdfBytes) {
-    if (!CONTRACTS_BUCKET || !pdfBytes?.length || !user?.id) return "";
+    if (!CONTRACTS_BUCKET) {
+      throw new Error("VITE_CONTRACTS_BUCKET is not configured for contract PDF uploads.");
+    }
+
+    if (!pdfBytes?.length) {
+      throw new Error("No PDF bytes available for upload.");
+    }
+
+    if (!user?.id) {
+      throw new Error("You must be logged in to upload contract PDFs.");
+    }
 
     try {
       const path = `contracts/${contractId}/executed-${Date.now()}.pdf`;
       const { error } = await supabase.storage.from(CONTRACTS_BUCKET).upload(path, pdfBytes, { upsert: true, contentType: "application/pdf" });
-      if (error) return "";
+      if (error) {
+        throw new Error(error.message || "Supabase PDF upload failed");
+      }
 
       const { error: updateError } = await supabase
         .from("contracts")
@@ -112,11 +132,18 @@ export default function ContractsTab({ ctx }) {
         .eq("id", contractId)
         .eq("creator_id", user.id);
 
-      if (updateError) return "";
+      if (updateError) {
+        throw new Error(updateError.message || "Failed to persist uploaded PDF path");
+      }
 
-      return resolveStorageUrl(path, 60 * 60 * 24 * 7);
-    } catch {
-      return "";
+      const signedUrl = await resolveStorageUrl(path, 60 * 60 * 24 * 7);
+      if (!signedUrl) {
+        throw new Error("PDF uploaded but failed to create signed URL");
+      }
+
+      return signedUrl;
+    } catch (error) {
+      throw new Error(error?.message || "PDF upload failed");
     }
   }
 
@@ -244,12 +271,17 @@ export default function ContractsTab({ ctx }) {
       });
 
       if (!response.ok) {
-        return { delivered: false, reason: `delivery_http_${response.status}` };
+        const responseText = await response.text();
+        const details = String(responseText || "").trim();
+        return {
+          delivered: false,
+          reason: details ? `delivery_http_${response.status}: ${details.slice(0, 160)}` : `delivery_http_${response.status}`,
+        };
       }
 
       return { delivered: true };
-    } catch {
-      return { delivered: false, reason: "delivery_request_failed" };
+    } catch (error) {
+      return { delivered: false, reason: error?.message || "delivery_request_failed" };
     }
   }
 
@@ -722,8 +754,8 @@ export default function ContractsTab({ ctx }) {
           } else {
             setDeliveryNote(`Contract fully executed. Delivery pending (${deliveryResult.reason}).`);
           }
-        } catch {
-          setDeliveryNote("Contract fully executed. Signature recorded, but PDF generation failed.");
+        } catch (error) {
+          setDeliveryNote(`Contract fully executed. Signature recorded, but PDF/email failed (${error?.message || "unknown error"}).`);
         }
       }
 
@@ -741,9 +773,13 @@ export default function ContractsTab({ ctx }) {
       const pdfBytes = await buildContractPdfBytes(contract);
 
       if (contract.status === "Fully Executed") {
-        const uploadedPdfUrl = await uploadPdfToStorage(contract.id, pdfBytes);
-        if (uploadedPdfUrl) {
-          setContracts((prev) => prev.map((item) => (item.id === contract.id ? { ...item, pdfUrl: uploadedPdfUrl } : item)));
+        try {
+          const uploadedPdfUrl = await uploadPdfToStorage(contract.id, pdfBytes);
+          if (uploadedPdfUrl) {
+            setContracts((prev) => prev.map((item) => (item.id === contract.id ? { ...item, pdfUrl: uploadedPdfUrl } : item)));
+          }
+        } catch (error) {
+          setContractsError(error?.message || "Failed to upload executed PDF to storage.");
         }
       }
 

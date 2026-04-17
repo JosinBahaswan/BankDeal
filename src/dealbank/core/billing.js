@@ -22,33 +22,32 @@ function parseJsonSafe(raw) {
   }
 }
 
-function envPriceId(envKey, fallback) {
-  const mapped = asText(import.meta.env[envKey]);
-  return mapped || fallback;
+function envPriceId(envKey) {
+  return asText(import.meta.env[envKey]);
 }
 
 export function getContractorSubscriptionPriceId(plan) {
   const normalizedPlan = asText(plan).toLowerCase();
   if (normalizedPlan === "pro") {
-    return envPriceId("VITE_STRIPE_PRICE_CONTRACTOR_PRO_MONTHLY", "price_contractor_pro_monthly");
+    return envPriceId("VITE_STRIPE_PRICE_CONTRACTOR_PRO_MONTHLY");
   }
 
-  return envPriceId("VITE_STRIPE_PRICE_CONTRACTOR_BASIC_MONTHLY", "price_contractor_basic_monthly");
+  return envPriceId("VITE_STRIPE_PRICE_CONTRACTOR_BASIC_MONTHLY");
 }
 
 export function getCreditPackPriceId(packName) {
   const normalized = asText(packName).toLowerCase();
 
   if (normalized === "starter") {
-    return envPriceId("VITE_STRIPE_PRICE_CREDITS_STARTER", "price_credits_starter");
+    return envPriceId("VITE_STRIPE_PRICE_CREDITS_STARTER");
   }
 
   if (normalized === "growth") {
-    return envPriceId("VITE_STRIPE_PRICE_CREDITS_GROWTH", "price_credits_growth");
+    return envPriceId("VITE_STRIPE_PRICE_CREDITS_GROWTH");
   }
 
   if (normalized === "pro") {
-    return envPriceId("VITE_STRIPE_PRICE_CREDITS_PRO", "price_credits_pro");
+    return envPriceId("VITE_STRIPE_PRICE_CREDITS_PRO");
   }
 
   return "";

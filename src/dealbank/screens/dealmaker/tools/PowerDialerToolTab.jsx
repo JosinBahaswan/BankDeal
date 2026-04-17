@@ -37,6 +37,7 @@ function parseCsvRows(text) {
 
 export default function PowerDialerToolTab({ ctx }) {
   const { G, card, btnG, btnO, user } = ctx;
+  const dialerDemoMode = true;
 
   const [queue, setQueue] = useState(DIALER_QUEUE_SEED);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -222,6 +223,17 @@ export default function PowerDialerToolTab({ ctx }) {
       <div style={{ fontFamily: G.serif, fontSize: 18, marginBottom: 4 }}>Power Dialer</div>
       <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Run focused call waves, log outcomes, and keep momentum high.</div>
 
+      {dialerDemoMode && (
+        <div style={{ ...card, borderColor: `${G.gold}66`, background: `${G.gold}12`, marginBottom: 12, padding: "10px 12px" }}>
+          <div style={{ display: "inline-block", fontSize: 8, letterSpacing: 1.5, color: G.gold, border: `1px solid ${G.gold}88`, borderRadius: 999, padding: "2px 8px", marginBottom: 6 }}>
+            DEMO MODE
+          </div>
+          <div style={{ fontSize: 10, color: G.text }}>
+            Calls are simulated in-app (no live Twilio voice session yet). Use this for workflow rehearsal and outcome tracking only.
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8, marginBottom: 12 }}>
         {[{ l: "Session Time", v: sessionMins, c: G.green }, { l: "Calls", v: stats.calls, c: G.text }, { l: "Connects", v: stats.connects, c: G.gold }, { l: "Callbacks", v: stats.callbacks, c: "#60a5fa" }, { l: "Interested", v: stats.interested, c: "#22c55e" }, { l: "Queue Left", v: Math.max(0, queue.length - activeIndex), c: G.text }].map((item) => (
           <div key={item.l} style={{ ...card, textAlign: "center", padding: 10 }}>
@@ -255,7 +267,7 @@ export default function PowerDialerToolTab({ ctx }) {
           </div>
 
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-            <button onClick={startCall} style={{ ...btnG, fontSize: 9, padding: "7px 11px" }} disabled={!currentLead || callState !== "idle"}>Start Call</button>
+            <button onClick={startCall} style={{ ...btnG, fontSize: 9, padding: "7px 11px" }} disabled={!currentLead || callState !== "idle"}>Start Simulated Call</button>
             <button onClick={skipLead} style={{ ...btnO, fontSize: 9, padding: "7px 11px" }} disabled={!currentLead}>Skip Lead</button>
             <button onClick={resetSession} style={{ ...btnO, fontSize: 9, padding: "7px 11px" }}>Reset Queue</button>
             <button onClick={() => fileRef.current?.click()} style={{ ...btnO, fontSize: 9, padding: "7px 11px" }}>Upload CSV Queue</button>
