@@ -54,11 +54,21 @@ export function resolveStripePriceCatalog() {
   const catalog = {};
 
   Object.values(PRICE_SPECS).forEach((spec) => {
-    const mappedPriceId = text(process.env[spec.envKey]) || spec.fallbackPriceId;
-    catalog[mappedPriceId] = {
+    const configuredPriceId = text(process.env[spec.envKey]);
+    const activePriceId = configuredPriceId || spec.fallbackPriceId;
+
+    catalog[activePriceId] = {
       ...spec,
-      priceId: mappedPriceId,
+      priceId: activePriceId,
     };
+
+    // Keep legacy placeholder IDs resolvable so stale clients can still checkout.
+    if (spec.fallbackPriceId && spec.fallbackPriceId !== activePriceId) {
+      catalog[spec.fallbackPriceId] = {
+        ...spec,
+        priceId: activePriceId,
+      };
+    }
   });
 
   return catalog;

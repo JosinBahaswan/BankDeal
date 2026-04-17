@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askClaude, calcOffer, extractJSON, fmt, toNum } from "./dealbank/core/helpers";
 import { G, card, lbl, smIn, btnG, btnO } from "./dealbank/core/theme";
-import { beginCheckout, getContractorSubscriptionPriceId } from "./dealbank/core/billing";
+import { beginCheckout, confirmCheckoutSession, getContractorSubscriptionPriceId } from "./dealbank/core/billing";
 import {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
@@ -340,6 +340,7 @@ export default function App() {
   const [realtorOnboarding, setRealtorOnboarding] = useState(() => createRealtorOnboardingState());
 
   const offerRef = useRef(null);
+  const confirmedCheckoutSessionsRef = useRef(new Set());
 
   const pushToast = useCallback((text, tone = "info") => {
     if (!text) return;
@@ -589,6 +590,23 @@ export default function App() {
         : null;
       const checkoutKind = checkoutParams?.get("kind") || "";
       const checkoutStatus = checkoutParams?.get("checkout") || "";
+      const checkoutSessionId = checkoutParams?.get("session_id") || "";
+
+      if (checkoutKind === "subscription" && checkoutStatus === "success" && checkoutSessionId) {
+        const alreadyConfirmed = confirmedCheckoutSessionsRef.current.has(checkoutSessionId);
+        if (!alreadyConfirmed) {
+          confirmedCheckoutSessionsRef.current.add(checkoutSessionId);
+          try {
+            await confirmCheckoutSession({
+              sessionId: checkoutSessionId,
+              userId: user.id,
+            });
+          } catch (error) {
+            confirmedCheckoutSessionsRef.current.delete(checkoutSessionId);
+            pushToast(error?.message || "Subscription payment received. Waiting for activation sync...", "info");
+          }
+        }
+      }
 
       const { data: contractorProfile, error: profileError } = await supabase
         .from("contractor_profiles")
@@ -697,7 +715,7 @@ export default function App() {
       active = false;
       if (billingRefreshTimer) clearTimeout(billingRefreshTimer);
     };
-  }, [user?.id, user?.type, authForm.trade, contractorBillingRefreshTick]);
+  }, [user?.id, user?.type, authForm.trade, contractorBillingRefreshTick, pushToast]);
 
   async function completeContractorOnboarding() {
     if (!user?.id) return;

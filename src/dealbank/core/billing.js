@@ -1,10 +1,7 @@
-import { loadStripe } from "@stripe/stripe-js";
 import { supabase } from "../../lib/supabaseClient";
 
 const CHECKOUT_ENDPOINT = String(import.meta.env.VITE_STRIPE_CHECKOUT_ENDPOINT || "/api/create-checkout").trim();
-const PUBLISHABLE_KEY = String(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "").trim();
-
-let stripePromise;
+const CONFIRM_ENDPOINT = String(import.meta.env.VITE_STRIPE_CONFIRM_ENDPOINT || "/api/confirm-checkout").trim();
 
 function asText(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -23,14 +20,6 @@ function parseJsonSafe(raw) {
   } catch {
     return null;
   }
-}
-
-function stripeClientPromise() {
-  if (!PUBLISHABLE_KEY) return null;
-  if (!stripePromise) {
-    stripePromise = loadStripe(PUBLISHABLE_KEY);
-  }
-  return stripePromise;
 }
 
 function envPriceId(envKey, fallback) {
@@ -106,17 +95,46 @@ export async function beginCheckout({ priceId, userId, email, mode, source = "we
     throw new Error(payload?.error || `Checkout request failed (${response.status})`);
   }
 
-  const stripe = await stripeClientPromise();
-  if (stripe && payload?.id) {
-    const { error } = await stripe.redirectToCheckout({ sessionId: payload.id });
-    if (error) throw new Error(error.message || "Stripe redirect failed");
-    return;
-  }
-
   if (payload?.url && typeof window !== "undefined") {
     window.location.assign(payload.url);
     return;
   }
 
-  throw new Error("Checkout session did not return redirect information");
+  throw new Error("Checkout session did not return Stripe checkout URL");
+}
+
+export async function confirmCheckoutSession({ sessionId, userId }) {
+  const normalizedSessionId = asText(sessionId);
+  const normalizedUserId = asText(userId);
+
+  if (!normalizedSessionId || !normalizedUserId) {
+    throw new Error("Missing checkout confirmation payload values");
+  }
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = asText(sessionData?.session?.access_token);
+  if (!accessToken) {
+    throw new Error("Session expired. Please sign in again before checkout confirmation.");
+  }
+
+  const response = await fetch(CONFIRM_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      sessionId: normalizedSessionId,
+      userId: normalizedUserId,
+    }),
+  });
+
+  const payloadText = await response.text();
+  const payload = parseJsonSafe(payloadText) || {};
+
+  if (!response.ok) {
+    throw new Error(payload?.error || `Checkout confirmation failed (${response.status})`);
+  }
+
+  return payload;
 }

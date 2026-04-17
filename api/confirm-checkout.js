@@ -1,10 +1,28 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import {
-  asText,
-  mapStripeSubscriptionStatus,
-  resolveStripePriceConfig,
-} from "./stripeCatalog.js";
+import { asText, mapStripeSubscriptionStatus, resolveStripePriceConfig } from "./stripeCatalog.js";
+
+function setCors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
+function jsonBody(req) {
+  if (typeof req.body === "string") {
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return null;
+    }
+  }
+
+  if (req.body && typeof req.body === "object") {
+    return req.body;
+  }
+
+  return null;
+}
 
 function toIsoFromUnix(unixSeconds) {
   const value = Number(unixSeconds);
@@ -16,19 +34,6 @@ function toMoneyFromCents(amountCents, fallback = 0) {
   const cents = Number(amountCents);
   if (!Number.isFinite(cents)) return Number(fallback) || 0;
   return Number((cents / 100).toFixed(2));
-}
-
-async function readRawBody(req) {
-  if (Buffer.isBuffer(req.body)) return req.body;
-  if (typeof req.body === "string") return Buffer.from(req.body, "utf8");
-  if (req.body && typeof req.body === "object") return Buffer.from(JSON.stringify(req.body), "utf8");
-
-  const chunks = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-
-  return Buffer.concat(chunks);
 }
 
 function createSupabaseAdminClient() {
@@ -47,17 +52,28 @@ function createSupabaseAdminClient() {
   });
 }
 
-function subscriptionPayload({ userId, session, subscription, priceConfig }) {
-  return {
-    user_id: userId,
-    plan: asText(priceConfig?.plan, "basic"),
-    price_monthly: Number(priceConfig?.priceMonthly || 0),
-    stripe_sub_id: asText(session.subscription),
-    status: mapStripeSubscriptionStatus(subscription?.status || "active"),
-    started_at: toIsoFromUnix(subscription?.start_date) || new Date().toISOString(),
-    next_billing: toIsoFromUnix(subscription?.current_period_end),
-    canceled_at: toIsoFromUnix(subscription?.canceled_at),
-  };
+async function verifyRequestIdentity(req, expectedUserId, supabaseAdmin) {
+  const authHeader = asText(req.headers?.authorization);
+  if (!authHeader.toLowerCase().startsWith("bearer ")) {
+    throw new Error("Missing bearer authorization token");
+  }
+
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    throw new Error("Missing bearer authorization token");
+  }
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data?.user) {
+    throw new Error(error?.message || "Invalid Supabase auth token");
+  }
+
+  const authUserId = asText(data.user.id);
+  if (authUserId !== expectedUserId) {
+    throw new Error("Authenticated user does not match checkout userId");
+  }
+
+  return authUserId;
 }
 
 async function upsertSubscriptionByStripeId(supabase, payload) {
@@ -135,14 +151,7 @@ async function inferPriceConfig(stripe, session) {
   return resolveStripePriceConfig(firstPriceId);
 }
 
-async function handleCheckoutCompleted({ stripe, supabase, session }) {
-  const metadata = session?.metadata || {};
-  const userId = asText(metadata.userId || session?.client_reference_id);
-
-  if (!userId) {
-    throw new Error("checkout.session.completed missing userId metadata");
-  }
-
+async function persistCheckoutSession({ stripe, supabase, session, userId }) {
   const mode = asText(session?.mode).toLowerCase();
   const priceConfig = await inferPriceConfig(stripe, session);
 
@@ -157,19 +166,26 @@ async function handleCheckoutCompleted({ stripe, supabase, session }) {
     }
 
     const stripeSubscription = await stripe.subscriptions.retrieve(stripeSubId);
-    const payload = subscriptionPayload({
-      userId,
-      session,
-      subscription: stripeSubscription,
-      priceConfig,
-    });
+    const payload = {
+      user_id: userId,
+      plan: asText(priceConfig?.plan, "basic"),
+      price_monthly: Number(priceConfig?.priceMonthly || 0),
+      stripe_sub_id: stripeSubId,
+      status: mapStripeSubscriptionStatus(stripeSubscription?.status || "active"),
+      started_at: toIsoFromUnix(stripeSubscription?.start_date) || new Date().toISOString(),
+      next_billing: toIsoFromUnix(stripeSubscription?.current_period_end),
+      canceled_at: toIsoFromUnix(stripeSubscription?.canceled_at),
+    };
 
     await upsertSubscriptionByStripeId(supabase, payload);
-    return;
+    return {
+      mode,
+      status: payload.status,
+    };
   }
 
   if (mode === "payment") {
-    const credits = Number(priceConfig.credits || metadata.credits || 0);
+    const credits = Number(priceConfig.credits || session?.metadata?.credits || 0);
     const payload = {
       user_id: userId,
       pack_tier: asText(priceConfig.packTier, "starter"),
@@ -181,83 +197,92 @@ async function handleCheckoutCompleted({ stripe, supabase, session }) {
     };
 
     await insertCreditPurchaseIfMissing(supabase, payload);
+    return {
+      mode,
+      status: "recorded",
+    };
   }
-}
 
-async function handleSubscriptionUpdate({ supabase, subscription }) {
-  const stripeSubId = asText(subscription?.id);
-  if (!stripeSubId) return;
-
-  const payload = {
-    status: mapStripeSubscriptionStatus(subscription?.status || "past_due"),
-    next_billing: toIsoFromUnix(subscription?.current_period_end),
-    canceled_at: toIsoFromUnix(subscription?.canceled_at),
-  };
-
-  const { error } = await supabase
-    .from("subscriptions")
-    .update(payload)
-    .eq("stripe_sub_id", stripeSubId);
-
-  if (error) throw error;
+  throw new Error("Unsupported checkout mode");
 }
 
 export default async function handler(req, res) {
+  setCors(res);
+
+  if (req.method === "OPTIONS") return res.status(204).end();
+
   if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
+    res.setHeader("Allow", "POST, OPTIONS");
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   const stripeSecret = asText(process.env.STRIPE_SECRET_KEY);
-  const webhookSecret = asText(process.env.STRIPE_WEBHOOK_SECRET);
-
-  if (!stripeSecret || !webhookSecret) {
-    return res.status(500).json({ error: "Server is missing STRIPE_SECRET_KEY and/or STRIPE_WEBHOOK_SECRET" });
+  if (!stripeSecret) {
+    return res.status(500).json({ error: "Server is missing STRIPE_SECRET_KEY" });
   }
 
-  const signatureHeader = asText(req.headers?.["stripe-signature"]);
-  if (!signatureHeader) {
-    return res.status(400).json({ error: "Missing stripe-signature header" });
+  const body = jsonBody(req);
+  if (!body) return res.status(400).json({ error: "Invalid JSON body" });
+
+  const sessionId = asText(body.sessionId || body.session_id);
+  const userId = asText(body.userId);
+
+  if (!sessionId || !userId) {
+    return res.status(400).json({ error: "sessionId and userId are required" });
   }
 
-  const stripe = new Stripe(stripeSecret);
-
-  let event;
+  let supabaseAdmin;
   try {
-    const rawBody = await readRawBody(req);
-    event = stripe.webhooks.constructEvent(rawBody, signatureHeader, webhookSecret);
-  } catch (error) {
-    return res.status(400).json({ error: error?.message || "Invalid webhook signature" });
-  }
-
-  let supabase;
-  try {
-    supabase = createSupabaseAdminClient();
+    supabaseAdmin = createSupabaseAdminClient();
   } catch (error) {
     return res.status(500).json({ error: error?.message || "Unable to initialize Supabase admin client" });
   }
 
+  let authUserId;
   try {
-    if (event.type === "checkout.session.completed") {
-      await handleCheckoutCompleted({
-        stripe,
-        supabase,
-        session: event.data.object,
-      });
-    }
+    authUserId = await verifyRequestIdentity(req, userId, supabaseAdmin);
+  } catch (error) {
+    return res.status(401).json({ error: error?.message || "Unauthorized checkout request" });
+  }
 
-    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
-      await handleSubscriptionUpdate({
-        supabase,
-        subscription: event.data.object,
-      });
-    }
+  const stripe = new Stripe(stripeSecret);
 
-    return res.status(200).json({ received: true });
+  let session;
+  try {
+    session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["line_items.data.price"],
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "Invalid Stripe checkout session" });
+  }
+
+  const sessionUserId = asText(session?.metadata?.userId || session?.client_reference_id);
+  if (sessionUserId && sessionUserId !== authUserId) {
+    return res.status(403).json({ error: "Checkout session does not belong to authenticated user" });
+  }
+
+  const checkoutState = asText(session?.status).toLowerCase();
+  if (checkoutState && checkoutState !== "complete") {
+    return res.status(409).json({ error: `Checkout session is not completed yet (${checkoutState})` });
+  }
+
+  try {
+    const persisted = await persistCheckoutSession({
+      stripe,
+      supabase: supabaseAdmin,
+      session,
+      userId: sessionUserId || authUserId,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      mode: persisted.mode,
+      status: persisted.status,
+    });
   } catch (error) {
     return res.status(500).json({
-      received: false,
-      error: error?.message || "Webhook processing failed",
+      ok: false,
+      error: error?.message || "Failed to persist checkout session",
     });
   }
 }

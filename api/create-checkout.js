@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { asEmail, asText, isSupportedCheckoutMode, resolveStripePriceConfig } from "./stripeCatalog";
+import { asEmail, asText, isSupportedCheckoutMode, resolveStripePriceConfig } from "./stripeCatalog.js";
 
 const APP_USER_TYPES = new Set(["dealmaker", "contractor", "realtor", "admin"]);
 
@@ -21,14 +21,34 @@ function jsonBody(req) {
 }
 
 function appBaseUrl(req) {
-  const configured = asText(process.env.APP_URL);
-  if (configured) return configured.replace(/\/$/, "");
+  const forwardedProto = asText(req.headers?.["x-forwarded-proto"], "https");
+  const forwardedHost = asText(req.headers?.["x-forwarded-host"] || req.headers?.host);
+  const forwardedBase = forwardedHost ? `${forwardedProto}://${forwardedHost}`.replace(/\/$/, "") : "";
+
+  const configured = asText(process.env.APP_URL).replace(/\/$/, "");
+  if (configured) {
+    let configuredHost = "";
+    try {
+      configuredHost = new URL(configured).hostname.toLowerCase();
+    } catch {
+      configuredHost = "";
+    }
+
+    const forwardedHostName = forwardedHost.split(":")[0].toLowerCase();
+    const configuredIsLocal = ["localhost", "127.0.0.1", "::1"].includes(configuredHost);
+    const forwardedIsLocal = ["localhost", "127.0.0.1", "::1"].includes(forwardedHostName);
+
+    // Prevent production redirects to localhost when APP_URL is left in local-dev mode.
+    if (configuredIsLocal && forwardedHost && !forwardedIsLocal) {
+      return forwardedBase || configured;
+    }
+
+    return configured;
+  }
 
   const vercelHost = asText(process.env.VERCEL_URL);
   if (vercelHost) return `https://${vercelHost}`.replace(/\/$/, "");
 
-  const forwardedProto = asText(req.headers?.["x-forwarded-proto"], "https");
-  const forwardedHost = asText(req.headers?.["x-forwarded-host"] || req.headers?.host);
   if (forwardedHost) return `${forwardedProto}://${forwardedHost}`.replace(/\/$/, "");
 
   return "http://localhost:5173";
