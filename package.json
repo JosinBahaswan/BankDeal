@@ -10,18 +10,31 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "seed:auth-users": "node scripts/create-auth-seed-users.mjs",
-    "reconcile:users-auth": "node scripts/reconcile-public-users-with-auth.mjs"
+    "reconcile:users-auth": "node scripts/reconcile-public-users-with-auth.mjs",
+    "storage:setup": "node scripts/setup-storage-buckets.mjs",
+    "mobile:copy": "npx cap copy",
+    "mobile:sync": "npx cap sync",
+    "mobile:open:android": "npx cap open android",
+    "mobile:open:ios": "npx cap open ios"
   },
   "dependencies": {
+    "@capacitor/android": "^7.4.2",
+    "@capacitor/camera": "^7.0.2",
+    "@capacitor/core": "^7.4.2",
+    "@capacitor/ios": "^7.4.2",
+    "@capacitor/push-notifications": "^7.0.2",
     "@sendgrid/mail": "^8.1.5",
     "@stripe/stripe-js": "^9.2.0",
     "@supabase/supabase-js": "^2.103.0",
+    "@twilio/voice-sdk": "^2.13.0",
     "pdf-lib": "^1.17.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "stripe": "^22.0.2"
+    "stripe": "^22.0.2",
+    "twilio": "^5.10.4"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.4.2",
     "@eslint/js": "^9.39.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

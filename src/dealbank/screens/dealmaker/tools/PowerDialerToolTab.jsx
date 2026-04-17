@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../../lib/supabaseClient";
 import { DIALER_OUTCOMES, DIALER_QUEUE_SEED } from "./toolData";
+
+const TWILIO_TOKEN_ENDPOINT = String(import.meta.env.VITE_TWILIO_ACCESS_TOKEN_ENDPOINT || "/api/twilio-access-token").trim();
 
 function fmtClock(totalSec) {
   const sec = Math.max(0, totalSec || 0);
@@ -35,9 +37,22 @@ function parseCsvRows(text) {
     .filter(Boolean);
 }
 
+function normalizeDialTarget(rawPhone) {
+  const digits = String(rawPhone || "").replace(/[^0-9+]/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("+")) return digits;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  if (digits.length > 11) return `+${digits.slice(-11)}`;
+  return "";
+}
+
 export default function PowerDialerToolTab({ ctx }) {
   const { G, card, btnG, btnO, user } = ctx;
-  const dialerDemoMode = true;
+  const [dialerMode, setDialerMode] = useState("checking");
+  const [dialerModeDetail, setDialerModeDetail] = useState("");
+  const twilioDeviceRef = useRef(null);
+  const twilioCallRef = useRef(null);
 
   const [queue, setQueue] = useState(DIALER_QUEUE_SEED);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -53,6 +68,7 @@ export default function PowerDialerToolTab({ ctx }) {
   const [waveSeed, setWaveSeed] = useState(0);
   const fileRef = useRef(null);
   const callLogSeqRef = useRef(0);
+  const dialerDemoMode = dialerMode !== "live";
 
   const currentLead = queue[activeIndex] || null;
 
@@ -80,13 +96,13 @@ export default function PowerDialerToolTab({ ctx }) {
   }, [callState]);
 
   useEffect(() => {
-    if (callState !== "ringing") return undefined;
+    if (callState !== "ringing" || !dialerDemoMode) return undefined;
     const t = setTimeout(() => {
       setCallState("live");
       setWaveSeed(Math.random() * 8);
     }, 1800);
     return () => clearTimeout(t);
-  }, [callState]);
+  }, [callState, dialerDemoMode]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -94,16 +110,182 @@ export default function PowerDialerToolTab({ ctx }) {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const startCall = () => {
+  const fetchTwilioToken = useCallback(async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = String(sessionData?.session?.access_token || "").trim();
+    if (!accessToken) {
+      throw new Error("Session expired. Please sign in again.");
+    }
+
+    const response = await fetch(TWILIO_TOKEN_ENDPOINT, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.token) {
+      throw new Error(payload?.error || `Token endpoint failed (${response.status})`);
+    }
+
+    return payload.token;
+  }, []);
+
+  const ensureTwilioDevice = useCallback(async () => {
+    if (twilioDeviceRef.current) return twilioDeviceRef.current;
+
+    const token = await fetchTwilioToken();
+    const voiceSdk = await import("@twilio/voice-sdk");
+    const Device = voiceSdk?.Device;
+    if (!Device) throw new Error("Twilio Voice SDK unavailable");
+
+    const device = new Device(token, {
+      closeProtection: true,
+      logLevel: 1,
+    });
+
+    device.on("error", (error) => {
+      setToast(`Twilio error: ${error?.message || "unknown error"}`);
+    });
+
+    device.on("tokenWillExpire", async () => {
+      try {
+        const freshToken = await fetchTwilioToken();
+        device.updateToken(freshToken);
+      } catch (error) {
+        setToast(`Twilio token refresh failed: ${error?.message || "unknown error"}`);
+      }
+    });
+
+    twilioDeviceRef.current = device;
+    return device;
+  }, [fetchTwilioToken]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function detectDialerMode() {
+      if (!user?.id) {
+        if (!active) return;
+        setDialerMode("demo");
+        setDialerModeDetail("Sign in required for live Twilio calls.");
+        return;
+      }
+
+      if (!TWILIO_TOKEN_ENDPOINT) {
+        if (!active) return;
+        setDialerMode("demo");
+        setDialerModeDetail("Twilio token endpoint is not configured.");
+        return;
+      }
+
+      try {
+        await ensureTwilioDevice();
+        if (!active) return;
+        setDialerMode("live");
+        setDialerModeDetail("Live Twilio voice enabled.");
+      } catch (error) {
+        if (!active) return;
+        setDialerMode("demo");
+        setDialerModeDetail(error?.message || "Twilio unavailable - using simulation mode.");
+      }
+    }
+
+    detectDialerMode();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, ensureTwilioDevice]);
+
+  useEffect(() => () => {
+    try {
+      twilioCallRef.current?.disconnect();
+    } catch {
+      // no-op
+    }
+
+    try {
+      twilioDeviceRef.current?.destroy();
+    } catch {
+      // no-op
+    }
+
+    twilioCallRef.current = null;
+    twilioDeviceRef.current = null;
+  }, []);
+
+  const startCall = async () => {
     if (!currentLead) return;
     if (!sessionActive) setSessionActive(true);
-    setCallState("ringing");
     setElapsedSec(0);
     setNotes("");
+
+    if (dialerDemoMode) {
+      setCallState("ringing");
+      return;
+    }
+
+    try {
+      const toTarget = normalizeDialTarget(currentLead.phone);
+      if (!toTarget) {
+        throw new Error("Lead phone number is invalid for dialing");
+      }
+
+      setCallState("ringing");
+      const device = await ensureTwilioDevice();
+      const liveCall = await device.connect({
+        params: {
+          To: toTarget,
+          LeadName: currentLead.name,
+          LeadAddress: currentLead.address,
+        },
+      });
+
+      twilioCallRef.current = liveCall;
+      setWaveSeed(Math.random() * 8);
+
+      liveCall.on("accept", () => {
+        setCallState("live");
+      });
+
+      liveCall.on("disconnect", () => {
+        twilioCallRef.current = null;
+        setCallState("idle");
+      });
+
+      liveCall.on("cancel", () => {
+        twilioCallRef.current = null;
+        setCallState("idle");
+      });
+
+      liveCall.on("reject", () => {
+        twilioCallRef.current = null;
+        setCallState("idle");
+      });
+
+      setCallState("live");
+    } catch (error) {
+      twilioCallRef.current = null;
+      setCallState("idle");
+      setDialerMode("demo");
+      setDialerModeDetail(error?.message || "Twilio call failed, using simulation mode.");
+      setToast(`Live call failed: ${error?.message || "Unknown error"}`);
+    }
   };
 
   const skipLead = () => {
     if (!currentLead) return;
+
+    try {
+      twilioCallRef.current?.disconnect();
+    } catch {
+      // no-op
+    }
+
+    twilioCallRef.current = null;
+
     if (activeIndex + 1 >= queue.length) {
       setCallState("idle");
       setToast("Dial queue completed");
@@ -116,6 +298,14 @@ export default function PowerDialerToolTab({ ctx }) {
   };
 
   const resetSession = () => {
+    try {
+      twilioCallRef.current?.disconnect();
+    } catch {
+      // no-op
+    }
+
+    twilioCallRef.current = null;
+
     setQueue(DIALER_QUEUE_SEED);
     setActiveIndex(0);
     setCallState("idle");
@@ -145,6 +335,14 @@ export default function PowerDialerToolTab({ ctx }) {
 
   const markOutcome = async (outcomeId) => {
     if (!currentLead) return;
+
+    try {
+      twilioCallRef.current?.disconnect();
+    } catch {
+      // no-op
+    }
+
+    twilioCallRef.current = null;
 
     setStats((prev) => ({
       calls: prev.calls + 1,
@@ -223,13 +421,22 @@ export default function PowerDialerToolTab({ ctx }) {
       <div style={{ fontFamily: G.serif, fontSize: 18, marginBottom: 4 }}>Power Dialer</div>
       <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Run focused call waves, log outcomes, and keep momentum high.</div>
 
-      {dialerDemoMode && (
+      {dialerDemoMode ? (
         <div style={{ ...card, borderColor: `${G.gold}66`, background: `${G.gold}12`, marginBottom: 12, padding: "10px 12px" }}>
           <div style={{ display: "inline-block", fontSize: 8, letterSpacing: 1.5, color: G.gold, border: `1px solid ${G.gold}88`, borderRadius: 999, padding: "2px 8px", marginBottom: 6 }}>
             DEMO MODE
           </div>
           <div style={{ fontSize: 10, color: G.text }}>
-            Calls are simulated in-app (no live Twilio voice session yet). Use this for workflow rehearsal and outcome tracking only.
+            Calls are simulated in-app. {dialerModeDetail || "Configure Twilio token endpoint and credentials for live voice."}
+          </div>
+        </div>
+      ) : (
+        <div style={{ ...card, borderColor: `${G.green}66`, background: `${G.green}12`, marginBottom: 12, padding: "10px 12px" }}>
+          <div style={{ display: "inline-block", fontSize: 8, letterSpacing: 1.5, color: G.green, border: `1px solid ${G.green}88`, borderRadius: 999, padding: "2px 8px", marginBottom: 6 }}>
+            LIVE MODE
+          </div>
+          <div style={{ fontSize: 10, color: G.text }}>
+            Twilio voice is active. Dialer outcomes are still logged to Supabase for analytics.
           </div>
         </div>
       )}
@@ -267,7 +474,9 @@ export default function PowerDialerToolTab({ ctx }) {
           </div>
 
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-            <button onClick={startCall} style={{ ...btnG, fontSize: 9, padding: "7px 11px" }} disabled={!currentLead || callState !== "idle"}>Start Simulated Call</button>
+            <button onClick={startCall} style={{ ...btnG, fontSize: 9, padding: "7px 11px" }} disabled={!currentLead || callState !== "idle" || dialerMode === "checking"}>
+              {dialerDemoMode ? "Start Simulated Call" : "Start Live Call"}
+            </button>
             <button onClick={skipLead} style={{ ...btnO, fontSize: 9, padding: "7px 11px" }} disabled={!currentLead}>Skip Lead</button>
             <button onClick={resetSession} style={{ ...btnO, fontSize: 9, padding: "7px 11px" }}>Reset Queue</button>
             <button onClick={() => fileRef.current?.click()} style={{ ...btnO, fontSize: 9, padding: "7px 11px" }}>Upload CSV Queue</button>

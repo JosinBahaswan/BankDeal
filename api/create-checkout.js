@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { asEmail, asText, isSupportedCheckoutMode, resolveStripePriceConfig } from "./stripeCatalog.js";
+import { asEmail, asText, isSupportedCheckoutMode, resolveStripePriceConfig } from "../lib/server/stripeCatalog.js";
 
 const APP_USER_TYPES = new Set(["dealmaker", "contractor", "realtor", "admin"]);
 

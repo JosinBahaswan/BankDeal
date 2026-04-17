@@ -1,5 +1,45 @@
+import { createClient } from "@supabase/supabase-js";
+
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+
+function asText(value, fallback = "") {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized || fallback;
+}
+
+function createSupabaseAdminClient() {
+  const supabaseUrl = asText(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
+  const serviceRole = asText(process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+  if (!supabaseUrl || !serviceRole) {
+    throw new Error("Server is missing SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY");
+  }
+
+  return createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
+
+async function verifyRequestIdentity(req, supabaseAdmin) {
+  const authHeader = asText(req.headers?.authorization);
+  if (!authHeader.toLowerCase().startsWith("bearer ")) {
+    throw new Error("Missing bearer authorization token");
+  }
+
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    throw new Error("Missing bearer authorization token");
+  }
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data?.user) {
+    throw new Error(error?.message || "Invalid Supabase auth token");
+  }
+}
 
 function toInt(value, fallback) {
   const num = Number.parseInt(value, 10);
@@ -11,6 +51,19 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  let supabaseAdmin;
+  try {
+    supabaseAdmin = createSupabaseAdminClient();
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || "Unable to initialize Supabase admin client" });
+  }
+
+  try {
+    await verifyRequestIdentity(req, supabaseAdmin);
+  } catch (error) {
+    return res.status(401).json({ error: error?.message || "Unauthorized" });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;

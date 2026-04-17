@@ -1,7 +1,37 @@
-import { useMemo, useState } from "react";
-import { ACTIVE_SEQUENCES_SEED, CRM_PIPELINE } from "./toolData";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../../../../lib/supabaseClient";
 
 const VARIABLE_TOKENS = ["{{first_name}}", "{{property_address}}", "{{equity_estimate}}", "{{city}}", "{{callback_time}}"];
+const PIPELINE_STAGES = ["New", "Contacted", "Interested", "Offer Sent", "Closed"];
+
+function emptyPipeline() {
+  return PIPELINE_STAGES.reduce((acc, stage) => {
+    acc[stage] = [];
+    return acc;
+  }, {});
+}
+
+function sequenceStatusLabel(status) {
+  const value = String(status || "draft").toLowerCase();
+  if (value === "active") return "Active";
+  if (value === "paused") return "Paused";
+  return "Draft";
+}
+
+function labelToStepType(label) {
+  if (label === "Email") return "email";
+  if (label === "Call Task") return "task";
+  return "sms";
+}
+
+function normalizeLeadStage(status) {
+  const value = String(status || "").toLowerCase();
+  if (value.includes("offer")) return "Offer Sent";
+  if (value.includes("close")) return "Closed";
+  if (value.includes("interest")) return "Interested";
+  if (value.includes("contact")) return "Contacted";
+  return "New";
+}
 
 function shortBadge(status, G) {
   const color = status === "Active" ? G.green : status === "Paused" ? G.gold : G.muted;
@@ -28,10 +58,13 @@ function newStepTemplate(index) {
 }
 
 export default function CrmSequencesToolTab({ ctx }) {
-  const { G, card, btnG, btnO } = ctx;
+  const { G, card, btnG, btnO, user } = ctx;
 
-  const [sequences, setSequences] = useState(ACTIVE_SEQUENCES_SEED);
-  const [pipeline, setPipeline] = useState(CRM_PIPELINE);
+  const [sequences, setSequences] = useState([]);
+  const [pipeline, setPipeline] = useState(() => emptyPipeline());
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
   const [builderName, setBuilderName] = useState("Motivated Seller Follow-up");
   const [selectedStepId, setSelectedStepId] = useState(null);
   const [builderSteps, setBuilderSteps] = useState([
@@ -55,6 +88,152 @@ export default function CrmSequencesToolTab({ ctx }) {
     },
   ]);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadCrmData() {
+      if (!user?.id) {
+        if (!active) return;
+        setSequences([]);
+        setPipeline(emptyPipeline());
+        setError("Sign in to load CRM sequences.");
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+
+      const { data: sequenceRows, error: sequenceError } = await supabase
+        .from("sms_sequences")
+        .select("id, name, status, lead_count")
+        .eq("owner_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (!active) return;
+
+      if (sequenceError) {
+        setLoading(false);
+        setError(`Failed to load sequences: ${sequenceError.message}`);
+        return;
+      }
+
+      const sequenceIds = (sequenceRows || []).map((row) => row.id);
+      let stepRows = [];
+
+      if (sequenceIds.length > 0) {
+        const { data, error: stepError } = await supabase
+          .from("sequence_steps")
+          .select("sequence_id")
+          .in("sequence_id", sequenceIds);
+
+        if (!active) return;
+
+        if (stepError) {
+          setLoading(false);
+          setError(`Failed to load sequence steps: ${stepError.message}`);
+          return;
+        }
+
+        stepRows = data || [];
+      }
+
+      const stepCountBySequence = stepRows.reduce((acc, row) => {
+        acc[row.sequence_id] = (acc[row.sequence_id] || 0) + 1;
+        return acc;
+      }, {});
+
+      const mappedSequences = (sequenceRows || []).map((row) => {
+        const stepCount = stepCountBySequence[row.id] || 0;
+        const leadCount = Number(row.lead_count || 0);
+        const sent = leadCount * Math.max(stepCount, 1);
+        const replies = Math.round(sent * 0.08);
+        const conversion = sent > 0 ? `${((replies / sent) * 100).toFixed(1)}%` : "0.0%";
+
+        return {
+          id: row.id,
+          name: row.name,
+          leadCount,
+          sent,
+          replies,
+          conversion,
+          status: sequenceStatusLabel(row.status),
+        };
+      });
+
+      const { data: leadRows, error: leadError } = await supabase
+        .from("leads")
+        .select("id, name, address, status")
+        .eq("owner_id", user.id)
+        .order("added_at", { ascending: false })
+        .limit(200);
+
+      if (!active) return;
+
+      if (leadError) {
+        setLoading(false);
+        setError(`Failed to load lead pipeline: ${leadError.message}`);
+        return;
+      }
+
+      const nextPipeline = emptyPipeline();
+      (leadRows || []).forEach((leadRow) => {
+        const stage = normalizeLeadStage(leadRow.status);
+        nextPipeline[stage].push({
+          id: leadRow.id,
+          name: leadRow.name || "Unknown Lead",
+          address: leadRow.address || "Address not provided",
+        });
+      });
+
+      setSequences(mappedSequences);
+      setPipeline(nextPipeline);
+      setLoading(false);
+    }
+
+    loadCrmData();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, refreshTick]);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    const sequenceChannel = supabase
+      .channel(`sms-sequences-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "sms_sequences",
+          filter: `owner_id=eq.${user.id}`,
+        },
+        () => setRefreshTick((prev) => prev + 1),
+      )
+      .subscribe();
+
+    const leadChannel = supabase
+      .channel(`crm-leads-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "leads",
+          filter: `owner_id=eq.${user.id}`,
+        },
+        () => setRefreshTick((prev) => prev + 1),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(sequenceChannel);
+      supabase.removeChannel(leadChannel);
+    };
+  }, [user?.id]);
+
   const pipelineStages = useMemo(() => Object.keys(pipeline), [pipeline]);
 
   const updateStep = (stepId, key, value) => {
@@ -75,37 +254,78 @@ export default function CrmSequencesToolTab({ ctx }) {
     setBuilderSteps((prev) => prev.map((step) => (step.id === selectedStepId ? { ...step, message: `${step.message} ${token}`.trim() } : step)));
   };
 
-  const createSequence = () => {
+  const createSequence = async () => {
+    if (!user?.id) {
+      setError("Login required before creating a sequence.");
+      return;
+    }
+
     if (!builderName.trim() || builderSteps.length === 0) return;
 
-    const totalTouches = builderSteps.length * 42;
-    const replies = Math.max(5, Math.round(totalTouches * 0.09));
+    setError("");
 
-    const record = {
-      id: `seq-${Date.now()}`,
-      name: builderName.trim(),
-      leadCount: 42,
-      sent: totalTouches,
-      replies,
-      conversion: `${((replies / totalTouches) * 100).toFixed(1)}%`,
-      status: "Active",
-    };
+    const leadCount = Object.values(pipeline).reduce((sum, stageRows) => sum + stageRows.length, 0);
+    const { data: insertedSequence, error: sequenceInsertError } = await supabase
+      .from("sms_sequences")
+      .insert({
+        owner_id: user.id,
+        name: builderName.trim(),
+        status: "active",
+        lead_count: leadCount,
+      })
+      .select("id")
+      .single();
 
-    setSequences((prev) => [record, ...prev]);
+    if (sequenceInsertError) {
+      setError(`Failed to create sequence: ${sequenceInsertError.message}`);
+      return;
+    }
+
+    const stepsPayload = builderSteps.map((step, index) => ({
+      sequence_id: insertedSequence.id,
+      step_order: index + 1,
+      day_offset: Number(step.delay || 0),
+      type: labelToStepType(step.channel),
+      message: step.message || null,
+    }));
+
+    const { error: stepsInsertError } = await supabase
+      .from("sequence_steps")
+      .insert(stepsPayload);
+
+    if (stepsInsertError) {
+      setError(`Sequence created, but steps failed: ${stepsInsertError.message}`);
+      return;
+    }
+
     setBuilderName("New Sequence");
     setBuilderSteps([newStepTemplate(0), newStepTemplate(1)]);
     setSelectedStepId(null);
+    setRefreshTick((prev) => prev + 1);
   };
 
-  const toggleSequenceStatus = (id) => {
-    setSequences((prev) => prev.map((row) => {
-      if (row.id !== id) return row;
-      return { ...row, status: row.status === "Active" ? "Paused" : "Active" };
-    }));
+  const toggleSequenceStatus = async (id) => {
+    const row = sequences.find((item) => item.id === id);
+    if (!row) return;
+
+    const nextStatus = row.status === "Active" ? "paused" : "active";
+    const { error: updateError } = await supabase
+      .from("sms_sequences")
+      .update({ status: nextStatus })
+      .eq("id", id);
+
+    if (updateError) {
+      setError(`Failed to update status: ${updateError.message}`);
+      return;
+    }
+
+    setSequences((prev) => prev.map((item) => (item.id === id ? { ...item, status: sequenceStatusLabel(nextStatus) } : item)));
   };
 
-  const movePipelineCard = (fromStage, toStage, cardId) => {
+  const movePipelineCard = async (fromStage, toStage, cardId) => {
     if (fromStage === toStage) return;
+
+    const previousPipeline = pipeline;
 
     setPipeline((prev) => {
       const cardList = prev[fromStage] || [];
@@ -118,12 +338,27 @@ export default function CrmSequencesToolTab({ ctx }) {
         [toStage]: [{ ...selectedCard, movedAt: Date.now() }, ...(prev[toStage] || [])],
       };
     });
+
+    if (!user?.id) return;
+
+    const { error: updateError } = await supabase
+      .from("leads")
+      .update({ status: toStage })
+      .eq("id", cardId)
+      .eq("owner_id", user.id);
+
+    if (updateError) {
+      setPipeline(previousPipeline);
+      setError(`Failed to update lead stage: ${updateError.message}`);
+    }
   };
 
   return (
     <div>
       <div style={{ fontFamily: G.serif, fontSize: 18, marginBottom: 4 }}>CRM & Sequences</div>
       <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Track your pipeline and automate personalized follow-up with variable-based templates.</div>
+      {error && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{error}</div>}
+      {loading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading CRM data from Supabase...</div>}
 
       <div style={{ ...card, marginBottom: 12 }}>
         <div style={{ fontFamily: G.serif, fontSize: 15, marginBottom: 8 }}>Active Sequences</div>
@@ -214,11 +449,11 @@ export default function CrmSequencesToolTab({ ctx }) {
             <div key={stage} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 7, padding: 8, minHeight: 160 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
                 <div style={{ fontSize: 9, color: G.text, letterSpacing: 1 }}>{stage}</div>
-                <div style={{ fontSize: 8, color: G.muted }}>{pipeline[stage].length}</div>
+                <div style={{ fontSize: 8, color: G.muted }}>{(pipeline[stage] || []).length}</div>
               </div>
 
               <div style={{ display: "grid", gap: 6 }}>
-                {pipeline[stage].map((cardItem) => (
+                {(pipeline[stage] || []).map((cardItem) => (
                   <div key={cardItem.id} style={{ background: "#0d0d0d", border: `1px solid ${G.border}`, borderRadius: 6, padding: "7px 8px" }}>
                     <div style={{ fontSize: 10, color: G.text, marginBottom: 3 }}>{cardItem.name}</div>
                     <div style={{ fontSize: 8, color: G.muted, marginBottom: 5 }}>{cardItem.address}</div>
@@ -227,7 +462,7 @@ export default function CrmSequencesToolTab({ ctx }) {
                     </select>
                   </div>
                 ))}
-                {pipeline[stage].length === 0 && <div style={{ fontSize: 8, color: G.muted }}>No records</div>}
+                {(pipeline[stage] || []).length === 0 && <div style={{ fontSize: 8, color: G.muted }}>No records</div>}
               </div>
             </div>
           ))}

@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { asText, mapStripeSubscriptionStatus, resolveStripePriceConfig } from "./stripeCatalog.js";
+import { asText, mapStripeSubscriptionStatus, resolveStripePriceConfig } from "../lib/server/stripeCatalog.js";
 
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");

@@ -668,6 +668,22 @@ export default function ContractsTab({ ctx }) {
     setDrawnReady(false);
   }
 
+  async function resolveSignerIp() {
+    try {
+      const response = await fetch("/api/get-client-ip", {
+        method: "GET",
+      });
+
+      if (!response.ok) return "";
+
+      const payload = await response.json().catch(() => null);
+      const ip = String(payload?.ip || "").trim();
+      return ip;
+    } catch {
+      return "";
+    }
+  }
+
   async function applySignature() {
     if (!user?.id) {
       setContractsError("You must be logged in to sign contracts.");
@@ -700,11 +716,13 @@ export default function ContractsTab({ ctx }) {
       }));
 
       let signatureImageUrl = "";
-      if (method === "draw" && canvasRef.current) {
+      if (method === "drawn" && canvasRef.current) {
         const roleSlug = String(nextSigner.role || "signer").toLowerCase().replace(/[^a-z0-9]+/g, "-");
         const dataUrl = canvasRef.current.toDataURL("image/png");
         signatureImageUrl = await uploadDataUrlToStorage(`signatures/${activeContract.id}/${roleSlug}-${Date.now()}.png`, dataUrl);
       }
+
+      const signerIp = await resolveSignerIp();
 
       const { error: signatureError } = await supabase
         .from("contract_signatures")
@@ -713,7 +731,7 @@ export default function ContractsTab({ ctx }) {
           party_id: nextSigner.partyId || null,
           signer_name: appliedName,
           signer_email: signerEmail,
-          signer_ip: "127.0.0.1",
+          signer_ip: signerIp || null,
           signed_at: signedAtIso,
           sig_method: method,
           sig_image_url: signatureImageUrl || null,

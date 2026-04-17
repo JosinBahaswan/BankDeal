@@ -1,3 +1,112 @@
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../../../lib/supabaseClient";
+
+const DEAL_TYPE_TO_DB = {
+  Wholesale: "wholesale",
+  "Fix & Flip": "fix_and_flip",
+  BRRRR: "buy_and_hold",
+  Land: "rental",
+};
+
+const DB_TO_DEAL_TYPE = {
+  wholesale: "Wholesale",
+  fix_and_flip: "Fix & Flip",
+  buy_and_hold: "BRRRR",
+  novations: "Fix & Flip",
+  wholetail: "Wholesale",
+  rental: "Land",
+};
+
+const CONDITION_TO_DB = {
+  "Light Cosmetic": "excellent",
+  "Cosmetic Flip": "good",
+  "Full Rehab": "fair",
+  "Major Rehab": "rough",
+};
+
+const DB_TO_CONDITION = {
+  excellent: "Light cosmetic",
+  good: "Cosmetic flip",
+  fair: "Full rehab",
+  rough: "Major rehab",
+};
+
+function statusLabel(status) {
+  const value = String(status || "active").toLowerCase();
+  if (value === "under_contract") return "Under Contract";
+  if (value === "closed") return "Closed";
+  if (value === "withdrawn") return "Withdrawn";
+  return "Active";
+}
+
+function listingDays(publishedAt) {
+  if (!publishedAt) return 0;
+  const ms = Date.now() - new Date(publishedAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return 0;
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
+}
+
+function calcRoi(arv, ask, reno, fee) {
+  const cost = Number(ask || 0) + Number(reno || 0) + Number(fee || 0);
+  if (cost <= 0) return 0;
+  return Math.round(((Number(arv || 0) - cost) / cost) * 100);
+}
+
+function parseHighlights(textValue) {
+  return String(textValue || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function mapListingRow(row, user) {
+  const arv = Number(row.arv || 0);
+  const ask = Number(row.asking_price || 0);
+  const reno = Number(row.reno_estimate || 0);
+  const fee = Number(row.assignment_fee || 0);
+  const fallbackEquity = arv - ask - reno;
+  const roi = Number(row.roi || calcRoi(arv, ask, reno, fee));
+  const isOwner = user?.id && row.seller_id === user.id;
+
+  return {
+    id: row.id,
+    addr: row.address || "Unknown address",
+    city: row.city || "",
+    state: row.state || "CA",
+    zip: row.zip || "",
+    beds: Number(row.beds || 0),
+    baths: Number(row.baths || 0),
+    sqft: Number(row.sqft || 0),
+    yr: Number(row.year_built || 0),
+    arv,
+    ask,
+    reno,
+    fee,
+    equity: Number(row.equity || fallbackEquity || 0),
+    roi,
+    type: DB_TO_DEAL_TYPE[row.deal_type] || "Wholesale",
+    days: listingDays(row.published_at),
+    condition: DB_TO_CONDITION[row.condition] || "Condition not listed",
+    desc: row.description || "No description provided.",
+    highlights: Array.isArray(row.highlights) ? row.highlights : [],
+    views: Number(row.view_count || 0),
+    saved: Number(row.save_count || 0),
+    status: statusLabel(row.status),
+    contact: isOwner
+      ? {
+        name: user?.name || "You",
+        phone: user?.phone || "Phone not provided",
+        email: user?.email || "",
+      }
+      : {
+        name: "DealBank Seller",
+        phone: "Contact via DealBank",
+        email: "",
+      },
+  };
+}
+
 export default function MarketplaceTab({ ctx }) {
   const {
     G,
@@ -7,6 +116,7 @@ export default function MarketplaceTab({ ctx }) {
     btnO,
     fmt,
     toNum,
+    user,
     mktFilter,
     setMktFilter,
     mktSort,
@@ -25,18 +135,119 @@ export default function MarketplaceTab({ ctx }) {
     setWForm,
   } = ctx;
 
-  const DEMO_LISTINGS = [
-    { id: "l1", addr: "3421 Poplar Ave", city: "Sacramento", state: "CA", zip: "95821", beds: 3, baths: 2, sqft: 1420, yr: 1978, arv: 385000, ask: 195000, reno: 62000, fee: 12000, equity: 190000, roi: 28, type: "Wholesale", days: 2, condition: "Full rehab needed", desc: "Absentee owner, motivated to close fast. Full cosmetic flip plus roof and HVAC. Comp support is strong - 4 sales over $370K in 90 days within 1 mile. Title is clear.", highlights: ["Clear title", "Absentee owner", "Comps at $378K-$405K", "Immediate access"], contact: { name: "J. Williams", phone: "(916) 555-0182", email: "jwilliams@invest.com" }, views: 47, saved: 12, status: "Active" },
-    { id: "l2", addr: "908 Birchwood Dr", city: "Stockton", state: "CA", zip: "95207", beds: 4, baths: 2, sqft: 1680, yr: 1965, arv: 310000, ask: 148000, reno: 55000, fee: 8000, equity: 162000, roi: 24, type: "Wholesale", days: 5, condition: "Major rehab", desc: "Bank-owned REO, sold as-is. Needs full interior gut plus foundation work. ARV conservative - comps range $295K-$328K. Great for experienced rehabber.", highlights: ["Bank-owned REO", "4 bed opportunity", "Below-market ask", "Strong rental market"], contact: { name: "M. Johnson", phone: "(209) 555-0341", email: "mj@cashbuyer.com" }, views: 31, saved: 8, status: "Active" },
-    { id: "l3", addr: "1145 Desert Rose Ln", city: "Fresno", state: "CA", zip: "93720", beds: 3, baths: 2, sqft: 1290, yr: 1991, arv: 275000, ask: 138000, reno: 44000, fee: 9500, equity: 137000, roi: 21, type: "Wholesale", days: 1, condition: "Cosmetic flip", desc: "Probate sale, heirs want quick close. Mostly cosmetic - kitchen, baths, flooring, paint. HVAC new in 2022. One of the cleanest wholesale opportunities in this zip code.", highlights: ["Probate - fast close", "New HVAC 2022", "Light cosmetic only", "Quiet cul-de-sac"], contact: { name: "S. Park", phone: "(559) 555-0227", email: "spark@flip.com" }, views: 89, saved: 24, status: "Active" },
-    { id: "l4", addr: "2891 Vista Canyon Rd", city: "Bakersfield", state: "CA", zip: "93306", beds: 3, baths: 1, sqft: 1180, yr: 1958, arv: 245000, ask: 112000, reno: 48000, fee: 7500, equity: 133000, roi: 22, type: "Wholesale", days: 8, condition: "Full rehab needed", desc: "Long-term tenant just vacated. Owner relocated out of state, price reduced twice. Solid ARV support in the neighborhood. Cash or hard money only.", highlights: ["Price reduced twice", "Owner relocated", "Vacant and accessible", "Solid neighborhood"], contact: { name: "T. Garcia", phone: "(661) 555-0118", email: "tgarcia@deals.com" }, views: 22, saved: 5, status: "Active" },
-    { id: "l5", addr: "4402 Elmwood Ct", city: "Modesto", state: "CA", zip: "95350", beds: 4, baths: 2, sqft: 1820, yr: 1985, arv: 340000, ask: 172000, reno: 58000, fee: 11000, equity: 168000, roi: 26, type: "Fix & Flip", days: 3, condition: "Full cosmetic", desc: "Seller inherited property, never lived in it. Original condition throughout - dated but structurally sound. Great bones, large lot, 2-car garage. One of the bigger flips available in this market.", highlights: ["Inherited property", "Original condition", "Large lot + garage", "Structurally sound"], contact: { name: "K. Adams", phone: "(209) 555-0493", email: "kadams@wholesale.com" }, views: 61, saved: 18, status: "Active" },
-    { id: "l6", addr: "789 Oak Grove Blvd", city: "Sacramento", state: "CA", zip: "95831", beds: 3, baths: 2, sqft: 1350, yr: 2001, arv: 420000, ask: 228000, reno: 38000, fee: 14000, equity: 192000, roi: 31, type: "Fix & Flip", days: 0, condition: "Light cosmetic", desc: "NEW TODAY. Divorce sale, both parties motivated. Built 2001 - great bones, just needs cosmetic update. Kitchen and baths dated, flooring throughout, exterior paint. Easiest flip on the market right now.", highlights: ["NEW TODAY", "Divorce sale - motivated", "2001 build - great bones", "Light cosmetic only"], contact: { name: "R. Torres", phone: "(916) 555-0662", email: "rtorres@investor.com" }, views: 14, saved: 6, status: "Active" },
-  ];
+  const [listings, setListings] = useState([]);
+  const [listingsLoading, setListingsLoading] = useState(false);
+  const [listingsError, setListingsError] = useState("");
+  const [saveBusyId, setSaveBusyId] = useState("");
+  const [submitBusy, setSubmitBusy] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
 
-  const STATES = ["All", "Sacramento", "Stockton", "Fresno", "Modesto", "Bakersfield"];
+  useEffect(() => {
+    let active = true;
 
-  const filtered = DEMO_LISTINGS.filter((deal) => {
+    async function loadMarketplaceData() {
+      if (!user?.id) {
+        if (!active) return;
+        setListings([]);
+        setSavedDeals([]);
+        setListingsLoading(false);
+        setListingsError("Please sign in to access marketplace listings.");
+        return;
+      }
+
+      setListingsLoading(true);
+      setListingsError("");
+
+      const [listingsResult, savesResult] = await Promise.all([
+        supabase
+          .from("marketplace_listings")
+          .select("*")
+          .order("published_at", { ascending: false }),
+        supabase
+          .from("marketplace_saves")
+          .select("listing_id")
+          .eq("user_id", user.id),
+      ]);
+
+      if (!active) return;
+
+      if (listingsResult.error) {
+        setListings([]);
+        setListingsLoading(false);
+        setListingsError(`Failed to load listings: ${listingsResult.error.message}`);
+        return;
+      }
+
+      if (savesResult.error) {
+        setSavedDeals([]);
+      } else {
+        setSavedDeals((savesResult.data || []).map((row) => row.listing_id));
+      }
+
+      const mappedListings = (listingsResult.data || []).map((row) => mapListingRow(row, user));
+      setListings(mappedListings);
+      setListingsLoading(false);
+
+      if (activeListing?.id) {
+        const refreshedActive = mappedListings.find((row) => row.id === activeListing.id) || null;
+        setActiveListing(refreshedActive);
+      }
+    }
+
+    loadMarketplaceData();
+
+    return () => {
+      active = false;
+    };
+  }, [user, refreshTick, setSavedDeals, activeListing?.id, setActiveListing]);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    const listingsChannel = supabase
+      .channel(`marketplace-listings-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "marketplace_listings",
+        },
+        () => setRefreshTick((prev) => prev + 1),
+      )
+      .subscribe();
+
+    const savesChannel = supabase
+      .channel(`marketplace-saves-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "marketplace_saves",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => setRefreshTick((prev) => prev + 1),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(listingsChannel);
+      supabase.removeChannel(savesChannel);
+    };
+  }, [user?.id]);
+
+  const filterOptions = useMemo(() => {
+    const unique = new Set(["All"]);
+    listings.forEach((listing) => {
+      if (listing.city) unique.add(listing.city);
+      if (listing.type) unique.add(listing.type);
+    });
+    return Array.from(unique);
+  }, [listings]);
+
+  const filtered = useMemo(() => listings.filter((deal) => {
     if (mktFilter !== "All" && deal.city !== mktFilter && deal.type !== mktFilter) return false;
     return true;
   }).sort((a, b) => {
@@ -45,16 +256,119 @@ export default function MarketplaceTab({ ctx }) {
     if (mktSort === "equity") return b.equity - a.equity;
     if (mktSort === "price") return a.ask - b.ask;
     return 0;
-  });
+  }), [listings, mktFilter, mktSort]);
 
   const wUpdate = (field, value) => setWForm((prev) => ({ ...prev, [field]: value }));
   const roiColor = (r) => (r >= 25 ? G.green : r >= 18 ? G.gold : G.orange);
+
   const contactWholesaler = (listing) => {
+    if (!listing.contact?.email) {
+      return;
+    }
+
     const subject = encodeURIComponent(`Deal inquiry: ${listing.addr}`);
     const body = encodeURIComponent(`Hi ${listing.contact.name},\n\nI'm interested in ${listing.addr}. Please share next steps and access details.\n\nThanks.`);
     const mailto = `mailto:${listing.contact.email}?subject=${subject}&body=${body}`;
     window.location.href = mailto;
   };
+
+  async function toggleSave(listingId) {
+    if (!user?.id || !listingId || saveBusyId) return;
+
+    const alreadySaved = savedDeals.includes(listingId);
+    setSaveBusyId(listingId);
+
+    if (alreadySaved) {
+      const { error } = await supabase
+        .from("marketplace_saves")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("listing_id", listingId);
+
+      if (!error) {
+        setSavedDeals((prev) => prev.filter((item) => item !== listingId));
+        setListings((prev) => prev.map((item) => (item.id === listingId ? { ...item, saved: Math.max(0, item.saved - 1) } : item)));
+      }
+    } else {
+      const { error } = await supabase
+        .from("marketplace_saves")
+        .insert({ user_id: user.id, listing_id: listingId });
+
+      if (!error) {
+        setSavedDeals((prev) => (prev.includes(listingId) ? prev : [...prev, listingId]));
+        setListings((prev) => prev.map((item) => (item.id === listingId ? { ...item, saved: item.saved + 1 } : item)));
+      }
+    }
+
+    setSaveBusyId("");
+  }
+
+  async function submitListing() {
+    if (!user?.id) {
+      setSubmitError("Login required before submitting deals.");
+      return;
+    }
+
+    if (!String(wForm.address || "").trim() || !String(wForm.city || "").trim()) {
+      setSubmitError("Address and city are required.");
+      return;
+    }
+
+    if (!toNum(wForm.askPrice) || !toNum(wForm.arv)) {
+      setSubmitError("ARV and asking price are required.");
+      return;
+    }
+
+    setSubmitBusy(true);
+    setSubmitError("");
+
+    const arv = toNum(wForm.arv);
+    const askPrice = toNum(wForm.askPrice);
+    const renoEstimate = toNum(wForm.renoEst);
+    const assignmentFee = toNum(wForm.assignFee);
+    const equity = arv - askPrice - renoEstimate;
+    const roi = calcRoi(arv, askPrice, renoEstimate, assignmentFee);
+
+    const payload = {
+      seller_id: user.id,
+      address: String(wForm.address || "").trim(),
+      city: String(wForm.city || "").trim(),
+      state: String(wForm.state || "CA").trim() || "CA",
+      zip: String(wForm.zip || "").trim() || null,
+      beds: toNum(wForm.beds) || null,
+      baths: toNum(wForm.baths) || null,
+      sqft: toNum(wForm.sqft) || null,
+      year_built: toNum(wForm.yearBuilt) || null,
+      arv,
+      asking_price: askPrice,
+      assignment_fee: assignmentFee,
+      reno_estimate: renoEstimate,
+      equity,
+      roi,
+      deal_type: DEAL_TYPE_TO_DB[wForm.type] || "wholesale",
+      condition: CONDITION_TO_DB[wForm.condition] || "good",
+      description: String(wForm.description || "").trim() || null,
+      highlights: parseHighlights(wForm.highlights),
+      status: "active",
+      days_on_market: 0,
+      view_count: 0,
+      save_count: 0,
+    };
+
+    const { error } = await supabase
+      .from("marketplace_listings")
+      .insert(payload);
+
+    if (error) {
+      setSubmitBusy(false);
+      setSubmitError(`Submit failed: ${error.message}`);
+      return;
+    }
+
+    setSubmitBusy(false);
+    setWSubmitted(true);
+    setRefreshTick((prev) => prev + 1);
+  }
 
   if (activeListing) {
     return (
@@ -128,9 +442,11 @@ export default function MarketplaceTab({ ctx }) {
               <div style={{ ...lbl, color: G.green, marginBottom: 10 }}>Wholesaler Contact</div>
               <div style={{ fontFamily: G.serif, fontSize: 14, color: G.text, fontWeight: "bold", marginBottom: 4 }}>{activeListing.contact.name}</div>
               <div style={{ fontSize: 10, color: G.muted, marginBottom: 2 }}>{activeListing.contact.phone}</div>
-              <div style={{ fontSize: 10, color: G.muted, marginBottom: 12 }}>{activeListing.contact.email}</div>
-              <button onClick={() => contactWholesaler(activeListing)} style={{ ...btnG, width: "100%", fontSize: 10, marginBottom: 8 }}>📞 Contact Wholesaler</button>
-              <button onClick={() => setSavedDeals((prev) => (prev.includes(activeListing.id) ? prev : [...prev, activeListing.id]))} style={{ ...btnO, width: "100%", fontSize: 10, borderColor: savedDeals.includes(activeListing.id) ? G.green : G.border, color: savedDeals.includes(activeListing.id) ? G.green : G.muted }}>
+              <div style={{ fontSize: 10, color: G.muted, marginBottom: 12 }}>{activeListing.contact.email || "Contact details available after connection"}</div>
+              <button onClick={() => contactWholesaler(activeListing)} disabled={!activeListing.contact.email} style={{ ...btnG, width: "100%", fontSize: 10, marginBottom: 8, opacity: activeListing.contact.email ? 1 : 0.6 }}>
+                📞 Contact Wholesaler
+              </button>
+              <button onClick={() => toggleSave(activeListing.id)} disabled={saveBusyId === activeListing.id} style={{ ...btnO, width: "100%", fontSize: 10, borderColor: savedDeals.includes(activeListing.id) ? G.green : G.border, color: savedDeals.includes(activeListing.id) ? G.green : G.muted, opacity: saveBusyId === activeListing.id ? 0.65 : 1 }}>
                 {savedDeals.includes(activeListing.id) ? "✓ Saved to Watchlist" : "Save to Watchlist"}
               </button>
               <div style={{ marginTop: 8, fontSize: 8, color: G.muted, textAlign: "center", lineHeight: 1.6 }}>DealBank charges a 1.5% platform fee on closed transactions. No upfront cost.</div>
@@ -157,7 +473,7 @@ export default function MarketplaceTab({ ctx }) {
                 <div key={i} style={{ display: "flex", gap: 10, marginBottom: 8, fontSize: 10, color: G.text }}><span style={{ color: G.green, fontWeight: "bold", minWidth: 16 }}>{i + 1}.</span>{s}</div>
               ))}
             </div>
-            <button onClick={() => { setWSubmitted(false); setSubmitStep(1); setWForm({ address: "", city: "", state: "CA", zip: "", beds: "", baths: "", sqft: "", yearBuilt: "", arv: "", askPrice: "", renoEst: "", assignFee: "", earnest: "", closeDate: "", type: "Wholesale", description: "", highlights: "", condition: "Light Cosmetic", contactName: "", contactPhone: "", contactEmail: "" }); }} style={{ ...btnG, fontSize: 10 }}>
+            <button onClick={() => { setWSubmitted(false); setSubmitStep(1); setWForm({ address: "", city: "", state: "CA", zip: "", beds: "", baths: "", sqft: "", yearBuilt: "", arv: "", askPrice: "", renoEst: "", assignFee: "", earnest: "", closeDate: "", type: "Wholesale", description: "", highlights: "", condition: "Light Cosmetic", contactName: "", contactCompany: "", contactPhone: "", contactEmail: "" }); }} style={{ ...btnG, fontSize: 10 }}>
               Submit Another Deal
             </button>
           </div>
@@ -267,13 +583,14 @@ export default function MarketplaceTab({ ctx }) {
               <div style={{ ...card }}>
                 <div style={{ fontFamily: G.serif, fontSize: 15, color: G.text, fontWeight: "bold", marginBottom: 14 }}>Your Contact Info</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                  {[["Your Name", "contactName", "Ray Torres"], ["Company (optional)", "contactPhone", "(916) 555-0100"], ["Phone", "contactPhone", "(916) 555-0100"], ["Email", "contactEmail", "ray@deals.com"]].map(([l, f, ph]) => (
+                  {[["Your Name", "contactName", "Ray Torres"], ["Company (optional)", "contactCompany", "DealBank Ventures"], ["Phone", "contactPhone", "(916) 555-0100"], ["Email", "contactEmail", "ray@deals.com"]].map(([l, f, ph]) => (
                     <div key={l}>
                       <div style={{ ...lbl }}>{l}</div>
                       <input value={wForm[f]} onChange={(e) => wUpdate(f, e.target.value)} placeholder={ph} style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 5, color: G.text, fontSize: 13, fontFamily: G.mono, padding: "8px 10px", outline: "none", boxSizing: "border-box" }} />
                     </div>
                   ))}
                 </div>
+                {submitError && <div style={{ fontSize: 10, color: G.red, marginBottom: 10 }}>{submitError}</div>}
                 <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "12px", marginBottom: 14 }}>
                   <div style={{ ...lbl, color: G.gold, marginBottom: 6 }}>Platform Fee</div>
                   <div style={{ fontSize: 11, color: G.text, lineHeight: 1.8 }}>DealBank charges <strong style={{ color: G.gold }}>1.5% of the assignment fee</strong> when your deal closes. No upfront cost, no listing fee, no monthly charge.</div>
@@ -281,7 +598,9 @@ export default function MarketplaceTab({ ctx }) {
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => setSubmitStep(3)} style={{ ...btnO, flex: 1, fontSize: 10 }}>← Back</button>
-                  <button onClick={() => setWSubmitted(true)} style={{ ...btnG, flex: 2, fontSize: 10 }}>🚀 Submit Deal to Buyer Network</button>
+                  <button onClick={submitListing} disabled={submitBusy} style={{ ...btnG, flex: 2, fontSize: 10, opacity: submitBusy ? 0.7 : 1 }}>
+                    {submitBusy ? "Submitting..." : "🚀 Submit Deal to Buyer Network"}
+                  </button>
                 </div>
               </div>
             )}
@@ -343,10 +662,11 @@ export default function MarketplaceTab({ ctx }) {
 
   return (
     <div>
+      {listingsError && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{listingsError}</div>}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
         <div>
           <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text, fontWeight: "bold" }}>Wholesale Deal Feed</div>
-          <div style={{ fontSize: 10, color: G.muted, marginTop: 2 }}>{filtered.length} deals available · Updated daily · California</div>
+          <div style={{ fontSize: 10, color: G.muted, marginTop: 2 }}>{listingsLoading ? "Loading listings..." : `${filtered.length} deals available · Live from Supabase`}</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setMktView("buyers")} style={{ ...btnO, fontSize: 9, padding: "7px 12px", borderColor: G.blue, color: G.blue }}>👥 Buyer Network (30)</button>
@@ -365,7 +685,7 @@ export default function MarketplaceTab({ ctx }) {
 
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ fontSize: 9, color: G.muted, letterSpacing: 2, marginRight: 4 }}>MARKET</div>
-        {STATES.map((state) => (
+        {filterOptions.map((state) => (
           <div key={state} onClick={() => setMktFilter(state)} style={{ padding: "4px 10px", borderRadius: 4, cursor: "pointer", fontSize: 9, fontFamily: G.mono, border: `1px solid ${mktFilter === state ? G.green : G.border}`, background: mktFilter === state ? G.greenGlow : "transparent", color: mktFilter === state ? G.green : G.muted }}>
             {state}
           </div>
@@ -414,12 +734,18 @@ export default function MarketplaceTab({ ctx }) {
 
           <div style={{ display: "flex", gap: 7 }}>
             <button onClick={(e) => { e.stopPropagation(); setActiveListing(d); }} style={{ ...btnG, flex: 2, fontSize: 9, padding: "8px" }}>View Full Deal →</button>
-            <button onClick={(e) => { e.stopPropagation(); setSavedDeals((prev) => (prev.includes(d.id) ? prev : [...prev, d.id])); }} style={{ ...btnO, flex: 1, fontSize: 9, padding: "8px", borderColor: savedDeals.includes(d.id) ? G.green : G.border, color: savedDeals.includes(d.id) ? G.green : G.muted }}>
+            <button onClick={(e) => { e.stopPropagation(); toggleSave(d.id); }} disabled={saveBusyId === d.id} style={{ ...btnO, flex: 1, fontSize: 9, padding: "8px", borderColor: savedDeals.includes(d.id) ? G.green : G.border, color: savedDeals.includes(d.id) ? G.green : G.muted, opacity: saveBusyId === d.id ? 0.65 : 1 }}>
               {savedDeals.includes(d.id) ? "✓ Saved" : "Save"}
             </button>
           </div>
         </div>
       ))}
+
+      {!listingsLoading && filtered.length === 0 && (
+        <div style={{ ...card, textAlign: "center", padding: "18px 12px", fontSize: 10, color: G.muted }}>
+          No listings available for this filter yet.
+        </div>
+      )}
 
       <div style={{ textAlign: "center", padding: "20px", fontSize: 10, color: G.muted }}>
         New deals posted daily. <span style={{ color: G.green, cursor: "pointer" }} onClick={() => setMktView("submit")}>Submit your own deal →</span>

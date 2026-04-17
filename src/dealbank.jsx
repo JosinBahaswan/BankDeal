@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askClaude, calcOffer, extractJSON, fmt, toNum } from "./dealbank/core/helpers";
+import { bootstrapMobileRuntime } from "./dealbank/core/mobileRuntime";
 import { G, card, lbl, smIn, btnG, btnO } from "./dealbank/core/theme";
-import { beginCheckout, confirmCheckoutSession, getContractorSubscriptionPriceId } from "./dealbank/core/billing";
 import {
-  ADMIN_EMAIL,
-  ADMIN_PASSWORD,
+  beginCheckout,
+  confirmCheckoutSession,
+  getContractorSubscriptionPriceId,
+  getDealmakerSubscriptionPriceId,
+} from "./dealbank/core/billing";
+import {
   AD_SLOTS,
   DEALMAKER_CONTENT,
   INSURANCE_PARTNERS,
@@ -22,7 +26,10 @@ import AuthScreen from "./dealbank/screens/AuthScreen";
 import ContractorDashboardScreen from "./dealbank/screens/ContractorDashboardScreen";
 import ContractorOnboardingScreen from "./dealbank/screens/ContractorOnboardingScreen";
 import DealMakerDashboardScreen from "./dealbank/screens/DealMakerDashboardScreen";
+import DealMakerSubscriptionGateScreen from "./dealbank/screens/DealMakerSubscriptionGateScreen";
 import LandingScreen from "./dealbank/screens/LandingScreen";
+import PrivacyPolicyScreen from "./dealbank/screens/legal/PrivacyPolicyScreen";
+import TermsOfServiceScreen from "./dealbank/screens/legal/TermsOfServiceScreen";
 import RealtorOnboardingScreen from "./dealbank/screens/RealtorOnboardingScreen";
 import RealtorDashboardScreen from "./dealbank/screens/RealtorDashboardScreen";
 import { supabase } from "./lib/supabaseClient";
@@ -34,7 +41,11 @@ function normalizeUserType(type) {
   return USER_TYPES.has(value) ? value : "dealmaker";
 }
 
-const ADMIN_PASSWORD_ALIASES = new Set([ADMIN_PASSWORD, "DealBank2025", "DealBank2025!"]);
+const ADMIN_EMAIL_ENV = String(import.meta.env.VITE_ADMIN_EMAIL || "").trim().toLowerCase();
+const ADMIN_PASSWORD_ENV = String(import.meta.env.VITE_ADMIN_PASSWORD || "").trim();
+const ADMIN_BYPASS_ENABLED = String(import.meta.env.VITE_ENABLE_ADMIN_BYPASS || "").toLowerCase() === "true";
+const ADMIN_BYPASS_LOCAL_ONLY = String(import.meta.env.VITE_ADMIN_BYPASS_LOCAL_ONLY || "true").toLowerCase() !== "false";
+const ADMIN_PASSWORD_ALIASES = new Set([ADMIN_PASSWORD_ENV].filter(Boolean));
 
 function toOnboardingTradeLabel(trade) {
   if (trade === "General Contractor") return "GC";
@@ -251,7 +262,15 @@ export default function App() {
   const [authMode, setAuthMode] = useState("signup");
   const [userType, setUserType] = useState("");
   const [user, setUser] = useState(null);
-  const [authForm, setAuthForm] = useState({ name: "", email: "", password: "", trade: "General Contractor", location: "" });
+  const [authForm, setAuthForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    trade: "General Contractor",
+    location: "",
+    company: "",
+    phone: "",
+  });
   const [authError, setAuthError] = useState("");
 
   const [flipTab, setFlipTab] = useState("analyze");
@@ -289,6 +308,7 @@ export default function App() {
     highlights: "",
     condition: "Light Cosmetic",
     contactName: "",
+    contactCompany: "",
     contactPhone: "",
     contactEmail: "",
   });
@@ -333,6 +353,13 @@ export default function App() {
   const [adminTab, setAdminTab] = useState("overview");
   const [contractorTab, setContractorTab] = useState("leads");
   const [realtorTab, setRealtorTab] = useState("referrals");
+  const [showDealmakerSubscriptionGate, setShowDealmakerSubscriptionGate] = useState(false);
+  const [dealmakerGateState, setDealmakerGateState] = useState({
+    checking: false,
+    launching: false,
+    message: "",
+  });
+  const [dealmakerBillingRefreshTick, setDealmakerBillingRefreshTick] = useState(0);
   const [showContractorOnboarding, setShowContractorOnboarding] = useState(false);
   const [contractorOnboarding, setContractorOnboarding] = useState(() => createContractorOnboardingState());
   const [contractorBillingRefreshTick, setContractorBillingRefreshTick] = useState(0);
@@ -354,6 +381,32 @@ export default function App() {
     }, 3000);
     return () => clearTimeout(timer);
   }, [toast.text]);
+
+  useEffect(() => {
+    let dispose = () => {};
+
+    bootstrapMobileRuntime({
+      onPushToken: (token) => {
+        if (!token || typeof window === "undefined") return;
+        window.localStorage.setItem("dealbank_push_token", token);
+      },
+      onError: () => {
+        // no-op: native push setup is optional in web and local development.
+      },
+    }).then((cleanup) => {
+      if (typeof cleanup === "function") {
+        dispose = cleanup;
+      }
+    }).catch(() => {
+      // no-op
+    });
+
+    return () => {
+      if (typeof dispose === "function") {
+        dispose();
+      }
+    };
+  }, []);
 
   function clearPipelineFocusDeal() {
     setPipelineFocusDealId("");
@@ -390,6 +443,19 @@ export default function App() {
     let title = "DealBank | AI Real Estate Deal Analyzer Platform";
     let description = "AI-powered real estate platform for deal analysis, pipeline tracking, contractor collaboration, and flip execution.";
     let robots = "index, follow";
+    const isLegalScreen = screen === "terms" || screen === "privacy";
+
+    if (screen === "terms") {
+      title = "Terms of Service | DealBank";
+      description = "Read DealBank terms for platform usage, billing, escrow handling, and marketplace compliance.";
+      robots = "index, follow";
+    }
+
+    if (screen === "privacy") {
+      title = "Privacy Policy | DealBank";
+      description = "Learn how DealBank collects, uses, and protects user data across platform workflows.";
+      robots = "index, follow";
+    }
 
     if (screen === "auth") {
       title = "Login & Signup | DealBank";
@@ -397,40 +463,40 @@ export default function App() {
       robots = "noindex, nofollow";
     }
 
-    if (user?.type === "dealmaker" || (screen === "app" && userType === "dealmaker")) {
+    if (!isLegalScreen && (user?.type === "dealmaker" || (screen === "app" && userType === "dealmaker"))) {
       const tabName = DEALMAKER_TAB_LABELS[flipTab] || "Dashboard";
       title = `${tabName} Dashboard | DealBank`;
       description = "Private workspace for deal makers to run analysis, manage pipeline, and execute real estate flips.";
       robots = "noindex, nofollow";
     }
 
-    if (showContractorOnboarding && user?.type === "contractor") {
+    if (!isLegalScreen && showContractorOnboarding && user?.type === "contractor") {
       title = "Contractor Onboarding | DealBank";
       description = "Complete your contractor profile to start receiving project opportunities from deal makers.";
       robots = "noindex, nofollow";
     }
 
-    if (showRealtorOnboarding && user?.type === "realtor") {
+    if (!isLegalScreen && showRealtorOnboarding && user?.type === "realtor") {
       title = "Realtor Onboarding | DealBank";
       description = "Set up your realtor profile and connect with active deal makers in your market.";
       robots = "noindex, nofollow";
     }
 
-    if (user?.type === "contractor" || (screen === "app" && userType === "contractor")) {
+    if (!isLegalScreen && (user?.type === "contractor" || (screen === "app" && userType === "contractor"))) {
       const tabName = CONTRACTOR_TAB_LABELS[contractorTab] || "Dashboard";
       title = `${tabName} | Contractor Dashboard | DealBank`;
       description = "Private contractor dashboard for job leads, profile optimization, and earnings tracking.";
       robots = "noindex, nofollow";
     }
 
-    if (user?.type === "realtor" || (screen === "app" && userType === "realtor")) {
+    if (!isLegalScreen && (user?.type === "realtor" || (screen === "app" && userType === "realtor"))) {
       const tabName = REALTOR_TAB_LABELS[realtorTab] || "Dashboard";
       title = `${tabName} | Realtor Dashboard | DealBank`;
       description = "Private realtor workspace for referrals, active listings, closed deals, and earnings splits.";
       robots = "noindex, nofollow";
     }
 
-    if (user?.type === "admin") {
+    if (!isLegalScreen && user?.type === "admin") {
       const tabName = ADMIN_TAB_LABELS[adminTab] || "Admin";
       title = `${tabName} | Admin Dashboard | DealBank`;
       description = "Internal admin dashboard for user, deal, and revenue operations.";
@@ -447,8 +513,8 @@ export default function App() {
       email: profile?.email || authUser?.email || "",
       name: profile?.name || fallback.name || authUser?.user_metadata?.name || nameFromEmail,
       type: normalizeUserType(profile?.type || fallback.type || authUser?.user_metadata?.type || userType || "dealmaker"),
-      company: profile?.company ?? authUser?.user_metadata?.company ?? null,
-      phone: profile?.phone ?? authUser?.user_metadata?.phone ?? null,
+      company: profile?.company ?? fallback.company ?? authUser?.user_metadata?.company ?? null,
+      phone: profile?.phone ?? fallback.phone ?? authUser?.user_metadata?.phone ?? null,
     };
   }
 
@@ -512,8 +578,8 @@ export default function App() {
       name: fallback.name || authUser.user_metadata?.name || nameFromEmail,
       password_hash: "supabase_auth_managed",
       type: desiredType,
-      company: authUser.user_metadata?.company || null,
-      phone: authUser.user_metadata?.phone || null,
+      company: fallback.company || authUser.user_metadata?.company || null,
+      phone: fallback.phone || authUser.user_metadata?.phone || null,
       last_login: new Date().toISOString(),
     };
 
@@ -552,6 +618,8 @@ export default function App() {
         setUser(null);
         setUserType("");
         setPipeline([]);
+        setShowDealmakerSubscriptionGate(false);
+        setDealmakerGateState({ checking: false, launching: false, message: "" });
         setContractorTab("leads");
         setRealtorTab("referrals");
         setShowContractorOnboarding(false);
@@ -574,6 +642,140 @@ export default function App() {
     // hydrateAuthenticatedProfile is intentionally called from this one-time auth bootstrap.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    let billingRefreshTimer;
+
+    async function syncDealmakerSubscriptionState() {
+      if (!user?.id || user?.type !== "dealmaker") {
+        if (active) {
+          setShowDealmakerSubscriptionGate(false);
+          setDealmakerGateState({ checking: false, launching: false, message: "" });
+        }
+        return;
+      }
+
+      setDealmakerGateState((prev) => ({ ...prev, checking: true, message: "" }));
+
+      const checkoutParams = typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : null;
+      const checkoutKind = checkoutParams?.get("kind") || "";
+      const checkoutStatus = checkoutParams?.get("checkout") || "";
+      const checkoutSessionId = checkoutParams?.get("session_id") || "";
+
+      if (checkoutKind === "subscription" && checkoutStatus === "success" && checkoutSessionId) {
+        const alreadyConfirmed = confirmedCheckoutSessionsRef.current.has(checkoutSessionId);
+        if (!alreadyConfirmed) {
+          confirmedCheckoutSessionsRef.current.add(checkoutSessionId);
+          try {
+            await confirmCheckoutSession({
+              sessionId: checkoutSessionId,
+              userId: user.id,
+            });
+          } catch (error) {
+            confirmedCheckoutSessionsRef.current.delete(checkoutSessionId);
+            pushToast(error?.message || "Subscription payment received. Waiting for activation sync...", "info");
+          }
+        }
+      }
+
+      const { data: activeSubscription, error: subscriptionError } = await supabase
+        .from("subscriptions")
+        .select("id, status, plan")
+        .eq("user_id", user.id)
+        .in("status", ["active", "trialing"])
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!active) return;
+
+      if (subscriptionError) {
+        setShowDealmakerSubscriptionGate(true);
+        setDealmakerGateState((prev) => ({
+          ...prev,
+          checking: false,
+          message: `Unable to verify subscription: ${subscriptionError.message}`,
+        }));
+        return;
+      }
+
+      const normalizedPlan = String(activeSubscription?.plan || "").toLowerCase();
+      const hasPaidAccess = isActiveSubscriptionStatus(activeSubscription?.status) && normalizedPlan === "dealmaker";
+
+      if (hasPaidAccess) {
+        setShowDealmakerSubscriptionGate(false);
+        setDealmakerGateState((prev) => ({ ...prev, checking: false, launching: false, message: "" }));
+      } else {
+        const checkoutMessage = checkoutKind === "subscription" && checkoutStatus === "cancel"
+          ? "Stripe checkout canceled. Complete your DealMaker subscription to unlock dashboard access."
+          : checkoutKind === "subscription" && checkoutStatus === "success"
+            ? "Payment received. Finalizing your DealMaker subscription..."
+            : normalizedPlan && normalizedPlan !== "dealmaker"
+              ? "Existing subscription plan does not include DealMaker access."
+              : "DealMaker subscription required before dashboard access.";
+
+        setShowDealmakerSubscriptionGate(true);
+        setDealmakerGateState((prev) => ({ ...prev, checking: false, message: checkoutMessage }));
+
+        if (checkoutKind === "subscription" && checkoutStatus === "success") {
+          billingRefreshTimer = setTimeout(() => {
+            if (!active) return;
+            setDealmakerBillingRefreshTick((prev) => prev + 1);
+          }, 3500);
+        }
+      }
+
+      if (checkoutKind === "subscription" && (checkoutStatus === "success" || checkoutStatus === "cancel") && typeof window !== "undefined") {
+        const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    }
+
+    syncDealmakerSubscriptionState();
+
+    return () => {
+      active = false;
+      if (billingRefreshTimer) clearTimeout(billingRefreshTimer);
+    };
+  }, [user?.id, user?.type, dealmakerBillingRefreshTick, pushToast]);
+
+  async function startDealmakerSubscriptionCheckout() {
+    if (!user?.id) return;
+
+    const checkoutEmail = String(user?.email || authForm.email || "").trim();
+    if (!checkoutEmail) {
+      setDealmakerGateState((prev) => ({ ...prev, launching: false, message: "User email missing. Sign out and sign back in, then retry." }));
+      return;
+    }
+
+    const checkoutPriceId = getDealmakerSubscriptionPriceId();
+    if (!checkoutPriceId) {
+      setDealmakerGateState((prev) => ({ ...prev, launching: false, message: "Missing VITE_STRIPE_PRICE_DEALMAKER_MONTHLY in frontend env." }));
+      return;
+    }
+
+    setDealmakerGateState((prev) => ({ ...prev, launching: true, message: "Redirecting to Stripe checkout..." }));
+
+    try {
+      await beginCheckout({
+        priceId: checkoutPriceId,
+        userId: user.id,
+        email: checkoutEmail,
+        mode: "subscription",
+        source: "dealmaker_gate",
+        successPath: "/",
+      });
+    } catch (error) {
+      setDealmakerGateState((prev) => ({
+        ...prev,
+        launching: false,
+        message: error?.message || "Failed to start DealMaker subscription checkout.",
+      }));
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -996,9 +1198,13 @@ export default function App() {
       return;
     }
 
-    const adminBypassEnabled = String(import.meta.env.VITE_ENABLE_ADMIN_BYPASS || "").toLowerCase() === "true";
-    if (adminBypassEnabled && authForm.email === ADMIN_EMAIL && ADMIN_PASSWORD_ALIASES.has(authForm.password)) {
-      const adminUser = { name: "Admin", email: ADMIN_EMAIL, type: "admin" };
+    const normalizedAuthEmail = String(authForm.email || "").trim().toLowerCase();
+    const isLocalHost = typeof window !== "undefined"
+      && ["localhost", "127.0.0.1"].includes(String(window.location?.hostname || "").toLowerCase());
+    const canUseAdminBypass = ADMIN_BYPASS_ENABLED && (!ADMIN_BYPASS_LOCAL_ONLY || isLocalHost);
+
+    if (canUseAdminBypass && ADMIN_EMAIL_ENV && normalizedAuthEmail === ADMIN_EMAIL_ENV && ADMIN_PASSWORD_ALIASES.has(authForm.password)) {
+      const adminUser = { name: "Admin", email: ADMIN_EMAIL_ENV, type: "admin" };
       setUser(adminUser);
       setUserType("admin");
       setScreen("admin");
@@ -1008,6 +1214,17 @@ export default function App() {
     if (authMode === "signup" && !authForm.name) {
       setAuthError("Enter your name.");
       return;
+    }
+
+    if (authMode === "signup" && normalizeUserType(userType || "dealmaker") === "dealmaker") {
+      if (!String(authForm.company || "").trim()) {
+        setAuthError("Enter your company.");
+        return;
+      }
+      if (!String(authForm.phone || "").trim()) {
+        setAuthError("Enter your phone number.");
+        return;
+      }
     }
 
     try {
@@ -1023,6 +1240,8 @@ export default function App() {
           hydrateAuthenticatedProfile(existingLoginData.user, {
             name: authForm.name,
             type: desiredType,
+            company: authForm.company,
+            phone: authForm.phone,
           });
           return;
         }
@@ -1041,6 +1260,8 @@ export default function App() {
               type: desiredType,
               trade: authForm.trade,
               location: authForm.location,
+              company: authForm.company,
+              phone: authForm.phone,
             },
           },
         });
@@ -1056,6 +1277,8 @@ export default function App() {
               hydrateAuthenticatedProfile(retryLoginData.user, {
                 name: authForm.name,
                 type: desiredType,
+                company: authForm.company,
+                phone: authForm.phone,
               });
               return;
             }
@@ -1106,6 +1329,8 @@ export default function App() {
         hydrateAuthenticatedProfile(authUser, {
           name: authForm.name,
           type: desiredType,
+          company: authForm.company,
+          phone: authForm.phone,
         });
         return;
       }
@@ -1133,6 +1358,8 @@ export default function App() {
       hydrateAuthenticatedProfile(loginData.user, {
         name: loginData.user.user_metadata?.name,
         type: loginData.user.user_metadata?.type,
+        company: loginData.user.user_metadata?.company,
+        phone: loginData.user.user_metadata?.phone,
       });
     } catch (error) {
       setAuthError(error?.message || "Authentication failed.");
@@ -1462,6 +1689,8 @@ SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
     setPipeline([]);
     setPipelineFocusDealId("");
     setToast({ text: "", tone: "info" });
+    setShowDealmakerSubscriptionGate(false);
+    setDealmakerGateState({ checking: false, launching: false, message: "" });
     setContractorTab("leads");
     setRealtorTab("referrals");
     setActiveDeal(null);
@@ -1610,12 +1839,33 @@ SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
         card={card}
         btnG={btnG}
         btnO={btnO}
-        ADMIN_EMAIL={ADMIN_EMAIL}
-        ADMIN_PASSWORD={ADMIN_PASSWORD}
         setAuthMode={setAuthMode}
         setScreen={setScreen}
         setUserType={setUserType}
         setAuthForm={setAuthForm}
+        onOpenLegal={setScreen}
+      />
+    );
+  }
+
+  if (screen === "terms") {
+    return (
+      <TermsOfServiceScreen
+        G={G}
+        btnO={btnO}
+        onBack={() => setScreen("landing")}
+        onOpenPrivacy={() => setScreen("privacy")}
+      />
+    );
+  }
+
+  if (screen === "privacy") {
+    return (
+      <PrivacyPolicyScreen
+        G={G}
+        btnO={btnO}
+        onBack={() => setScreen("landing")}
+        onOpenTerms={() => setScreen("terms")}
       />
     );
   }
@@ -1655,6 +1905,23 @@ SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
         setAdminTab={setAdminTab}
         userName={user?.name}
         user={user}
+        onSignOut={onSignOut}
+      />
+    );
+  }
+
+  if (showDealmakerSubscriptionGate && user?.type === "dealmaker") {
+    return (
+      <DealMakerSubscriptionGateScreen
+        G={G}
+        card={card}
+        btnG={btnG}
+        btnO={btnO}
+        userName={user?.name}
+        checking={dealmakerGateState.checking}
+        launching={dealmakerGateState.launching}
+        message={dealmakerGateState.message}
+        onSubscribe={startDealmakerSubscriptionCheckout}
         onSignOut={onSignOut}
       />
     );

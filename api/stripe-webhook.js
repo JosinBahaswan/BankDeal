@@ -4,7 +4,7 @@ import {
   asText,
   mapStripeSubscriptionStatus,
   resolveStripePriceConfig,
-} from "./stripeCatalog.js";
+} from "../lib/server/stripeCatalog.js";
 
 function toIsoFromUnix(unixSeconds) {
   const value = Number(unixSeconds);

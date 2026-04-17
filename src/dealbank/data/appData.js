@@ -1,8 +1,5 @@
 import { G } from "../core/theme";
 
-export const ADMIN_EMAIL = "admin@dealbank.io";
-export const ADMIN_PASSWORD = "DealBank2025!";
-
 export const PIPELINE_STAGES = ["Analyzing", "Under Contract", "Renovating", "Listing", "Selling", "Closed"];
 
 export const RENO_KEYS = [

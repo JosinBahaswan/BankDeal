@@ -1,3 +1,5 @@
+import { supabase } from "../../lib/supabaseClient";
+
 const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
 export async function dbSet(key, value) {
@@ -47,10 +49,17 @@ export function extractJSON(raw) {
 }
 
 export async function askClaude(prompt, maxTokens = 1400) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = String(sessionData?.session?.access_token || "").trim();
+  if (!accessToken) {
+    throw new Error("Session expired. Please sign in again before using AI tools.");
+  }
+
   const response = await fetch(`${apiBaseUrl}/api/claude`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify({
       prompt,

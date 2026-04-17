@@ -1,0 +1,20 @@
+{
+  "appId": "io.dealbank.app",
+  "appName": "DealBank",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "Camera": {
+      "promptLabelHeader": "DealBank Camera",
+      "promptLabelCancel": "Cancel",
+      "promptLabelPhoto": "From Photos",
+      "promptLabelPicture": "Take Picture"
+    }
+  }
+}

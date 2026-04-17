@@ -8,12 +8,11 @@ const USER_TYPE_BY_TAB = {
 };
 
 export default function LandingScreen({
-  ADMIN_EMAIL,
-  ADMIN_PASSWORD,
   setAuthMode,
   setScreen,
   setUserType,
   setAuthForm,
+  onOpenLegal,
 }) {
   const [activeTab, setActiveTab] = useState("wholesaler");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -507,15 +506,6 @@ export default function LandingScreen({
             CREATE YOUR FREE ACCOUNT →
           </button>
           <div style={{ marginTop: 16, fontSize: 10, color: "#4a7a4a", letterSpacing: 2 }}>NO CREDIT CARD REQUIRED</div>
-
-          {ADMIN_EMAIL && ADMIN_PASSWORD && (
-            <button
-              onClick={() => goAuth("login", "", { prefill: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } })}
-              style={{ marginTop: 18, background: "transparent", border: "1px solid #1a2e1a", color: "#4a7a4a", borderRadius: 6, padding: "8px 14px", fontSize: 9, letterSpacing: 2, cursor: "pointer", fontFamily: "'Courier New',monospace" }}
-            >
-              ADMIN LOGIN
-            </button>
-          )}
         </div>
       </section>
 
@@ -532,9 +522,29 @@ export default function LandingScreen({
           </div>
           <div style={{ fontSize: 9, color: "#4a7a4a", letterSpacing: 2 }}>© 2026 DEALBANK · DEALBANK.IO</div>
           <div style={{ display: "flex", gap: 20, fontSize: 9, color: "#4a7a4a", letterSpacing: 2 }}>
-            {["TERMS", "PRIVACY", "CONTACT"].map((label) => (
-              <span key={label} className="nlink">{label}</span>
-            ))}
+            <button
+              type="button"
+              className="nlink"
+              onClick={() => onOpenLegal?.("terms")}
+              style={{ background: "transparent", border: "none", color: "inherit", letterSpacing: "inherit", fontFamily: "inherit", fontSize: "inherit", padding: 0, cursor: "pointer" }}
+            >
+              TERMS
+            </button>
+            <button
+              type="button"
+              className="nlink"
+              onClick={() => onOpenLegal?.("privacy")}
+              style={{ background: "transparent", border: "none", color: "inherit", letterSpacing: "inherit", fontFamily: "inherit", fontSize: "inherit", padding: 0, cursor: "pointer" }}
+            >
+              PRIVACY
+            </button>
+            <a
+              className="nlink"
+              href="mailto:support@dealbank.io"
+              style={{ color: "inherit", textDecoration: "none" }}
+            >
+              CONTACT
+            </a>
           </div>
         </div>
       </footer>

@@ -1,6 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
+import { capturePhotoBlob } from "../core/mobileRuntime";
 import TopBar from "../components/TopBar";
 import useIsMobile from "../core/useIsMobile";
+
+const CONTRACTOR_PHOTOS_BUCKET = String(import.meta.env.VITE_CONTRACTOR_PHOTOS_BUCKET || "contractor-photos").trim();
 
 const TRADE_OPTIONS = [
   "General Contractor",
@@ -17,12 +21,84 @@ const TRADE_OPTIONS = [
   "Handyman",
 ];
 
-const JOB_HISTORY = [
-  { address: "1842 Maple St, Sacramento", trade: "Kitchen & Bath", amount: "$7,400", status: "Paid", date: "Apr 08", flipper: "T. Williams" },
-  { address: "534 Oak Blvd, Stockton", trade: "HVAC", amount: "$6,850", status: "Paid", date: "Apr 04", flipper: "M. Johnson" },
-  { address: "2201 Pine Ave, Modesto", trade: "General Contractor", amount: "$18,200", status: "Pending", date: "Mar 27", flipper: "S. Park" },
-  { address: "4701 Delta View Dr, Elk Grove", trade: "Electrical", amount: "$3,900", status: "Paid", date: "Mar 20", flipper: "D. Patel" },
-];
+function postedLabel(createdAt) {
+  const diff = Date.now() - new Date(createdAt).getTime();
+  if (!Number.isFinite(diff) || diff < 0) return "just now";
+  const mins = Math.floor(diff / (1000 * 60));
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function budgetLabel(min, max) {
+  const minValue = Number(min || 0);
+  const maxValue = Number(max || 0);
+
+  if (minValue > 0 && maxValue > 0) {
+    return `$${minValue.toLocaleString()}-$${maxValue.toLocaleString()}`;
+  }
+  if (maxValue > 0) return `Up to $${maxValue.toLocaleString()}`;
+  if (minValue > 0) return `From $${minValue.toLocaleString()}`;
+  return "Budget TBD";
+}
+
+function statusLabel(status) {
+  const normalized = String(status || "open").toLowerCase();
+  if (normalized === "in_progress") return "In Progress";
+  if (normalized === "under_review") return "Under Review";
+  if (normalized === "under_contract") return "Under Contract";
+  return normalized
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function isOpenLeadStatus(status) {
+  const normalized = String(status || "open").toLowerCase();
+  return normalized === "open" || normalized === "new";
+}
+
+function isClosedLeadStatus(status) {
+  const normalized = String(status || "").toLowerCase();
+  return normalized === "completed" || normalized === "paid" || normalized === "closed";
+}
+
+function progressFromLeadStatus(status) {
+  const normalized = String(status || "open").toLowerCase();
+  if (normalized === "quoted") return 35;
+  if (normalized === "accepted") return 52;
+  if (normalized === "in_progress") return 70;
+  if (normalized === "under_review") return 86;
+  if (normalized === "completed" || normalized === "paid" || normalized === "closed") return 100;
+  return 20;
+}
+
+function nextLeadStatus(status) {
+  const normalized = String(status || "open").toLowerCase();
+  if (normalized === "quoted") return "accepted";
+  if (normalized === "accepted") return "in_progress";
+  if (normalized === "in_progress") return "under_review";
+  if (normalized === "under_review") return "completed";
+  return normalized;
+}
+
+function shortDateLabel(value) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleDateString(undefined, { month: "short", day: "2-digit" });
+}
+
+function extensionFromName(fileName, fallback = "jpg") {
+  const name = String(fileName || "").toLowerCase();
+  if (!name.includes(".")) return fallback;
+  const ext = name.split(".").pop();
+  if (!ext) return fallback;
+  if (ext === "jpeg") return "jpg";
+  return ext.replace(/[^a-z0-9]/g, "") || fallback;
+}
 
 export default function ContractorDashboardScreen({ G, card, lbl, btnG, contractorTab, setContractorTab, user, onSignOut, btnO }) {
   const isMobile = useIsMobile(820);
@@ -47,19 +123,316 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
     return normalized.length ? normalized : ["General Contractor"];
   });
 
-  const [activeJobs, setActiveJobs] = useState([
-    { id: "j1", address: "1842 Maple St, Sacramento", flipper: "T. Williams", value: 24000, statusNote: "Drywall and cabinet install in progress", progress: 68 },
-    { id: "j2", address: "534 Oak Blvd, Stockton", flipper: "M. Johnson", value: 9200, statusNote: "Permit final for condenser relocation", progress: 84 },
-    { id: "j3", address: "2201 Pine Ave, Modesto", flipper: "S. Park", value: 67000, statusNote: "Rough-ins completed, inspections next", progress: 53 },
-  ]);
-
-  const [leadRows, setLeadRows] = useState([
-    { id: "lead-1", addr: "1842 Maple St, Sacramento", trade: "Kitchen & Bath", budget: "$18,000-$24,000", flipper: "T. Williams", posted: "2h ago", urgent: true, quoteSentAt: "", quoteAmount: "", quoteNotes: "" },
-    { id: "lead-2", addr: "534 Oak Blvd, Stockton", trade: "HVAC", budget: "$6,000-$9,000", flipper: "M. Johnson", posted: "5h ago", urgent: false, quoteSentAt: "", quoteAmount: "", quoteNotes: "" },
-    { id: "lead-3", addr: "2201 Pine Ave, Modesto", trade: "General Contractor", budget: "$55,000-$70,000", flipper: "S. Park", posted: "1d ago", urgent: false, quoteSentAt: "", quoteAmount: "", quoteNotes: "" },
-  ]);
+  const [activeJobs, setActiveJobs] = useState([]);
+  const [jobHistoryRows, setJobHistoryRows] = useState([]);
+  const [leadRows, setLeadRows] = useState([]);
+  const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsError, setLeadsError] = useState("");
+  const [contractorProfileId, setContractorProfileId] = useState("");
+  const [photoPath, setPhotoPath] = useState("");
+  const [photoSignedUrl, setPhotoSignedUrl] = useState("");
+  const [photoUploadBusy, setPhotoUploadBusy] = useState(false);
+  const [jobsRefreshTick, setJobsRefreshTick] = useState(0);
   const [openQuoteLeadId, setOpenQuoteLeadId] = useState("");
   const [quoteDraft, setQuoteDraft] = useState({ amount: "", notes: "" });
+  const photoInputRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadLeadsAndJobs() {
+      if (!user?.id) {
+        if (!active) return;
+        setLeadRows([]);
+        setActiveJobs([]);
+        setJobHistoryRows([]);
+        setContractorProfileId("");
+        setLeadsLoading(false);
+        setLeadsError("");
+        return;
+      }
+
+      setLeadsLoading(true);
+      setLeadsError("");
+
+      let resolvedContractorProfileId = "";
+      const { data: contractorProfile, error: contractorProfileError } = await supabase
+        .from("contractor_profiles")
+        .select("id, photo_path, bio, rate_amount")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (contractorProfileError) {
+        setLeadsError(`Unable to resolve contractor profile: ${contractorProfileError.message}`);
+      } else {
+        resolvedContractorProfileId = String(contractorProfile?.id || "");
+        setPhotoPath(String(contractorProfile?.photo_path || ""));
+
+        if (String(contractorProfile?.bio || "").trim()) {
+          setBio(contractorProfile.bio);
+        }
+
+        if (Number.isFinite(Number(contractorProfile?.rate_amount)) && Number(contractorProfile.rate_amount) > 0) {
+          setRate(String(Math.round(Number(contractorProfile.rate_amount))));
+        }
+      }
+
+      const { data: leadRowsFromDb, error: leadsLoadError } = await supabase
+        .from("contractor_job_leads")
+        .select("id, contractor_id, listing_id, created_by, trade_required, budget_min, budget_max, notes, status, created_at")
+        .order("created_at", { ascending: false })
+        .limit(60);
+
+      if (!active) return;
+
+      if (leadsLoadError) {
+        setLeadRows([]);
+        setActiveJobs([]);
+        setJobHistoryRows([]);
+        setLeadsLoading(false);
+        setLeadsError(`Unable to load job leads: ${leadsLoadError.message}`);
+        return;
+      }
+
+      const listingIds = (leadRowsFromDb || []).map((row) => row.listing_id).filter(Boolean);
+      let listingMap = {};
+
+      if (listingIds.length > 0) {
+        const { data: listingRows, error: listingError } = await supabase
+          .from("marketplace_listings")
+          .select("id, address, city")
+          .in("id", listingIds);
+
+        if (!active) return;
+
+        if (listingError) {
+          setLeadsLoading(false);
+          setLeadsError(`Unable to load listing details: ${listingError.message}`);
+          return;
+        }
+
+        listingMap = (listingRows || []).reduce((acc, row) => {
+          acc[row.id] = row;
+          return acc;
+        }, {});
+      }
+
+      const mappedLeads = [];
+      const mappedActiveJobs = [];
+      const mappedHistory = [];
+
+      (leadRowsFromDb || []).forEach((row) => {
+        const listing = row.listing_id ? listingMap[row.listing_id] : null;
+        const created = new Date(row.created_at || Date.now()).getTime();
+        const normalizedStatus = String(row.status || "open").toLowerCase();
+        const amountValue = Number(row.budget_max || row.budget_min || 0);
+        const addr = listing?.address ? `${listing.address}${listing?.city ? `, ${listing.city}` : ""}` : "Address pending";
+        const flipper = row.created_by === user.id ? "You" : `DealMaker ${String(row.created_by || "").slice(0, 6).toUpperCase()}`;
+
+        if (isOpenLeadStatus(normalizedStatus)) {
+          mappedLeads.push({
+            id: `lead-${row.id}`,
+            dbId: row.id,
+            addr,
+            trade: row.trade_required || "General Contractor",
+            budget: budgetLabel(row.budget_min, row.budget_max),
+            flipper,
+            posted: postedLabel(row.created_at),
+            urgent: (Date.now() - created) < (24 * 60 * 60 * 1000),
+            quoteSentAt: "",
+            quoteAmount: "",
+            quoteNotes: "",
+          });
+          return;
+        }
+
+        const assignedToOtherContractor = resolvedContractorProfileId
+          && row.contractor_id
+          && row.contractor_id !== resolvedContractorProfileId;
+
+        if (assignedToOtherContractor) {
+          return;
+        }
+
+        if (isClosedLeadStatus(normalizedStatus)) {
+          mappedHistory.push({
+            id: `history-${row.id}`,
+            address: addr,
+            trade: row.trade_required || "General Contractor",
+            amount: `$${Math.round(amountValue).toLocaleString()}`,
+            amountValue,
+            status: statusLabel(normalizedStatus),
+            date: shortDateLabel(row.created_at),
+            createdAt: row.created_at,
+            flipper,
+          });
+          return;
+        }
+
+        mappedActiveJobs.push({
+          id: `job-${row.id}`,
+          dbId: row.id,
+          address: addr,
+          flipper,
+          value: amountValue,
+          statusRaw: normalizedStatus,
+          statusLabel: statusLabel(normalizedStatus),
+          statusNote: row.notes || `Current stage: ${statusLabel(normalizedStatus)}`,
+          progress: progressFromLeadStatus(normalizedStatus),
+        });
+      });
+
+      setLeadRows(mappedLeads);
+      setActiveJobs(mappedActiveJobs);
+      setJobHistoryRows(mappedHistory);
+      setContractorProfileId(resolvedContractorProfileId);
+      setLeadsLoading(false);
+    }
+
+    loadLeadsAndJobs();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, jobsRefreshTick]);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    const leadsChannel = supabase
+      .channel(`contractor-job-leads-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "contractor_job_leads",
+        },
+        () => setJobsRefreshTick((prev) => prev + 1),
+      )
+      .subscribe();
+
+    const listingsChannel = supabase
+      .channel(`contractor-listings-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "marketplace_listings",
+        },
+        () => setJobsRefreshTick((prev) => prev + 1),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(leadsChannel);
+      supabase.removeChannel(listingsChannel);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSignedPhoto() {
+      if (!photoPath || !CONTRACTOR_PHOTOS_BUCKET) {
+        if (active) setPhotoSignedUrl("");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .storage
+        .from(CONTRACTOR_PHOTOS_BUCKET)
+        .createSignedUrl(photoPath, 60 * 60);
+
+      if (!active) return;
+      if (error) {
+        setPhotoSignedUrl("");
+        return;
+      }
+
+      setPhotoSignedUrl(String(data?.signedUrl || ""));
+    }
+
+    loadSignedPhoto();
+
+    return () => {
+      active = false;
+    };
+  }, [photoPath]);
+
+  async function uploadContractorPhoto(uploadBlob, extension = "jpg", contentType = "image/jpeg") {
+    if (!user?.id) return;
+    if (!contractorProfileId) {
+      setLeadsError("Complete contractor onboarding before uploading profile photos.");
+      return;
+    }
+
+    if (!CONTRACTOR_PHOTOS_BUCKET) {
+      setLeadsError("VITE_CONTRACTOR_PHOTOS_BUCKET is not configured.");
+      return;
+    }
+
+    setPhotoUploadBusy(true);
+    setLeadsError("");
+
+    const safeExt = String(extension || "jpg").replace(/[^a-z0-9]/gi, "").toLowerCase() || "jpg";
+    const objectPath = `profiles/${user.id}/avatar-${Date.now()}.${safeExt}`;
+
+    const { error: uploadError } = await supabase
+      .storage
+      .from(CONTRACTOR_PHOTOS_BUCKET)
+      .upload(objectPath, uploadBlob, {
+        upsert: true,
+        contentType: contentType || "image/jpeg",
+      });
+
+    if (uploadError) {
+      setPhotoUploadBusy(false);
+      setLeadsError(`Unable to upload contractor photo: ${uploadError.message}`);
+      return;
+    }
+
+    const { error: profileUpdateError } = await supabase
+      .from("contractor_profiles")
+      .update({ photo_path: objectPath })
+      .eq("id", contractorProfileId);
+
+    if (profileUpdateError) {
+      setPhotoUploadBusy(false);
+      setLeadsError(`Photo uploaded, but profile update failed: ${profileUpdateError.message}`);
+      return;
+    }
+
+    setPhotoPath(objectPath);
+    setPhotoUploadBusy(false);
+  }
+
+  async function handleCaptureFromCamera() {
+    try {
+      const capture = await capturePhotoBlob();
+      if (!capture?.blob) {
+        setLeadsError("Camera capture is available in the DealBank mobile app (Capacitor runtime).");
+        return;
+      }
+      await uploadContractorPhoto(capture.blob, capture.extension, capture.contentType);
+    } catch (error) {
+      setLeadsError(`Camera capture failed: ${error?.message || "unknown error"}`);
+    }
+  }
+
+  async function handlePhotoFileSelection(event) {
+    const selectedFile = event?.target?.files?.[0];
+    if (!selectedFile) return;
+
+    await uploadContractorPhoto(
+      selectedFile,
+      extensionFromName(selectedFile.name, "jpg"),
+      selectedFile.type || "image/jpeg",
+    );
+
+    event.target.value = "";
+  }
 
   const reviewRows = [
     { id: "r1", flipper: "T. Williams", title: "Kitchen + bath remodel", date: "Apr 2026", stars: 5, text: "Communicated every day, hit timeline, and gave us clear change-order options." },
@@ -77,8 +450,81 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
     };
   }, [activeJobs]);
 
-  function bumpProgress(jobId) {
-    setActiveJobs((prev) => prev.map((job) => (job.id === jobId ? { ...job, progress: Math.min(100, job.progress + 10) } : job)));
+  const earningsSummary = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const previousMonthDate = new Date(currentYear, currentMonth - 1, 1);
+    const previousMonth = previousMonthDate.getMonth();
+    const previousYear = previousMonthDate.getFullYear();
+
+    let thisMonth = 0;
+    let lastMonth = 0;
+    let thisYear = 0;
+
+    jobHistoryRows.forEach((row) => {
+      const amount = Number(row.amountValue || 0);
+      const createdAt = row.createdAt ? new Date(row.createdAt) : null;
+      if (!createdAt || Number.isNaN(createdAt.getTime())) return;
+
+      const rowYear = createdAt.getFullYear();
+      const rowMonth = createdAt.getMonth();
+
+      if (rowYear === currentYear) thisYear += amount;
+      if (rowYear === currentYear && rowMonth === currentMonth) thisMonth += amount;
+      if (rowYear === previousYear && rowMonth === previousMonth) lastMonth += amount;
+    });
+
+    const pending = activeJobs.reduce((sum, row) => sum + Number(row.value || 0), 0);
+
+    return {
+      thisMonth,
+      lastMonth,
+      thisYear,
+      pending,
+    };
+  }, [jobHistoryRows, activeJobs]);
+
+  async function bumpProgress(jobId) {
+    const selectedJob = activeJobs.find((row) => row.id === jobId);
+    if (!selectedJob?.dbId) return;
+
+    const nextStatus = nextLeadStatus(selectedJob.statusRaw);
+    if (!nextStatus || nextStatus === selectedJob.statusRaw) return;
+
+    setActiveJobs((prev) => prev.map((job) => (
+      job.id === jobId
+        ? {
+          ...job,
+          statusRaw: nextStatus,
+          statusLabel: statusLabel(nextStatus),
+          statusNote: `Current stage: ${statusLabel(nextStatus)}`,
+          progress: progressFromLeadStatus(nextStatus),
+        }
+        : job
+    )));
+
+    const updatePayload = {
+      status: nextStatus,
+      notes: `Current stage: ${statusLabel(nextStatus)}`,
+    };
+
+    if (contractorProfileId) {
+      updatePayload.contractor_id = contractorProfileId;
+    }
+
+    const { error } = await supabase
+      .from("contractor_job_leads")
+      .update(updatePayload)
+      .eq("id", selectedJob.dbId);
+
+    if (error) {
+      setLeadsError(`Unable to update job status: ${error.message}`);
+      setJobsRefreshTick((prev) => prev + 1);
+      return;
+    }
+
+    setJobsRefreshTick((prev) => prev + 1);
   }
 
   function toggleTrade(trade) {
@@ -91,7 +537,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
     setQuoteDraft({ amount: "", notes: "" });
   }
 
-  function submitQuote(lead) {
+  async function submitQuote(lead) {
     if (!quoteDraft.amount) return;
 
     setLeadRows((prev) => prev.map((row) => (row.id === lead.id
@@ -104,6 +550,32 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
       : row)));
     setOpenQuoteLeadId("");
     setQuoteDraft({ amount: "", notes: "" });
+
+    if (!lead.dbId) return;
+
+    const updatePayload = {
+      status: "quoted",
+      notes: [
+        `Quote $${Number(quoteDraft.amount || 0).toLocaleString()} sent ${new Date().toLocaleString()}`,
+        quoteDraft.notes,
+      ].filter(Boolean).join(" | "),
+    };
+
+    if (contractorProfileId) {
+      updatePayload.contractor_id = contractorProfileId;
+    }
+
+    const { error } = await supabase
+      .from("contractor_job_leads")
+      .update(updatePayload)
+      .eq("id", lead.dbId);
+
+    if (error) {
+      setLeadsError(`Quote saved locally, but database update failed: ${error.message}`);
+      return;
+    }
+
+    setJobsRefreshTick((prev) => prev + 1);
   }
 
   return (
@@ -114,6 +586,13 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 4 }}>Job Leads</div>
             <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Deal makers nearby are requesting bids in your selected trades.</div>
+            {leadsError && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{leadsError}</div>}
+            {leadsLoading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading fresh job leads...</div>}
+            {!leadsLoading && leadRows.length === 0 && (
+              <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>
+                No leads are available yet for your trade profile.
+              </div>
+            )}
             {leadRows.map((lead) => (
               <div key={lead.id} style={{ ...card, marginBottom: 10, borderColor: lead.urgent ? `${G.gold}66` : G.border }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 8, flexWrap: "wrap" }}>
@@ -192,6 +671,13 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
               ))}
             </div>
 
+            {leadsLoading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading active jobs...</div>}
+            {!leadsLoading && activeJobs.length === 0 && (
+              <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>
+                No active jobs yet. Send quotes from Job Leads to move opportunities into this pipeline.
+              </div>
+            )}
+
             {activeJobs.map((job) => (
               <div key={job.id} style={{ ...card, marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, gap: 8, flexWrap: "wrap" }}>
@@ -199,6 +685,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
                   <div style={{ fontSize: 10, color: G.green }}>${job.value.toLocaleString()}</div>
                 </div>
                 <div style={{ fontSize: 9, color: G.muted, marginBottom: 5 }}>Deal Maker: {job.flipper}</div>
+                <div style={{ fontSize: 8, color: G.gold, letterSpacing: 1, marginBottom: 5 }}>Stage: {job.statusLabel}</div>
                 <div style={{ fontSize: 10, color: G.muted, marginBottom: 7 }}>{job.statusNote}</div>
 
                 <div style={{ height: 7, borderRadius: 999, background: G.faint, marginBottom: 8 }}>
@@ -210,7 +697,17 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
                   <div style={{ display: "flex", gap: 6, width: isMobile ? "100%" : "auto", flexWrap: "wrap" }}>
                     <button onClick={() => bumpProgress(job.id)} style={{ ...btnG, fontSize: 8, padding: "6px 10px", flex: isMobile ? "1 1 120px" : "initial" }}>Update Progress</button>
                     <button onClick={() => window.alert(`Messaging ${job.flipper} about ${job.address}`)} style={{ ...btnO, fontSize: 8, padding: "6px 10px", flex: isMobile ? "1 1 100px" : "initial" }}>Message</button>
-                    <button onClick={() => window.alert(`Photo upload opened for ${job.address}`)} style={{ ...btnO, fontSize: 8, padding: "6px 10px", flex: isMobile ? "1 1 100px" : "initial" }}>Photos</button>
+                    <button
+                      onClick={() => {
+                        setContractorTab("profile");
+                        setTimeout(() => {
+                          photoInputRef.current?.click();
+                        }, 0);
+                      }}
+                      style={{ ...btnO, fontSize: 8, padding: "6px 10px", flex: isMobile ? "1 1 100px" : "initial" }}
+                    >
+                      Photos
+                    </button>
                   </div>
                 </div>
               </div>
@@ -224,8 +721,12 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
 
             <div style={{ ...card, marginBottom: 10 }}>
               <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-                <div style={{ width: 52, height: 52, borderRadius: "50%", background: G.greenGlow, border: `2px solid ${G.green}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: G.green, fontWeight: "bold" }}>
-                  {(user?.name || "U").split(" ").map((name) => name[0]).join("")}
+                <div style={{ width: 52, height: 52, borderRadius: "50%", background: G.greenGlow, border: `2px solid ${G.green}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: G.green, fontWeight: "bold", overflow: "hidden" }}>
+                  {photoSignedUrl ? (
+                    <img src={photoSignedUrl} alt="Contractor profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    (user?.name || "U").split(" ").map((name) => name[0]).join("")
+                  )}
                 </div>
                 <div>
                   <div style={{ fontFamily: G.serif, fontSize: 15, color: G.text, fontWeight: "bold" }}>{user?.name}</div>
@@ -236,6 +737,31 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
                   <div style={{ fontSize: 8, color: G.green, border: `1px solid ${G.green}44`, background: G.greenGlow, borderRadius: 3, padding: "2px 6px" }}>Verified</div>
                   <div style={{ fontSize: 8, color: G.gold, border: `1px solid ${G.gold}44`, background: `${G.gold}22`, borderRadius: 3, padding: "2px 6px" }}>Top Rated</div>
                 </div>
+              </div>
+
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/heic"
+                style={{ display: "none" }}
+                onChange={handlePhotoFileSelection}
+              />
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                <button
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={photoUploadBusy}
+                  style={{ ...btnO, fontSize: 8, padding: "6px 10px", opacity: photoUploadBusy ? 0.7 : 1 }}
+                >
+                  {photoUploadBusy ? "Uploading..." : "Upload Profile Photo"}
+                </button>
+                <button
+                  onClick={handleCaptureFromCamera}
+                  disabled={photoUploadBusy}
+                  style={{ ...btnO, fontSize: 8, padding: "6px 10px", opacity: photoUploadBusy ? 0.7 : 1 }}
+                >
+                  Use Camera
+                </button>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, marginBottom: 12 }}>
@@ -297,10 +823,10 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
             <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 12 }}>Earnings</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
-                { l: "This Month", v: "$8,400", c: G.green },
-                { l: "Last Month", v: "$11,200", c: G.text },
-                { l: "This Year", v: "$96,500", c: G.green },
-                { l: "Pending", v: "$18,200", c: G.gold },
+                { l: "This Month", v: `$${Math.round(earningsSummary.thisMonth).toLocaleString()}`, c: G.green },
+                { l: "Last Month", v: `$${Math.round(earningsSummary.lastMonth).toLocaleString()}`, c: G.text },
+                { l: "This Year", v: `$${Math.round(earningsSummary.thisYear).toLocaleString()}`, c: G.green },
+                { l: "Pending", v: `$${Math.round(earningsSummary.pending).toLocaleString()}`, c: G.gold },
               ].map(({ l, v, c }) => (
                 <div key={l} style={{ ...card, textAlign: "center" }}>
                   <div style={{ fontSize: 8, color: G.muted, letterSpacing: 2, marginBottom: 5 }}>{l.toUpperCase()}</div>
@@ -311,31 +837,35 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
 
             <div style={{ ...card }}>
               <div style={{ ...lbl, marginBottom: 8 }}>Job History</div>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680 }}>
-                  <thead>
-                    <tr style={{ textAlign: "left", borderBottom: `1px solid ${G.border}` }}>
-                      {["Address", "Trade", "Amount", "Status", "Date", "Deal Maker"].map((head) => (
-                        <th key={head} style={{ fontSize: 8, color: G.muted, letterSpacing: 1, fontWeight: "normal", padding: "8px 6px" }}>{head}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {JOB_HISTORY.map((row) => (
-                      <tr key={`${row.address}-${row.date}`} style={{ borderBottom: `1px solid ${G.faint}` }}>
-                        <td style={{ fontSize: 10, color: G.text, padding: "8px 6px" }}>{row.address}</td>
-                        <td style={{ fontSize: 9, color: G.muted, padding: "8px 6px" }}>{row.trade}</td>
-                        <td style={{ fontSize: 10, color: G.green, padding: "8px 6px" }}>{row.amount}</td>
-                        <td style={{ padding: "8px 6px" }}>
-                          <span style={{ fontSize: 8, color: row.status === "Paid" ? G.green : G.gold, border: `1px solid ${row.status === "Paid" ? G.green : G.gold}55`, background: row.status === "Paid" ? G.greenGlow : `${G.gold}22`, borderRadius: 3, padding: "2px 7px" }}>{row.status}</span>
-                        </td>
-                        <td style={{ fontSize: 9, color: G.muted, padding: "8px 6px" }}>{row.date}</td>
-                        <td style={{ fontSize: 9, color: G.muted, padding: "8px 6px" }}>{row.flipper}</td>
+              {jobHistoryRows.length === 0 ? (
+                <div style={{ fontSize: 10, color: G.muted }}>No completed or paid jobs yet.</div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680 }}>
+                    <thead>
+                      <tr style={{ textAlign: "left", borderBottom: `1px solid ${G.border}` }}>
+                        {["Address", "Trade", "Amount", "Status", "Date", "Deal Maker"].map((head) => (
+                          <th key={head} style={{ fontSize: 8, color: G.muted, letterSpacing: 1, fontWeight: "normal", padding: "8px 6px" }}>{head}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {jobHistoryRows.map((row) => (
+                        <tr key={row.id} style={{ borderBottom: `1px solid ${G.faint}` }}>
+                          <td style={{ fontSize: 10, color: G.text, padding: "8px 6px" }}>{row.address}</td>
+                          <td style={{ fontSize: 9, color: G.muted, padding: "8px 6px" }}>{row.trade}</td>
+                          <td style={{ fontSize: 10, color: G.green, padding: "8px 6px" }}>{row.amount}</td>
+                          <td style={{ padding: "8px 6px" }}>
+                            <span style={{ fontSize: 8, color: row.status === "Paid" ? G.green : G.gold, border: `1px solid ${row.status === "Paid" ? G.green : G.gold}55`, background: row.status === "Paid" ? G.greenGlow : `${G.gold}22`, borderRadius: 3, padding: "2px 7px" }}>{row.status}</span>
+                          </td>
+                          <td style={{ fontSize: 9, color: G.muted, padding: "8px 6px" }}>{row.date}</td>
+                          <td style={{ fontSize: 9, color: G.muted, padding: "8px 6px" }}>{row.flipper}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}

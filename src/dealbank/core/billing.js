@@ -35,6 +35,10 @@ export function getContractorSubscriptionPriceId(plan) {
   return envPriceId("VITE_STRIPE_PRICE_CONTRACTOR_BASIC_MONTHLY");
 }
 
+export function getDealmakerSubscriptionPriceId() {
+  return envPriceId("VITE_STRIPE_PRICE_DEALMAKER_MONTHLY");
+}
+
 export function getCreditPackPriceId(packName) {
   const normalized = asText(packName).toLowerCase();
 
