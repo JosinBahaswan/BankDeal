@@ -424,7 +424,7 @@ export default function ContractsTab({ ctx }) {
     } finally {
       if (!silent) setContractsLoading(false);
     }
-  }, [user?.id, user?.name]);
+  }, [defaultTemplate, user?.id, user?.name]);
 
   useEffect(() => {
     if (!user?.id) {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../../lib/supabaseClient";
+import { beginCheckout, getCreditPackPriceId } from "../../../core/billing";
 import { LEAD_FILTERS, LEAD_LIST_TYPES } from "./toolData";
 
 const GENERATED_FIRST_NAMES = ["Maria", "Jason", "Helen", "Ramon", "Lydia", "Noah", "Ariana", "Carlos", "Nina", "Brandon"];
@@ -63,13 +64,16 @@ function statusBadge(status, G) {
 export default function LeadsToolTab({ ctx }) {
   const { G, card, lbl, btnG, btnO, fmt, user } = ctx;
 
-  const [credits, setCredits] = useState({ dataCredits: 2500, skipTracesUsed: 132, leadsPulled: 487 });
+  const [credits, setCredits] = useState({ dataCredits: 0, skipTracesUsed: 132, leadsPulled: 487 });
   const [buildForm, setBuildForm] = useState({ city: "Sacramento", propertyType: "Single Family", listType: "Absentee Owner", minEquity: "50000" });
   const [pullEstimate, setPullEstimate] = useState(null);
   const [filterType, setFilterType] = useState("All");
   const [leadRows, setLeadRows] = useState([]);
   const [leadsLoading, setLeadsLoading] = useState(false);
   const [leadsError, setLeadsError] = useState("");
+  const [billingError, setBillingError] = useState("");
+  const [creditBalanceLoading, setCreditBalanceLoading] = useState(false);
+  const [purchaseInFlight, setPurchaseInFlight] = useState("");
   const [savedIds, setSavedIds] = useState([]);
   const [showCreditModal, setShowCreditModal] = useState(false);
   const [dialLead, setDialLead] = useState(null);
@@ -137,6 +141,94 @@ export default function LeadsToolTab({ ctx }) {
     };
   }, [user?.id]);
 
+  function showToast(message) {
+    setSmsToast(message);
+    setTimeout(() => setSmsToast(""), 1800);
+  }
+
+  useEffect(() => {
+    let active = true;
+    let creditsChannel;
+
+    async function loadCreditBalance() {
+      if (!user?.id) {
+        if (!active) return;
+        setCredits((prev) => ({ ...prev, dataCredits: 0 }));
+        setCreditBalanceLoading(false);
+        setBillingError("");
+        return;
+      }
+
+      setCreditBalanceLoading(true);
+      setBillingError("");
+
+      const { data, error } = await supabase
+        .from("credit_purchases")
+        .select("credits_remaining")
+        .eq("user_id", user.id);
+
+      if (!active) return;
+
+      if (error) {
+        setBillingError(`Failed to load credit balance: ${error.message}`);
+        setCreditBalanceLoading(false);
+        return;
+      }
+
+      const totalRemaining = (data || []).reduce((sum, row) => sum + Number(row.credits_remaining || 0), 0);
+      setCredits((prev) => ({ ...prev, dataCredits: totalRemaining }));
+      setCreditBalanceLoading(false);
+    }
+
+    loadCreditBalance();
+
+    if (user?.id) {
+      creditsChannel = supabase
+        .channel(`credit-purchases-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "credit_purchases",
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            loadCreditBalance();
+          },
+        )
+        .subscribe();
+    }
+
+    return () => {
+      active = false;
+      if (creditsChannel) {
+        supabase.removeChannel(creditsChannel);
+      }
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const checkoutKind = params.get("kind");
+    const checkoutStatus = params.get("checkout");
+
+    if (checkoutKind !== "credits") return;
+
+    if (checkoutStatus === "success") {
+      showToast("Payment completed. Credits will refresh shortly.");
+    }
+
+    if (checkoutStatus === "cancel") {
+      showToast("Credit pack checkout canceled.");
+    }
+
+    const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }, []);
+
   async function saveLead(lead) {
     if (!user?.id) {
       showToast("Login required before saving leads");
@@ -198,19 +290,8 @@ export default function LeadsToolTab({ ctx }) {
     setSavedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   };
 
-  const showToast = (message) => {
-    setSmsToast(message);
-    setTimeout(() => setSmsToast(""), 1800);
-  };
-
   const sendSms = (name) => {
     showToast(`SMS queued for ${name}`);
-  };
-
-  const parseCredits = (value) => {
-    const str = String(value || "").trim().toUpperCase();
-    if (str.endsWith("K")) return (Number(str.replace("K", "")) || 0) * 1000;
-    return Number(str.replace(/[^0-9]/g, "")) || 0;
   };
 
   const callFromDialer = () => {
@@ -218,11 +299,35 @@ export default function LeadsToolTab({ ctx }) {
     showToast(`Calling ${dialLead.name}...`);
   };
 
-  const purchaseCredits = (pack) => {
-    const amount = parseCredits(pack.credits);
-    setCredits((prev) => ({ ...prev, dataCredits: prev.dataCredits + amount }));
+  const purchaseCredits = async (pack) => {
+    if (!user?.id || !user?.email) {
+      showToast("Login required before purchasing credits");
+      return;
+    }
+
+    const priceId = getCreditPackPriceId(pack.name);
+    if (!priceId) {
+      showToast("Missing Stripe price mapping for this credit pack");
+      return;
+    }
+
+    setPurchaseInFlight(pack.name);
     setShowCreditModal(false);
-    showToast(`Purchased ${pack.credits} credits (${pack.name})`);
+
+    try {
+      await beginCheckout({
+        priceId,
+        userId: user.id,
+        email: user.email,
+        mode: "payment",
+        source: "leads_tool",
+        successPath: "/",
+      });
+    } catch (error) {
+      showToast(error?.message || "Unable to start checkout");
+    } finally {
+      setPurchaseInFlight("");
+    }
   };
 
   return (
@@ -230,9 +335,10 @@ export default function LeadsToolTab({ ctx }) {
       <div style={{ fontFamily: G.serif, fontSize: 18, marginBottom: 4 }}>Lead Lists</div>
       <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Build targeted lists, manage credits, and action leads fast.</div>
       {leadsError && <div style={{ fontSize: 10, color: G.red, marginBottom: 10 }}>{leadsError}</div>}
+      {billingError && <div style={{ fontSize: 10, color: G.red, marginBottom: 10 }}>{billingError}</div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginBottom: 12 }}>
-        <div style={{ ...card, textAlign: "center" }}><div style={{ ...lbl, marginBottom: 3 }}>Data Credits</div><div style={{ fontFamily: G.serif, fontSize: 18, color: G.green }}>{credits.dataCredits.toLocaleString()}</div></div>
+        <div style={{ ...card, textAlign: "center" }}><div style={{ ...lbl, marginBottom: 3 }}>Data Credits</div><div style={{ fontFamily: G.serif, fontSize: 18, color: G.green }}>{creditBalanceLoading ? "..." : credits.dataCredits.toLocaleString()}</div></div>
         <div style={{ ...card, textAlign: "center" }}><div style={{ ...lbl, marginBottom: 3 }}>Skip Traces</div><div style={{ fontFamily: G.serif, fontSize: 18, color: G.text }}>{credits.skipTracesUsed}</div></div>
         <div style={{ ...card, textAlign: "center" }}><div style={{ ...lbl, marginBottom: 3 }}>Leads Pulled</div><div style={{ fontFamily: G.serif, fontSize: 18, color: G.text }}>{credits.leadsPulled}</div></div>
         <div style={{ ...card, textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -346,7 +452,7 @@ export default function LeadsToolTab({ ctx }) {
           <div style={{ ...card, width: "100%", maxWidth: 560 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
               <div style={{ fontFamily: G.serif, fontSize: 16 }}>Buy Data Credits</div>
-              <button onClick={() => setShowCreditModal(false)} style={{ ...btnO, padding: "4px 9px", fontSize: 8 }}>Close</button>
+              <button onClick={() => setShowCreditModal(false)} disabled={Boolean(purchaseInFlight)} style={{ ...btnO, padding: "4px 9px", fontSize: 8, opacity: purchaseInFlight ? 0.7 : 1 }}>Close</button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
               {[{ name: "Starter", credits: "500", price: "$49" }, { name: "Growth", credits: "2K", price: "$149", popular: true }, { name: "Pro", credits: "10K", price: "$499" }].map((pack) => (
@@ -356,7 +462,20 @@ export default function LeadsToolTab({ ctx }) {
                   <div style={{ fontFamily: G.serif, fontSize: 22, color: G.green }}>{pack.credits}</div>
                   <div style={{ fontSize: 10, color: G.muted, marginBottom: 8 }}>credits</div>
                   <div style={{ fontFamily: G.serif, fontSize: 17, color: G.gold, marginBottom: 8 }}>{pack.price}</div>
-                  <button onClick={() => purchaseCredits(pack)} style={{ ...btnG, width: "100%", fontSize: 8, padding: "6px 8px" }}>Purchase</button>
+                  <button
+                    onClick={() => purchaseCredits(pack)}
+                    disabled={Boolean(purchaseInFlight)}
+                    style={{
+                      ...btnG,
+                      width: "100%",
+                      fontSize: 8,
+                      padding: "6px 8px",
+                      opacity: purchaseInFlight && purchaseInFlight !== pack.name ? 0.7 : 1,
+                      cursor: purchaseInFlight ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {purchaseInFlight === pack.name ? "Redirecting..." : "Purchase"}
+                  </button>
                 </div>
               ))}
             </div>

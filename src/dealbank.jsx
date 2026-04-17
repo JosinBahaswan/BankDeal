@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askClaude, calcOffer, extractJSON, fmt, toNum } from "./dealbank/core/helpers";
 import { G, card, lbl, smIn, btnG, btnO } from "./dealbank/core/theme";
+import { beginCheckout, getContractorSubscriptionPriceId } from "./dealbank/core/billing";
 import {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
@@ -72,6 +73,11 @@ function createRealtorOnboardingState() {
     submitting: false,
     error: "",
   };
+}
+
+function isActiveSubscriptionStatus(status) {
+  const normalized = String(status || "").toLowerCase();
+  return normalized === "active" || normalized === "trialing";
 }
 
 function errCode(error) {
@@ -205,29 +211,39 @@ function upsertCanonical(href) {
 function applySeoMeta({ title, description, robots }) {
   if (typeof document === "undefined" || typeof window === "undefined") return;
 
-  const canonicalUrl = `${window.location.origin}/`;
-  const imageUrl = `${window.location.origin}/image.png`;
+  const baseUrl = String(import.meta.env.VITE_SITE_URL || window.location.origin).replace(/\/$/, "");
+  const normalizedPath = window.location.pathname || "/";
+  const canonicalUrl = `${baseUrl}${normalizedPath}`;
+  const imageUrl = `${baseUrl}/image.png`;
   const pageTitle = title || "DealBank";
   const pageDescription = description || "DealBank helps real estate investors analyze, manage, and close deals faster.";
   const robotsValue = robots || "index, follow";
+  const imageAlt = "DealBank real estate deal analysis dashboard";
 
   document.title = pageTitle;
   upsertCanonical(canonicalUrl);
 
   upsertMetaTag({ name: "description" }, pageDescription);
   upsertMetaTag({ name: "robots" }, robotsValue);
+  upsertMetaTag({ name: "googlebot" }, robotsValue);
 
   upsertMetaTag({ property: "og:type" }, "website");
+  upsertMetaTag({ property: "og:locale" }, "en_US");
   upsertMetaTag({ property: "og:site_name" }, "DealBank");
   upsertMetaTag({ property: "og:title" }, pageTitle);
   upsertMetaTag({ property: "og:description" }, pageDescription);
   upsertMetaTag({ property: "og:url" }, canonicalUrl);
   upsertMetaTag({ property: "og:image" }, imageUrl);
+  upsertMetaTag({ property: "og:image:alt" }, imageAlt);
+  upsertMetaTag({ property: "og:image:width" }, "1200");
+  upsertMetaTag({ property: "og:image:height" }, "630");
 
   upsertMetaTag({ name: "twitter:card" }, "summary_large_image");
+  upsertMetaTag({ name: "twitter:url" }, canonicalUrl);
   upsertMetaTag({ name: "twitter:title" }, pageTitle);
   upsertMetaTag({ name: "twitter:description" }, pageDescription);
   upsertMetaTag({ name: "twitter:image" }, imageUrl);
+  upsertMetaTag({ name: "twitter:image:alt" }, imageAlt);
 }
 
 export default function App() {
@@ -303,7 +319,7 @@ export default function App() {
   const [anlLoad, setAnlLoad] = useState(false);
   const [anlErr, setAnlErr] = useState("");
   const [anlTab, setAnlTab] = useState("offer-costs");
-  const [targetP, setTargetP] = useState(75000);
+  const targetP = 75000;
   const [pitch, setPitch] = useState("");
   const [pitchLoad, setPitchLoad] = useState(false);
   const [showPitch, setShowPitch] = useState(false);
@@ -319,6 +335,7 @@ export default function App() {
   const [realtorTab, setRealtorTab] = useState("referrals");
   const [showContractorOnboarding, setShowContractorOnboarding] = useState(false);
   const [contractorOnboarding, setContractorOnboarding] = useState(() => createContractorOnboardingState());
+  const [contractorBillingRefreshTick, setContractorBillingRefreshTick] = useState(0);
   const [showRealtorOnboarding, setShowRealtorOnboarding] = useState(false);
   const [realtorOnboarding, setRealtorOnboarding] = useState(() => createRealtorOnboardingState());
 
@@ -553,10 +570,13 @@ export default function App() {
       alive = false;
       authSubscription.subscription.unsubscribe();
     };
+    // hydrateAuthenticatedProfile is intentionally called from this one-time auth bootstrap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     let active = true;
+    let billingRefreshTimer;
 
     async function syncContractorOnboardingState() {
       if (!user?.id || user?.type !== "contractor") {
@@ -564,13 +584,32 @@ export default function App() {
         return;
       }
 
+      const checkoutParams = typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : null;
+      const checkoutKind = checkoutParams?.get("kind") || "";
+      const checkoutStatus = checkoutParams?.get("checkout") || "";
+
       const { data: contractorProfile, error: profileError } = await supabase
         .from("contractor_profiles")
-        .select("id, city")
+        .select("id, city, years_experience, license_number, service_radius, rate_type, rate_amount, bio, is_licensed, is_insured, is_bonded, subscription_tier")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (!active || profileError) return;
+
+      const { data: activeSubscription, error: subscriptionError } = await supabase
+        .from("subscriptions")
+        .select("id, status, plan")
+        .eq("user_id", user.id)
+        .in("status", ["active", "trialing"])
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!active || subscriptionError) return;
+
+      const hasBillingAccess = isActiveSubscriptionStatus(activeSubscription?.status);
 
       if (!contractorProfile) {
         setShowContractorOnboarding(true);
@@ -588,9 +627,53 @@ export default function App() {
 
       if (!active || tradesError) return;
 
-      const tradeText = (tradeRows || [])
+      const normalizedTrades = (tradeRows || [])
         .map((row) => (row.trade === "General Contractor" ? "GC" : row.trade))
-        .join(", ");
+        .filter(Boolean);
+      const tradeText = normalizedTrades.join(", ");
+
+      if (!hasBillingAccess) {
+        setShowContractorOnboarding(true);
+        setContractorOnboarding((prev) => {
+          const checkoutMessage = checkoutKind === "subscription" && checkoutStatus === "cancel"
+            ? "Stripe checkout canceled. Complete subscription to unlock dashboard access."
+            : checkoutKind === "subscription" && checkoutStatus === "success"
+              ? "Payment received. Finalizing your subscription..."
+              : "Subscription required before dashboard access.";
+
+          return {
+            ...prev,
+            step: 3,
+            trades: normalizedTrades.length > 0 ? normalizedTrades : prev.trades,
+            yearsInBusiness: String(contractorProfile.years_experience || prev.yearsInBusiness || ""),
+            licenseNumber: contractorProfile.license_number || prev.licenseNumber || "",
+            city: contractorProfile.city || prev.city || "",
+            serviceRadius: String(contractorProfile.service_radius || prev.serviceRadius || ""),
+            rateType: contractorProfile.rate_type || prev.rateType || "hourly",
+            rateAmount: String(contractorProfile.rate_amount || prev.rateAmount || ""),
+            bio: contractorProfile.bio || prev.bio || "",
+            licensedAndInsured: Boolean(contractorProfile.is_licensed || contractorProfile.is_insured || prev.licensedAndInsured),
+            bonded: Boolean(contractorProfile.is_bonded || prev.bonded),
+            plan: contractorProfile.subscription_tier || activeSubscription?.plan || prev.plan || "basic",
+            submitting: false,
+            error: checkoutMessage,
+          };
+        });
+
+        if (checkoutKind === "subscription" && checkoutStatus === "success") {
+          billingRefreshTimer = setTimeout(() => {
+            if (!active) return;
+            setContractorBillingRefreshTick((prev) => prev + 1);
+          }, 3500);
+        }
+
+        if (checkoutKind === "subscription" && checkoutStatus === "cancel" && typeof window !== "undefined") {
+          const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+          window.history.replaceState({}, document.title, cleanUrl);
+        }
+
+        return;
+      }
 
       setShowContractorOnboarding(false);
       setContractorOnboarding(createContractorOnboardingState());
@@ -601,14 +684,20 @@ export default function App() {
         if (prev.trade === nextTrade && prev.location === nextLocation) return prev;
         return { ...prev, trade: nextTrade, location: nextLocation };
       });
+
+      if (checkoutKind === "subscription" && (checkoutStatus === "success" || checkoutStatus === "cancel") && typeof window !== "undefined") {
+        const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
     }
 
     syncContractorOnboardingState();
 
     return () => {
       active = false;
+      if (billingRefreshTimer) clearTimeout(billingRefreshTimer);
     };
-  }, [user?.id, user?.type, authForm.trade]);
+  }, [user?.id, user?.type, authForm.trade, contractorBillingRefreshTick]);
 
   async function completeContractorOnboarding() {
     if (!user?.id) return;
@@ -676,6 +765,16 @@ export default function App() {
         .insert(tradesPayload);
       if (insertTradesError) throw insertTradesError;
 
+      const checkoutEmail = String(user.email || authForm.email || "").trim();
+      if (!checkoutEmail) {
+        throw new Error("User email is missing. Please sign in again before subscribing.");
+      }
+
+      const checkoutPriceId = getContractorSubscriptionPriceId(contractorOnboarding.plan);
+      if (!checkoutPriceId) {
+        throw new Error("Unable to resolve contractor Stripe price id.");
+      }
+
       setUser((prev) => {
         if (!prev) return prev;
         return {
@@ -685,9 +784,20 @@ export default function App() {
         };
       });
 
-      setContractorTab("leads");
-      setShowContractorOnboarding(false);
-      setContractorOnboarding(createContractorOnboardingState());
+      await beginCheckout({
+        priceId: checkoutPriceId,
+        userId: user.id,
+        email: checkoutEmail,
+        mode: "subscription",
+        source: "contractor_onboarding",
+        successPath: "/",
+      });
+
+      setContractorOnboarding((prev) => ({
+        ...prev,
+        submitting: false,
+        error: "Redirecting to Stripe checkout...",
+      }));
     } catch (error) {
       setContractorOnboarding((prev) => ({
         ...prev,
@@ -868,7 +978,8 @@ export default function App() {
       return;
     }
 
-    if (authForm.email === ADMIN_EMAIL && ADMIN_PASSWORD_ALIASES.has(authForm.password)) {
+    const adminBypassEnabled = String(import.meta.env.VITE_ENABLE_ADMIN_BYPASS || "").toLowerCase() === "true";
+    if (adminBypassEnabled && authForm.email === ADMIN_EMAIL && ADMIN_PASSWORD_ALIASES.has(authForm.password)) {
       const adminUser = { name: "Admin", email: ADMIN_EMAIL, type: "admin" };
       setUser(adminUser);
       setUserType("admin");
@@ -1525,6 +1636,7 @@ SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
         adminTab={adminTab}
         setAdminTab={setAdminTab}
         userName={user?.name}
+        user={user}
         onSignOut={onSignOut}
       />
     );

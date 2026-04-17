@@ -2,7 +2,6 @@ export default function PartnersTab({ ctx }) {
   const {
     G,
     card,
-    lbl,
     btnG,
     btnO,
     AD_SLOTS,

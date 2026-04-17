@@ -1,19 +1,27 @@
 import TopBar from "../components/TopBar";
 import useIsMobile from "../core/useIsMobile";
 import { getLaunchIntegrationStatus, integrationStatusColor } from "../core/integrations";
+import useAdminMetrics from "../hooks/useAdminMetrics";
 
-export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACTORS, adminTab, setAdminTab, userName, onSignOut }) {
+export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACTORS, adminTab, setAdminTab, userName, user, onSignOut }) {
   const isMobile = useIsMobile(820);
-  const dealMakerCount = 832;
-  const dealMakerMonthlyPrice = 149;
-  const contractorCount = 318;
-  const contractorMonthlyPrice = 79;
-  const dealMakerMrr = dealMakerCount * dealMakerMonthlyPrice;
-  const contractorMrr = contractorCount * contractorMonthlyPrice;
-  const totalMrr = dealMakerMrr + contractorMrr;
-  const arrProjection = totalMrr * 12;
-  const dealMakerSharePct = totalMrr > 0 ? Math.round((dealMakerMrr / totalMrr) * 100) : 0;
-  const contractorSharePct = totalMrr > 0 ? Math.round((contractorMrr / totalMrr) * 100) : 0;
+  const { metrics, loading: metricsLoading, error: metricsError, reload } = useAdminMetrics(user);
+  const dealMakerCount = metrics.dealMakerUsers;
+  const contractorCount = metrics.contractorUsers;
+  const totalMrr = metrics.totalMrr;
+  const arrProjection = metrics.arrProjection;
+  const dealMakerMrr = metrics.dealMakerMrr;
+  const contractorMrr = metrics.contractorMrr;
+  const dealMakerSharePct = metrics.dealMakerSharePct;
+  const contractorSharePct = metrics.contractorSharePct;
+  const creditsRevenue = metrics.creditRevenue;
+  const platformFeesRevenue = metrics.platformFeeRevenue;
+  const totalUsers = metrics.totalUsers;
+  const dealMakerUserShare = totalUsers > 0 ? Math.round((dealMakerCount / totalUsers) * 100) : 0;
+  const contractorUserShare = totalUsers > 0 ? Math.round((contractorCount / totalUsers) * 100) : 0;
+  const totalCashRevenue = creditsRevenue + platformFeesRevenue;
+  const creditsSharePct = totalCashRevenue > 0 ? Math.round((creditsRevenue / totalCashRevenue) * 100) : 0;
+  const platformFeeSharePct = totalCashRevenue > 0 ? Math.round((platformFeesRevenue / totalCashRevenue) * 100) : 0;
   const launchIntegrations = getLaunchIntegrationStatus();
 
   const money = (value) => `$${Number(value || 0).toLocaleString()}`;
@@ -46,15 +54,28 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
     <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
       <TopBar title="ADMIN" tabs={ATABS} active={adminTab} onTab={setAdminTab} userName={userName} onSignOut={onSignOut} G={G} btnO={btnO} />
       <div style={{ maxWidth: 980, margin: "0 auto", padding: isMobile ? "14px 12px 20px" : "20px 16px" }}>
+        {metricsLoading && (
+          <div style={{ ...card, marginBottom: 10, borderColor: `${G.green}44` }}>
+            <div style={{ fontSize: 10, color: G.green }}>Syncing live metrics from Supabase...</div>
+          </div>
+        )}
+
+        {metricsError && (
+          <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55` }}>
+            <div style={{ fontSize: 10, color: G.red, marginBottom: 8 }}>{metricsError}</div>
+            <button onClick={reload} style={{ ...btnO, padding: "5px 10px", fontSize: 8 }}>Retry</button>
+          </div>
+        )}
+
         {adminTab === "overview" && (
           <div>
             <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 14 }}>Platform Overview</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
-                { l: "Total Users", v: "1,284", c: G.green, sub: "+47 this week" },
-                { l: "Active Deal Makers", v: String(dealMakerCount), c: G.text, sub: "65% of users" },
-                { l: "Contractors", v: String(contractorCount), c: G.gold, sub: "$79/mo subs" },
-                { l: "Realtors", v: "134", c: G.blue, sub: "Rev share only" },
+                { l: "Total Users", v: String(totalUsers), c: G.green, sub: "Live from public.users" },
+                { l: "Active Deal Makers", v: String(dealMakerCount), c: G.text, sub: `${dealMakerUserShare}% of users` },
+                { l: "Contractors", v: String(contractorCount), c: G.gold, sub: `${contractorUserShare}% of users` },
+                { l: "Realtors", v: String(metrics.realtorUsers), c: G.blue, sub: "Referral collaborators" },
               ].map(({ l, v, c, sub }) => (
                 <div key={l} style={{ ...card }}>
                   <div style={lbl}>{l}</div>
@@ -66,9 +87,9 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
-                { l: "MRR", v: money(totalMrr), c: G.green, sub: "Deal Maker + Contractor subs @ spec pricing" },
-                { l: "Deals Analyzed", v: "4,231", c: G.text, sub: "This month" },
-                { l: "Realtor Splits Earned", v: "$18,400", c: G.gold, sub: "Commission referrals YTD" },
+                { l: "MRR", v: money(totalMrr), c: G.green, sub: "Active + trialing subscriptions" },
+                { l: "Deals Tracked", v: String(metrics.dealsTotal), c: G.text, sub: `${metrics.dealsClosed} closed` },
+                { l: "Cash Revenue", v: money(totalCashRevenue), c: G.gold, sub: "Credit packs + platform fees" },
               ].map(({ l, v, c, sub }) => (
                 <div key={l} style={{ ...card }}>
                   <div style={lbl}>{l}</div>
@@ -154,7 +175,7 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
               <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text }}>User Management</div>
-              <div style={{ fontSize: 10, color: G.muted }}>1,284 total users</div>
+              <div style={{ fontSize: 10, color: G.muted }}>{totalUsers} total users</div>
             </div>
 
             <div style={{ ...card }}>
@@ -232,10 +253,10 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
             <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 12 }}>Revenue Dashboard</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
-                { l: "Deal Maker Subs", v: money(dealMakerMrr), sub: `${dealMakerCount} x $${dealMakerMonthlyPrice}/mo`, c: G.green },
-                { l: "Contractor Subs", v: money(contractorMrr), sub: `${contractorCount} x $${contractorMonthlyPrice}/mo`, c: G.gold },
-                { l: "Realtor Splits", v: "$18,400", sub: "YTD commission splits", c: G.blue },
-                { l: "Deal Marketplace", v: "$3,200", sub: "Listing fees", c: G.text },
+                { l: "Deal Maker Subs", v: money(dealMakerMrr), sub: `${dealMakerCount} active users`, c: G.green },
+                { l: "Contractor Subs", v: money(contractorMrr), sub: `${contractorCount} active users`, c: G.gold },
+                { l: "Lead Credit Sales", v: money(creditsRevenue), sub: "One-time credit purchases", c: G.blue },
+                { l: "Platform Fees", v: money(platformFeesRevenue), sub: `${metrics.platformFeeDisbursed} disbursed · ${metrics.platformFeePending} pending`, c: G.text },
                 { l: "Total MRR", v: money(totalMrr), sub: "Monthly recurring", c: G.green },
                 { l: "ARR Projection", v: money(arrProjection), sub: "Annualized", c: G.green },
               ].map(({ l, v, sub, c }) => (
@@ -250,11 +271,11 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
             <div style={{ ...card }}>
               <div style={{ ...lbl, marginBottom: 12 }}>Revenue Streams Breakdown</div>
               {[
-                ["Deal Maker Subscriptions", "$149/mo per deal maker", `${dealMakerSharePct}%`, G.green],
-                ["Contractor Subscriptions", "$79/mo per contractor", `${contractorSharePct}%`, G.gold],
-                ["Realtor Commission Splits", "25% of agent commission", "pending", G.blue],
-                ["Deal Marketplace Fees", "$99 per listing", "5%", G.text],
-                ["Premium Lead Packages", "Future - $299/mo", "-", G.muted],
+                ["Deal Maker Subscriptions", "Live MRR contribution", `${dealMakerSharePct}%`, G.green],
+                ["Contractor Subscriptions", "Live MRR contribution", `${contractorSharePct}%`, G.gold],
+                ["Lead Credit Packs", "One-time purchases", `${creditsSharePct}%`, G.blue],
+                ["Platform Fees", "From executed contracts", `${platformFeeSharePct}%`, G.text],
+                ["Pending Fee Disbursements", `${metrics.platformFeePending} record(s)`, "tracked", G.muted],
               ].map(([stream, model, pct, color]) => (
                 <div key={stream} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${G.faint}`, alignItems: "center" }}>
                   <div>
@@ -270,7 +291,9 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
 
         {adminTab === "deals" && (
           <div>
-            <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 12 }}>All Deals - Platform Wide</div>
+            <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 12 }}>
+              All Deals - Platform Wide ({metrics.dealsTotal} total · {metrics.dealsClosed} closed)
+            </div>
             {dealRows.map((deal, index) => (
               <div key={index} style={{ ...card, marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>

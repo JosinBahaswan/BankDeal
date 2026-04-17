@@ -3,7 +3,7 @@ const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/
 export async function dbSet(key, value) {
   try {
     await window.storage.set(key, JSON.stringify(value));
-  } catch (err) {
+  } catch {
     // no-op in preview/local mode
   }
 }
@@ -12,7 +12,7 @@ export async function dbGet(key) {
   try {
     const record = await window.storage.get(key);
     return record ? JSON.parse(record.value) : null;
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -21,7 +21,7 @@ export async function dbList(prefix) {
   try {
     const result = await window.storage.list(prefix);
     return result ? result.keys : [];
-  } catch (err) {
+  } catch {
     return [];
   }
 }

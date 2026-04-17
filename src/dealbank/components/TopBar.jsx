@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import useIsMobile from "../core/useIsMobile";
 
 const MOBILE_BREAKPOINT = 820;
@@ -6,10 +6,7 @@ const MOBILE_BREAKPOINT = 820;
 export default function TopBar({ title, tabs, active, onTab, userName, onSignOut, G, btnO }) {
   const isMobile = useIsMobile(MOBILE_BREAKPOINT);
   const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    if (!isMobile) setMenuOpen(false);
-  }, [isMobile]);
+  const isMenuOpen = isMobile && menuOpen;
 
   function handleTabChange(tabId) {
     onTab(tabId);
@@ -51,9 +48,9 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
             onClick={() => setMenuOpen((prev) => !prev)}
             style={{ display: "flex", flexDirection: "column", gap: 5, background: "transparent", border: "none", cursor: "pointer", padding: 8 }}
           >
-            <span style={{ display: "block", width: 24, height: 2, background: menuOpen ? "#22c55e" : G.muted, transition: "all .2s", transform: menuOpen ? "rotate(45deg) translate(5px,5px)" : "none" }} />
-            <span style={{ display: "block", width: 24, height: 2, background: menuOpen ? "transparent" : G.muted, transition: "all .2s" }} />
-            <span style={{ display: "block", width: 24, height: 2, background: menuOpen ? "#22c55e" : G.muted, transition: "all .2s", transform: menuOpen ? "rotate(-45deg) translate(5px,-5px)" : "none" }} />
+            <span style={{ display: "block", width: 24, height: 2, background: isMenuOpen ? "#22c55e" : G.muted, transition: "all .2s", transform: isMenuOpen ? "rotate(45deg) translate(5px,5px)" : "none" }} />
+            <span style={{ display: "block", width: 24, height: 2, background: isMenuOpen ? "transparent" : G.muted, transition: "all .2s" }} />
+            <span style={{ display: "block", width: 24, height: 2, background: isMenuOpen ? "#22c55e" : G.muted, transition: "all .2s", transform: isMenuOpen ? "rotate(-45deg) translate(5px,-5px)" : "none" }} />
           </button>
         )}
       </div>
@@ -88,7 +85,7 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
         </div>
       )}
 
-      {isMobile && menuOpen && (
+      {isMenuOpen && (
         <div style={{ position: "fixed", top: 74, left: 0, right: 0, zIndex: 190, background: "#0a1a0a", borderBottom: `1px solid ${G.border}`, padding: "16px 14px" }}>
           {tabs.map((tab) => (
             <button

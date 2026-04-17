@@ -1,0 +1,10 @@
+# DealBank robots rules
+User-agent: *
+Allow: /
+
+# Keep server-side and internal endpoints out of search indexes
+Disallow: /api/
+Disallow: /auth
+
+Sitemap: https://dealbank.app/sitemap.xml
+Host: dealbank.app

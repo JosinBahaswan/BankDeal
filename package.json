@@ -14,10 +14,12 @@
   },
   "dependencies": {
     "@sendgrid/mail": "^8.1.5",
+    "@stripe/stripe-js": "^9.2.0",
     "@supabase/supabase-js": "^2.103.0",
     "pdf-lib": "^1.17.1",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "stripe": "^22.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
