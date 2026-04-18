@@ -1,3 +1,5 @@
+import TrackedPartnerLink from "./partners/TrackedPartnerLink";
+
 export default function PartnersTab({ ctx }) {
   const {
     G,
@@ -14,12 +16,23 @@ export default function PartnersTab({ ctx }) {
     setSoftwareFilter,
     INSURANCE_PARTNERS,
     MORTGAGE_PARTNERS,
+    user,
   } = ctx;
 
   return (
     <div>
       {AD_SLOTS.slice(0, 1).map((ad) => (
-        <a key={ad.id} href={ad.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", background: `linear-gradient(135deg, ${ad.color}18, ${ad.color}08)`, border: `1px solid ${ad.color}44`, borderRadius: 8, padding: "14px 18px", marginBottom: 14, textDecoration: "none", cursor: "pointer" }}>
+        <TrackedPartnerLink
+          key={ad.id}
+          user={user}
+          partnerId={ad.id}
+          partnerType="ad"
+          placement="partners_top_sponsored"
+          sourceTab={partnerTab}
+          campaign={ad.company}
+          targetUrl={ad.url}
+          style={{ display: "block", background: `linear-gradient(135deg, ${ad.color}18, ${ad.color}08)`, border: `1px solid ${ad.color}44`, borderRadius: 8, padding: "14px 18px", marginBottom: 14, textDecoration: "none", cursor: "pointer" }}
+        >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div style={{ fontSize: 7, color: ad.color, letterSpacing: 3, marginBottom: 4 }}>SPONSORED · {ad.company.toUpperCase()}</div>
@@ -28,7 +41,7 @@ export default function PartnersTab({ ctx }) {
             </div>
             <div style={{ background: ad.color, color: "#000", borderRadius: 5, padding: "8px 14px", fontSize: 9, fontFamily: G.mono, fontWeight: "bold", letterSpacing: 2, whiteSpace: "nowrap", marginLeft: 16 }}>{ad.cta} →</div>
           </div>
-        </a>
+        </TrackedPartnerLink>
       ))}
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
@@ -105,9 +118,18 @@ export default function PartnersTab({ ctx }) {
                   <div style={{ fontSize: 11, color: G.text }}>{activeSoftware.bestFor}</div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <a href={activeSoftware.url} target="_blank" rel="noopener noreferrer" style={{ ...btnG, flex: 1, textAlign: "center", textDecoration: "none", display: "block" }}>
+                  <TrackedPartnerLink
+                    user={user}
+                    partnerId={activeSoftware.id}
+                    partnerType="software"
+                    placement="software_detail_cta"
+                    sourceTab={partnerTab}
+                    campaign={activeSoftware.name}
+                    targetUrl={activeSoftware.url}
+                    style={{ ...btnG, flex: 1, textAlign: "center", textDecoration: "none", display: "block" }}
+                  >
                     Visit {activeSoftware.name} →
-                  </a>
+                  </TrackedPartnerLink>
                 </div>
                 <div style={{ marginTop: 8, fontSize: 8, color: G.muted, textAlign: "center" }}>* DealBank may earn a referral commission if you sign up through this link.</div>
               </div>
@@ -179,9 +201,18 @@ export default function PartnersTab({ ctx }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div style={{ fontSize: 9, color: G.muted }}>Avg Premium: <span style={{ color: G.text }}>{ins.avgPremium}</span></div>
               </div>
-              <a href={ins.url} target="_blank" rel="noopener noreferrer" style={{ ...btnG, width: "100%", display: "block", textAlign: "center", textDecoration: "none", background: ins.logoColor, fontSize: 10 }}>
+              <TrackedPartnerLink
+                user={user}
+                partnerId={ins.id}
+                partnerType="insurance"
+                placement="insurance_cta"
+                sourceTab={partnerTab}
+                campaign={ins.name}
+                targetUrl={ins.url}
+                style={{ ...btnG, width: "100%", display: "block", textAlign: "center", textDecoration: "none", background: ins.logoColor, fontSize: 10 }}
+              >
                 Get a Quote →
-              </a>
+              </TrackedPartnerLink>
               <div style={{ marginTop: 6, fontSize: 8, color: G.muted, textAlign: "center" }}>* DealBank earns a referral fee per policy</div>
             </div>
           ))}
@@ -193,7 +224,17 @@ export default function PartnersTab({ ctx }) {
           <div style={{ fontFamily: G.serif, fontSize: 16, color: G.text, marginBottom: 4 }}>Hard Money & Flip Financing</div>
           <div style={{ fontSize: 10, color: G.muted, marginBottom: 14, lineHeight: 1.6 }}>Ranked by DealBank deal maker feedback and funded loan volume. We earn a referral fee per funded loan - it never affects our rankings.</div>
           {AD_SLOTS.slice(1, 2).map((ad) => (
-            <a key={ad.id} href={ad.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", background: `linear-gradient(135deg, ${ad.color}18, transparent)`, border: `1px solid ${ad.color}44`, borderRadius: 8, padding: "12px 16px", marginBottom: 14, textDecoration: "none" }}>
+            <TrackedPartnerLink
+              key={ad.id}
+              user={user}
+              partnerId={ad.id}
+              partnerType="ad"
+              placement="mortgage_top_sponsored"
+              sourceTab={partnerTab}
+              campaign={ad.company}
+              targetUrl={ad.url}
+              style={{ display: "block", background: `linear-gradient(135deg, ${ad.color}18, transparent)`, border: `1px solid ${ad.color}44`, borderRadius: 8, padding: "12px 16px", marginBottom: 14, textDecoration: "none" }}
+            >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: 7, color: ad.color, letterSpacing: 3, marginBottom: 3 }}>SPONSORED · {ad.company.toUpperCase()}</div>
@@ -202,7 +243,7 @@ export default function PartnersTab({ ctx }) {
                 </div>
                 <div style={{ background: ad.color, color: "#000", borderRadius: 4, padding: "7px 12px", fontSize: 9, fontFamily: G.mono, fontWeight: "bold", letterSpacing: 1, whiteSpace: "nowrap", marginLeft: 12 }}>{ad.cta}</div>
               </div>
-            </a>
+            </TrackedPartnerLink>
           ))}
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
             {MORTGAGE_PARTNERS.map((lender) => (
@@ -234,9 +275,18 @@ export default function PartnersTab({ ctx }) {
                 <div style={{ background: G.greenGlow, border: `1px solid ${G.green}33`, borderRadius: 5, padding: "8px 10px", marginBottom: 10, fontSize: 10, color: G.text, lineHeight: 1.6 }}>
                   💬 {lender.flipperNote}
                 </div>
-                <a href={lender.url} target="_blank" rel="noopener noreferrer" style={{ ...btnG, width: "100%", display: "block", textAlign: "center", textDecoration: "none", background: lender.logoColor, fontSize: 10 }}>
+                <TrackedPartnerLink
+                  user={user}
+                  partnerId={lender.id}
+                  partnerType="mortgage"
+                  placement="mortgage_cta"
+                  sourceTab={partnerTab}
+                  campaign={lender.name}
+                  targetUrl={lender.url}
+                  style={{ ...btnG, width: "100%", display: "block", textAlign: "center", textDecoration: "none", background: lender.logoColor, fontSize: 10 }}
+                >
                   Apply with {lender.name} →
-                </a>
+                </TrackedPartnerLink>
                 <div style={{ marginTop: 6, fontSize: 8, color: G.muted, textAlign: "center" }}>* DealBank earns a referral fee per funded loan</div>
               </div>
             ))}

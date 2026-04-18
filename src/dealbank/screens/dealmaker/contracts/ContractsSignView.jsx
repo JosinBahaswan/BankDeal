@@ -83,7 +83,7 @@ export default function ContractsSignView({
               <div style={{ ...lbl, marginBottom: 6 }}>Audit Trail</div>
               {activeContract.auditTrail.map((item) => (
                 <div key={item.id} style={{ textAlign: "left", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 5, padding: "7px 8px", fontSize: 9, color: G.text, marginBottom: 6 }}>
-                  {item.role}: {item.signerName} · {item.method} · {item.signedAt}
+                  {item.role}: {item.signerName} · {item.method} · {item.signatureAlgorithm || "RS256"} · {item.signedAt}{item.signerIp ? ` · IP ${item.signerIp}` : ""}
                 </div>
               ))}
               {activeContract.pdfUrl && (

@@ -166,6 +166,7 @@ async function handleCheckoutCompleted({ stripe, supabase, session }) {
     });
 
     await upsertSubscriptionByStripeId(supabase, payload);
+    await syncUserActivationFromStripeSubId(supabase, payload.stripe_sub_id);
     return;
   }
 
@@ -201,6 +202,83 @@ async function handleSubscriptionUpdate({ supabase, subscription }) {
     .eq("stripe_sub_id", stripeSubId);
 
   if (error) throw error;
+
+  await syncUserActivationFromStripeSubId(supabase, stripeSubId);
+}
+
+async function syncUserActivationFromStripeSubId(supabase, stripeSubId) {
+  const normalizedSubId = asText(stripeSubId);
+  if (!normalizedSubId) return;
+
+  const { data: subscriptionRow, error: subError } = await supabase
+    .from("subscriptions")
+    .select("user_id")
+    .eq("stripe_sub_id", normalizedSubId)
+    .maybeSingle();
+
+  if (subError || !subscriptionRow?.user_id) {
+    if (subError) throw subError;
+    return;
+  }
+
+  const { data: activeSubscription, error: activeError } = await supabase
+    .from("subscriptions")
+    .select("id")
+    .eq("user_id", subscriptionRow.user_id)
+    .in("status", ["active", "trialing"])
+    .limit(1)
+    .maybeSingle();
+
+  if (activeError) throw activeError;
+
+  const shouldBeActive = Boolean(activeSubscription?.id);
+
+  const { error: userUpdateError } = await supabase
+    .from("users")
+    .update({ is_active: shouldBeActive })
+    .eq("id", subscriptionRow.user_id)
+    .in("type", ["dealmaker", "contractor", "realtor"]);
+
+  if (userUpdateError) throw userUpdateError;
+}
+
+async function handleInvoicePaymentFailed({ supabase, invoice }) {
+  const stripeSubId = asText(invoice?.subscription);
+  if (!stripeSubId) return;
+
+  const payload = {
+    status: "past_due",
+    next_billing: toIsoFromUnix(invoice?.next_payment_attempt),
+  };
+
+  const { error } = await supabase
+    .from("subscriptions")
+    .update(payload)
+    .eq("stripe_sub_id", stripeSubId);
+
+  if (error) throw error;
+
+  await syncUserActivationFromStripeSubId(supabase, stripeSubId);
+}
+
+async function handleInvoicePaid({ supabase, invoice }) {
+  const stripeSubId = asText(invoice?.subscription);
+  if (!stripeSubId) return;
+
+  const payload = {
+    status: "active",
+    next_billing: toIsoFromUnix(invoice?.lines?.data?.[0]?.period?.end || invoice?.period_end),
+    canceled_at: null,
+  };
+
+  const { error } = await supabase
+    .from("subscriptions")
+    .update(payload)
+    .eq("stripe_sub_id", stripeSubId);
+
+  if (error) throw error;
+
+  await syncUserActivationFromStripeSubId(supabase, stripeSubId);
 }
 
 export default async function handler(req, res) {
@@ -260,6 +338,20 @@ export default async function handler(req, res) {
       await handleSubscriptionUpdate({
         supabase,
         subscription: event.data.object,
+      });
+    }
+
+    if (event.type === "invoice.payment_failed") {
+      await handleInvoicePaymentFailed({
+        supabase,
+        invoice: event.data.object,
+      });
+    }
+
+    if (event.type === "invoice.paid") {
+      await handleInvoicePaid({
+        supabase,
+        invoice: event.data.object,
       });
     }
 

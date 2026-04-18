@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../../lib/supabaseClient";
+import CrmPipelineBoard from "./crm/CrmPipelineBoard";
+import { buildSequenceMetrics } from "./crm/crmSequenceMetrics";
 
 const VARIABLE_TOKENS = ["{{first_name}}", "{{property_address}}", "{{equity_estimate}}", "{{city}}", "{{callback_time}}"];
 const PIPELINE_STAGES = ["New", "Contacted", "Interested", "Offer Sent", "Closed"];
@@ -122,6 +124,7 @@ export default function CrmSequencesToolTab({ ctx }) {
 
       const sequenceIds = (sequenceRows || []).map((row) => row.id);
       let stepRows = [];
+      let dispatchRows = [];
 
       if (sequenceIds.length > 0) {
         const { data, error: stepError } = await supabase
@@ -140,29 +143,6 @@ export default function CrmSequencesToolTab({ ctx }) {
         stepRows = data || [];
       }
 
-      const stepCountBySequence = stepRows.reduce((acc, row) => {
-        acc[row.sequence_id] = (acc[row.sequence_id] || 0) + 1;
-        return acc;
-      }, {});
-
-      const mappedSequences = (sequenceRows || []).map((row) => {
-        const stepCount = stepCountBySequence[row.id] || 0;
-        const leadCount = Number(row.lead_count || 0);
-        const sent = leadCount * Math.max(stepCount, 1);
-        const replies = Math.round(sent * 0.08);
-        const conversion = sent > 0 ? `${((replies / sent) * 100).toFixed(1)}%` : "0.0%";
-
-        return {
-          id: row.id,
-          name: row.name,
-          leadCount,
-          sent,
-          replies,
-          conversion,
-          status: sequenceStatusLabel(row.status),
-        };
-      });
-
       const { data: leadRows, error: leadError } = await supabase
         .from("leads")
         .select("id, name, address, status")
@@ -177,6 +157,32 @@ export default function CrmSequencesToolTab({ ctx }) {
         setError(`Failed to load lead pipeline: ${leadError.message}`);
         return;
       }
+
+      if (sequenceIds.length > 0) {
+        const { data, error: dispatchError } = await supabase
+          .from("sms_dispatches")
+          .select("sequence_id, lead_id, status")
+          .in("sequence_id", sequenceIds)
+          .limit(5000);
+
+        if (!active) return;
+
+        if (dispatchError) {
+          setLoading(false);
+          setError(`Failed to load sequence dispatch metrics: ${dispatchError.message}`);
+          return;
+        }
+
+        dispatchRows = data || [];
+      }
+
+      const mappedSequences = buildSequenceMetrics({
+        sequenceRows,
+        stepRows,
+        dispatchRows,
+        leadRows: leadRows || [],
+        sequenceStatusLabel,
+      });
 
       const nextPipeline = emptyPipeline();
       (leadRows || []).forEach((leadRow) => {
@@ -293,7 +299,7 @@ export default function CrmSequencesToolTab({ ctx }) {
     if (!builderName.trim() || builderSteps.length === 0) return;
 
     setError("");
-  setNotice("");
+    setNotice("");
 
     const leadCount = Object.values(pipeline).reduce((sum, stageRows) => sum + stageRows.length, 0);
     const { data: insertedSequence, error: sequenceInsertError } = await supabase
@@ -387,7 +393,9 @@ export default function CrmSequencesToolTab({ ctx }) {
   const movePipelineCard = async (fromStage, toStage, cardId) => {
     if (fromStage === toStage) return;
 
-    const previousPipeline = pipeline;
+    const previousPipeline = Object.fromEntries(
+      Object.entries(pipeline).map(([stageName, rows]) => [stageName, [...(rows || [])]]),
+    );
 
     setPipeline((prev) => {
       const cardList = prev[fromStage] || [];
@@ -512,32 +520,13 @@ export default function CrmSequencesToolTab({ ctx }) {
         <button onClick={addStep} style={{ ...btnO, fontSize: 8, padding: "5px 9px", marginTop: 8 }}>+ Add Step</button>
       </div>
 
-      <div style={{ ...card }}>
-        <div style={{ fontFamily: G.serif, fontSize: 15, marginBottom: 8 }}>Pipeline Board</div>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${pipelineStages.length},minmax(170px,1fr))`, gap: 8, overflowX: "auto", paddingBottom: 2 }}>
-          {pipelineStages.map((stage) => (
-            <div key={stage} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 7, padding: 8, minHeight: 160 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-                <div style={{ fontSize: 9, color: G.text, letterSpacing: 1 }}>{stage}</div>
-                <div style={{ fontSize: 8, color: G.muted }}>{(pipeline[stage] || []).length}</div>
-              </div>
-
-              <div style={{ display: "grid", gap: 6 }}>
-                {(pipeline[stage] || []).map((cardItem) => (
-                  <div key={cardItem.id} style={{ background: "#0d0d0d", border: `1px solid ${G.border}`, borderRadius: 6, padding: "7px 8px" }}>
-                    <div style={{ fontSize: 10, color: G.text, marginBottom: 3 }}>{cardItem.name}</div>
-                    <div style={{ fontSize: 8, color: G.muted, marginBottom: 5 }}>{cardItem.address}</div>
-                    <select onChange={(e) => movePipelineCard(stage, e.target.value, cardItem.id)} value={stage} style={{ width: "100%", background: "#111", border: `1px solid ${G.border}`, borderRadius: 4, color: G.text, padding: "3px 5px", fontSize: 8, fontFamily: G.mono }}>
-                      {pipelineStages.map((target) => <option key={target} value={target}>{target}</option>)}
-                    </select>
-                  </div>
-                ))}
-                {(pipeline[stage] || []).length === 0 && <div style={{ fontSize: 8, color: G.muted }}>No records</div>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <CrmPipelineBoard
+        G={G}
+        card={card}
+        pipeline={pipeline}
+        pipelineStages={pipelineStages}
+        onMove={movePipelineCard}
+      />
     </div>
   );
 }

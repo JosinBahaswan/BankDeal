@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { askClaude, calcOffer, extractJSON, fmt, toNum } from "./dealbank/core/helpers";
 import { bootstrapMobileRuntime } from "./dealbank/core/mobileRuntime";
 import {
+  cacheAndSyncPushToken,
+  cachePushToken,
+  syncCachedPushToken,
+} from "./dealbank/core/mobilePushSync";
+import {
   flushPipelineQueue,
   isLikelyOffline,
   isPipelineNetworkError,
@@ -15,6 +20,7 @@ import {
   confirmCheckoutSession,
   getContractorSubscriptionPriceId,
   getDealmakerSubscriptionPriceId,
+  getRealtorSubscriptionPriceId,
 } from "./dealbank/core/billing";
 import {
   AD_SLOTS,
@@ -120,6 +126,16 @@ function isEmailNotConfirmedError(error) {
 
 function isUserExistsError(error) {
   return errCode(error) === "user_already_exists" || errMessage(error).includes("already registered") || errMessage(error).includes("already been registered");
+}
+
+function resolveAuthEmailRedirect() {
+  const configuredSite = String(import.meta.env.VITE_SITE_URL || "").trim();
+  if (configuredSite) {
+    return `${configuredSite.replace(/\/$/, "")}/`;
+  }
+
+  if (typeof window === "undefined") return "";
+  return `${window.location.origin}/`;
 }
 
 function mapDealRowToPipeline(row) {
@@ -279,6 +295,8 @@ export default function App() {
     phone: "",
   });
   const [authError, setAuthError] = useState("");
+  const [authNeedsVerification, setAuthNeedsVerification] = useState(false);
+  const [authVerificationEmail, setAuthVerificationEmail] = useState("");
 
   const [flipTab, setFlipTab] = useState("analyze");
   const [pipeline, setPipeline] = useState([]);
@@ -372,6 +390,7 @@ export default function App() {
   const [contractorBillingRefreshTick, setContractorBillingRefreshTick] = useState(0);
   const [showRealtorOnboarding, setShowRealtorOnboarding] = useState(false);
   const [realtorOnboarding, setRealtorOnboarding] = useState(() => createRealtorOnboardingState());
+  const [realtorBillingRefreshTick, setRealtorBillingRefreshTick] = useState(0);
 
   const offerRef = useRef(null);
   const confirmedCheckoutSessionsRef = useRef(new Set());
@@ -394,8 +413,15 @@ export default function App() {
 
     bootstrapMobileRuntime({
       onPushToken: (token) => {
-        if (!token || typeof window === "undefined") return;
-        window.localStorage.setItem("dealbank_push_token", token);
+        if (!token) return;
+
+        cachePushToken(token);
+        cacheAndSyncPushToken({
+          supabaseClient: supabase,
+          token,
+        }).catch(() => {
+          // no-op: token remains cached and will be retried on next authenticated session.
+        });
       },
       onError: () => {
         // no-op: native push setup is optional in web and local development.
@@ -414,6 +440,16 @@ export default function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    syncCachedPushToken({
+      supabaseClient: supabase,
+    }).catch(() => {
+      // no-op: retry will happen on next app/session cycle.
+    });
+  }, [user?.id]);
 
   function clearPipelineFocusDeal() {
     setPipelineFocusDealId("");
@@ -581,12 +617,12 @@ export default function App() {
 
     const profilePayload = {
       id: authUser.id,
-      email: authUser.email,
+      email: String(authUser.email || "").toLowerCase(),
       name: fallback.name || authUser.user_metadata?.name || nameFromEmail,
-      password_hash: "supabase_auth_managed",
       type: desiredType,
       company: fallback.company || authUser.user_metadata?.company || null,
       phone: fallback.phone || authUser.user_metadata?.phone || null,
+      email_verified: Boolean(authUser.email_confirmed_at),
       last_login: new Date().toISOString(),
     };
 
@@ -624,6 +660,8 @@ export default function App() {
       if (!session?.user) {
         setUser(null);
         setUserType("");
+        setAuthNeedsVerification(false);
+        setAuthVerificationEmail("");
         setPipeline([]);
         setShowDealmakerSubscriptionGate(false);
         setDealmakerGateState({ checking: false, launching: false, message: "" });
@@ -631,8 +669,10 @@ export default function App() {
         setRealtorTab("referrals");
         setShowContractorOnboarding(false);
         setContractorOnboarding(createContractorOnboardingState());
+        setContractorBillingRefreshTick(0);
         setShowRealtorOnboarding(false);
         setRealtorOnboarding(createRealtorOnboardingState());
+        setRealtorBillingRefreshTick(0);
         return;
       }
 
@@ -1036,11 +1076,35 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
+    let billingRefreshTimer;
 
     async function syncRealtorOnboardingState() {
       if (!user?.id || user?.type !== "realtor") {
         if (active) setShowRealtorOnboarding(false);
         return;
+      }
+
+      const checkoutParams = typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : null;
+      const checkoutKind = checkoutParams?.get("kind") || "";
+      const checkoutStatus = checkoutParams?.get("checkout") || "";
+      const checkoutSessionId = checkoutParams?.get("session_id") || "";
+
+      if (checkoutKind === "subscription" && checkoutStatus === "success" && checkoutSessionId) {
+        const alreadyConfirmed = confirmedCheckoutSessionsRef.current.has(checkoutSessionId);
+        if (!alreadyConfirmed) {
+          confirmedCheckoutSessionsRef.current.add(checkoutSessionId);
+          try {
+            await confirmCheckoutSession({
+              sessionId: checkoutSessionId,
+              userId: user.id,
+            });
+          } catch (error) {
+            confirmedCheckoutSessionsRef.current.delete(checkoutSessionId);
+            pushToast(error?.message || "Subscription payment received. Waiting for activation sync...", "info");
+          }
+        }
       }
 
       const { data: realtorProfile, error: profileError } = await supabase
@@ -1054,8 +1118,17 @@ export default function App() {
       if (!realtorProfile) {
         setShowRealtorOnboarding(true);
         setRealtorOnboarding((prev) => {
+          const checkoutMessage = checkoutKind === "subscription" && checkoutStatus === "cancel"
+            ? "Stripe checkout canceled. Complete subscription to unlock realtor dashboard access."
+            : checkoutKind === "subscription" && checkoutStatus === "success"
+              ? "Payment received. Finalizing your subscription..."
+              : prev.error;
+
           if (prev.step !== 1 || prev.dreLicense || prev.brokerage || prev.bio) return prev;
-          return createRealtorOnboardingState();
+          return {
+            ...createRealtorOnboardingState(),
+            error: checkoutMessage || "",
+          };
         });
         return;
       }
@@ -1074,22 +1147,48 @@ export default function App() {
 
       const markets = (marketRows || []).map((row) => row.city).filter(Boolean);
       const specialties = (specialtyRows || []).map((row) => row.specialty).filter(Boolean);
-      const completed = markets.length > 0 && specialties.length > 0;
+      const profileCompleted = markets.length > 0 && specialties.length > 0;
 
-      if (completed) {
+      const { data: activeSubscription, error: subscriptionError } = await supabase
+        .from("subscriptions")
+        .select("id, status, plan")
+        .eq("user_id", user.id)
+        .in("status", ["active", "trialing"])
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!active || subscriptionError) return;
+
+      const hasBillingAccess = isActiveSubscriptionStatus(activeSubscription?.status)
+        && String(activeSubscription?.plan || "").toLowerCase() === "realtor";
+
+      if (checkoutKind === "subscription" && checkoutStatus === "success" && !hasBillingAccess) {
+        billingRefreshTimer = setTimeout(() => {
+          if (!active) return;
+          setRealtorBillingRefreshTick((prev) => prev + 1);
+        }, 3500);
+      }
+
+      if (profileCompleted && hasBillingAccess) {
         setShowRealtorOnboarding(false);
         setRealtorOnboarding(createRealtorOnboardingState());
         setUser((prev) => {
           if (!prev || prev.id !== user.id) return prev;
           return { ...prev, location: markets[0] || prev.location || "" };
         });
+
+        if (checkoutKind === "subscription" && (checkoutStatus === "success" || checkoutStatus === "cancel") && typeof window !== "undefined") {
+          const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+          window.history.replaceState({}, document.title, cleanUrl);
+        }
         return;
       }
 
       setShowRealtorOnboarding(true);
       setRealtorOnboarding((prev) => ({
         ...prev,
-        step: prev.step || 1,
+        step: profileCompleted ? 2 : (prev.step || 1),
         dreLicense: prev.dreLicense || realtorProfile.dre_license || "",
         brokerage: prev.brokerage || realtorProfile.brokerage || "",
         avgDaysToClose: prev.avgDaysToClose || String(realtorProfile.avg_days_to_close || ""),
@@ -1097,15 +1196,29 @@ export default function App() {
         bio: prev.bio || realtorProfile.bio || "",
         markets: prev.markets.length > 0 ? prev.markets : markets,
         specialties: prev.specialties.length > 0 ? prev.specialties : specialties,
+        submitting: false,
+        error: profileCompleted
+          ? checkoutKind === "subscription" && checkoutStatus === "cancel"
+            ? "Stripe checkout canceled. Complete subscription to unlock realtor dashboard access."
+            : checkoutKind === "subscription" && checkoutStatus === "success"
+              ? "Payment received. Finalizing your subscription..."
+              : "Subscription required before realtor dashboard access."
+          : prev.error,
       }));
+
+      if (checkoutKind === "subscription" && checkoutStatus === "cancel" && typeof window !== "undefined") {
+        const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
     }
 
     syncRealtorOnboardingState();
 
     return () => {
       active = false;
+      if (billingRefreshTimer) clearTimeout(billingRefreshTimer);
     };
-  }, [user?.id, user?.type]);
+  }, [user?.id, user?.type, realtorBillingRefreshTick, pushToast]);
 
   async function completeRealtorOnboarding() {
     if (!user?.id) return;
@@ -1187,8 +1300,30 @@ export default function App() {
         };
       });
 
-      setShowRealtorOnboarding(false);
-      setRealtorOnboarding(createRealtorOnboardingState());
+      const checkoutEmail = String(user.email || authForm.email || "").trim();
+      if (!checkoutEmail) {
+        throw new Error("User email is missing. Please sign in again before subscribing.");
+      }
+
+      const checkoutPriceId = getRealtorSubscriptionPriceId();
+      if (!checkoutPriceId) {
+        throw new Error("Unable to resolve realtor Stripe price id.");
+      }
+
+      await beginCheckout({
+        priceId: checkoutPriceId,
+        userId: user.id,
+        email: checkoutEmail,
+        mode: "subscription",
+        source: "realtor_onboarding",
+        successPath: "/",
+      });
+
+      setRealtorOnboarding((prev) => ({
+        ...prev,
+        submitting: false,
+        error: "Redirecting to Stripe checkout...",
+      }));
     } catch (error) {
       setRealtorOnboarding((prev) => ({
         ...prev,
@@ -1200,6 +1335,9 @@ export default function App() {
 
   async function handleAuth() {
     setAuthError("");
+    setAuthNeedsVerification(false);
+    setAuthVerificationEmail("");
+
     if (!authForm.email || !authForm.password) {
       setAuthError("Fill in all fields.");
       return;
@@ -1243,30 +1381,11 @@ export default function App() {
       if (authMode === "signup") {
         const desiredType = normalizeUserType(userType || "dealmaker");
 
-        const { data: existingLoginData, error: existingLoginError } = await supabase.auth.signInWithPassword({
-          email: authForm.email,
-          password: authForm.password,
-        });
-
-        if (existingLoginData?.user) {
-          hydrateAuthenticatedProfile(existingLoginData.user, {
-            name: authForm.name,
-            type: desiredType,
-            company: authForm.company,
-            phone: authForm.phone,
-          });
-          return;
-        }
-
-        if (isEmailNotConfirmedError(existingLoginError)) {
-          setAuthError("Akun sudah dibuat, tapi email belum dikonfirmasi. Cek inbox/spam lalu login kembali.");
-          return;
-        }
-
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: authForm.email,
+          email: normalizedAuthEmail,
           password: authForm.password,
           options: {
+            emailRedirectTo: resolveAuthEmailRedirect(),
             data: {
               name: authForm.name,
               type: desiredType,
@@ -1280,61 +1399,33 @@ export default function App() {
 
         if (signUpError) {
           if (isRateLimitError(signUpError)) {
-            const { data: retryLoginData, error: retryLoginError } = await supabase.auth.signInWithPassword({
-              email: authForm.email,
-              password: authForm.password,
-            });
-
-            if (retryLoginData?.user) {
-              hydrateAuthenticatedProfile(retryLoginData.user, {
-                name: authForm.name,
-                type: desiredType,
-                company: authForm.company,
-                phone: authForm.phone,
-              });
-              return;
-            }
-
-            if (isEmailNotConfirmedError(retryLoginError)) {
-              setAuthError("Akun sudah dibuat tapi email verifikasi belum dikonfirmasi. Cek inbox/spam. Untuk development, kamu bisa matikan 'Confirm email' di Supabase Auth > Providers > Email.");
-              return;
-            }
-
-            setAuthError("Terlalu banyak email verifikasi terkirim (rate limit). Tunggu beberapa menit atau matikan 'Confirm email' sementara di Supabase Auth > Providers > Email.");
+            setAuthNeedsVerification(true);
+            setAuthVerificationEmail(normalizedAuthEmail);
+            setAuthError("Verification email rate limit reached. Wait a few minutes, then resend verification email.");
             return;
           }
 
           if (isUserExistsError(signUpError)) {
             setAuthError("Email sudah terdaftar. Coba mode login atau reset password.");
+            setAuthMode("login");
             return;
           }
 
-          if (!isInvalidCredentialError(existingLoginError)) {
-            setAuthError(existingLoginError?.message || signUpError.message);
-            return;
-          }
-
-          setAuthError(signUpError.message);
+          setAuthError(signUpError.message || "Unable to create account.");
           return;
         }
 
-        let authUser = signUpData?.user;
-        if (!signUpData?.session) {
-          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email: authForm.email,
-            password: authForm.password,
-          });
-
-          if (signInError) {
-            setAuthError("Signup success. Check email confirmation, then login.");
-            return;
-          }
-
-          authUser = signInData?.user;
-        }
-
+        const authUser = signUpData?.user;
         if (!authUser) {
           setAuthError("Unable to complete signup. Please try login.");
+          return;
+        }
+
+        if (!signUpData?.session) {
+          setAuthMode("login");
+          setAuthNeedsVerification(true);
+          setAuthVerificationEmail(normalizedAuthEmail);
+          setAuthError("Signup success. Check inbox/spam, confirm your email, then login.");
           return;
         }
 
@@ -1348,18 +1439,20 @@ export default function App() {
       }
 
       const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-        email: authForm.email,
+        email: normalizedAuthEmail,
         password: authForm.password,
       });
 
       if (loginError || !loginData?.user) {
-        if (isInvalidCredentialError(loginError) && String(authForm.email).toLowerCase().endsWith("@dealbank.local")) {
+        if (isInvalidCredentialError(loginError) && normalizedAuthEmail.endsWith("@dealbank.local")) {
           setAuthError("Login akun .local gagal. Pastikan password benar (default seed: DealBank2025!) atau jalankan npm run seed:auth-users jika akun auth belum dibootstrap.");
           return;
         }
 
         if (isEmailNotConfirmedError(loginError)) {
-          setAuthError("Email belum dikonfirmasi. Cek inbox/spam atau matikan Confirm email sementara untuk development.");
+          setAuthNeedsVerification(true);
+          setAuthVerificationEmail(normalizedAuthEmail);
+          setAuthError("Email belum dikonfirmasi. Cek inbox/spam, lalu klik Resend verification email jika belum menerima link.");
           return;
         }
 
@@ -1375,6 +1468,37 @@ export default function App() {
       });
     } catch (error) {
       setAuthError(error?.message || "Authentication failed.");
+    }
+  }
+
+  async function resendVerificationEmail() {
+    const targetEmail = String(authVerificationEmail || authForm.email || "").trim().toLowerCase();
+    if (!targetEmail) {
+      setAuthError("Enter your email first.");
+      return;
+    }
+
+    setAuthError("");
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: targetEmail,
+        options: {
+          emailRedirectTo: resolveAuthEmailRedirect(),
+        },
+      });
+
+      if (error) {
+        setAuthError(error.message || "Unable to resend verification email.");
+        return;
+      }
+
+      setAuthNeedsVerification(true);
+      setAuthVerificationEmail(targetEmail);
+      setAuthError(`Verification email sent to ${targetEmail}. Check inbox and spam.`);
+    } catch (error) {
+      setAuthError(error?.message || "Unable to resend verification email.");
     }
   }
 
@@ -1847,8 +1971,10 @@ SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
     setActiveDeal(null);
     setShowContractorOnboarding(false);
     setContractorOnboarding(createContractorOnboardingState());
+    setContractorBillingRefreshTick(0);
     setShowRealtorOnboarding(false);
     setRealtorOnboarding(createRealtorOnboardingState());
+    setRealtorBillingRefreshTick(0);
 
     // Local scope clears persisted session instantly and avoids blocking UI on network calls.
     supabase.auth.signOut({ scope: "local" }).catch(() => {
@@ -2029,17 +2155,20 @@ SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
         lbl={lbl}
         smIn={smIn}
         btnG={btnG}
+        btnO={btnO}
         TRADES={TRADES}
         authMode={authMode}
         userType={userType}
         authForm={authForm}
         authError={authError}
+        authNeedsVerification={authNeedsVerification}
         setAuthMode={setAuthMode}
         setUserType={setUserType}
         setAuthForm={setAuthForm}
         setAuthError={setAuthError}
         setScreen={setScreen}
         handleAuth={handleAuth}
+        resendVerificationEmail={resendVerificationEmail}
       />
     );
   }

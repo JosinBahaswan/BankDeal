@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import TopBar from "../components/TopBar";
 import useIsMobile from "../core/useIsMobile";
+import CommissionCompliancePanel from "./realtor/CommissionCompliancePanel";
+import {
+  loadRealtorCommissionReviews,
+  submitRealtorCommissionReview,
+} from "./realtor/realtorComplianceApi";
 
 const RTABS = [
   { id: "referrals", icon: "RF", label: "Referrals" },
@@ -73,6 +78,15 @@ function listingHeatLabel(viewCount, saveCount, status) {
   return "Warm";
 }
 
+function listingDays(publishedAt, closedAt = "") {
+  if (!publishedAt) return 0;
+  const startTs = new Date(publishedAt).getTime();
+  const endTs = closedAt ? new Date(closedAt).getTime() : Date.now();
+  const diff = endTs - startTs;
+  if (!Number.isFinite(diff) || diff < 0) return 0;
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
 export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSignOut, userName, user, realtorTab, setRealtorTab }) {
   const isMobile = useIsMobile(820);
   const [loading, setLoading] = useState(false);
@@ -82,6 +96,9 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
   const [markets, setMarkets] = useState([]);
   const [specialties, setSpecialties] = useState([]);
   const [listingRows, setListingRows] = useState([]);
+  const [commissionReviews, setCommissionReviews] = useState([]);
+  const [reviewSubmitBusyId, setReviewSubmitBusyId] = useState("");
+  const [reviewError, setReviewError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -207,6 +224,22 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
         .subscribe(),
     );
 
+    channels.push(
+      supabase
+        .channel(`realtor-commission-reviews-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "realtor_commission_reviews",
+            filter: `realtor_user_id=eq.${user.id}`,
+          },
+          () => setRefreshTick((prev) => prev + 1),
+        )
+        .subscribe(),
+    );
+
     if (realtorProfile?.id) {
       channels.push(
         supabase
@@ -248,6 +281,40 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
     };
   }, [user?.id, realtorProfile?.id]);
 
+  const closedListingIds = useMemo(() => {
+    return listingRows
+      .filter((row) => String(row.status || "").toLowerCase() === "closed")
+      .map((row) => row.id)
+      .filter(Boolean);
+  }, [listingRows]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadComplianceReviews() {
+      if (!user?.id || closedListingIds.length === 0) {
+        if (!active) return;
+        setCommissionReviews([]);
+        return;
+      }
+
+      try {
+        const rows = await loadRealtorCommissionReviews(supabase, user.id, closedListingIds);
+        if (!active) return;
+        setCommissionReviews(rows);
+      } catch (error) {
+        if (!active) return;
+        setReviewError(error?.message || "Failed to load commission compliance reviews");
+      }
+    }
+
+    loadComplianceReviews();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, closedListingIds, refreshTick]);
+
   const splitPct = useMemo(() => {
     const raw = asNumber(realtorProfile?.commission_split, 25);
     if (raw < 0 || raw > 100) return 25;
@@ -265,7 +332,7 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
       .map((row) => {
         const status = String(row.status || "active").toLowerCase();
         const listPrice = asNumber(row.asking_price, 0);
-        const days = Math.max(0, asNumber(row.days_on_market, 0));
+        const days = listingDays(row.published_at, row.closed_at);
         const grossCommission = listPrice * 0.025;
         const estimatedNet = grossCommission * (netPct / 100);
 
@@ -297,12 +364,13 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
         const viewCount = asNumber(row.view_count, 0);
         const saveCount = asNumber(row.save_count, 0);
         const listPrice = asNumber(row.asking_price, 0);
+        const dom = listingDays(row.published_at, row.closed_at);
 
         return {
           id: row.id,
           address: listingAddress(row),
           listPrice,
-          dom: Math.max(0, asNumber(row.days_on_market, 0)),
+          dom,
           showings: Math.max(0, Math.round(viewCount * 0.35)),
           offers: Math.max(0, Math.round(saveCount * 0.22)),
           status: listingHeatLabel(viewCount, saveCount, status),
@@ -329,6 +397,26 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
         };
       });
   }, [listingRows, netPct, user?.id]);
+
+  const reviewsByListing = useMemo(() => {
+    return new Map((commissionReviews || []).map((row) => [row.listing_id, row]));
+  }, [commissionReviews]);
+
+  const submitComplianceReview = async (listingId) => {
+    if (!listingId) return;
+
+    setReviewError("");
+    setReviewSubmitBusyId(listingId);
+
+    try {
+      await submitRealtorCommissionReview(supabase, listingId);
+      setRefreshTick((prev) => prev + 1);
+    } catch (error) {
+      setReviewError(error?.message || "Failed to submit commission compliance review");
+    } finally {
+      setReviewSubmitBusyId("");
+    }
+  };
 
   const netYtd = closedDeals.reduce((sum, row) => sum + row.yourNet, 0);
   const grossYtd = closedDeals.reduce((sum, row) => sum + row.grossCommission, 0);
@@ -579,6 +667,12 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 12 }}>Earnings & Splits</div>
 
+            {reviewError && (
+              <div style={{ ...card, borderColor: `${G.red}55`, color: G.red, fontSize: 10, marginBottom: 10 }}>
+                {reviewError}
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
                 { l: "Your Net YTD", v: toCurrency(netYtd), c: G.green },
@@ -598,10 +692,21 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
                 "1. DealBank sends investor listing referral",
                 "2. You list and close the property",
                 `3. Commission split is auto-calculated at ${Math.round(netPct)}/${Math.round(splitPct)}`,
+                "4. Submit RESPA compliance review for audit and payout traceability",
               ].map((step) => (
                 <div key={step} style={{ fontSize: 10, color: G.text, marginBottom: 6 }}>{step}</div>
               ))}
             </div>
+
+            <CommissionCompliancePanel
+              G={G}
+              card={card}
+              btnG={btnG}
+              closedDeals={closedDeals}
+              reviewsByListing={reviewsByListing}
+              submitBusyListingId={reviewSubmitBusyId}
+              onSubmit={submitComplianceReview}
+            />
 
             <div style={{ ...card }}>
               <div style={{ ...lbl, marginBottom: 6 }}>Example Transaction</div>

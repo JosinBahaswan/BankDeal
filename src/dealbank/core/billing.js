@@ -39,6 +39,10 @@ export function getDealmakerSubscriptionPriceId() {
   return envPriceId("VITE_STRIPE_PRICE_DEALMAKER_MONTHLY");
 }
 
+export function getRealtorSubscriptionPriceId() {
+  return envPriceId("VITE_STRIPE_PRICE_REALTOR_MONTHLY");
+}
+
 export function getCreditPackPriceId(packName) {
   const normalized = asText(packName).toLowerCase();
 

@@ -2,8 +2,9 @@ import twilio from "twilio";
 import { createClient } from "@supabase/supabase-js";
 import { enforceCors, enforceRateLimit } from "../lib/server/httpSecurity.js";
 
-function asText(value) {
-  return typeof value === "string" ? value.trim() : "";
+function asText(value, fallback = "") {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized || fallback;
 }
 
 function asBool(value, fallback = false) {
@@ -81,9 +82,9 @@ async function readTwilioPayload(req) {
   return parseParamsFromText(raw);
 }
 
-function readTwiMLConfig() {
+function readTwiMLConfig(overrides = {}) {
   return {
-    callerId: asText(process.env.TWILIO_CALLER_ID),
+    callerId: asText(overrides.callerId || process.env.TWILIO_CALLER_ID),
     callbackEndpoint: asText(process.env.TWILIO_CALL_WEBHOOK_ENDPOINT, "/api/twilio-access-token?mode=call-webhook"),
     recordingEnabled: asBool(process.env.TWILIO_RECORD_FROM_ANSWER, true),
   };
@@ -152,7 +153,7 @@ function buildVoiceTwiML(req, config, payload) {
   return response.toString();
 }
 
-async function maybeServeTwiML(req, res) {
+async function maybeServeTwiML(req, res, options = {}) {
   const mode = toQueryValue(req.query?.mode).toLowerCase();
   const shouldServeFromMode = mode === "twiml";
   const hasAuthHeader = Boolean(asText(req.headers?.authorization));
@@ -163,7 +164,7 @@ async function maybeServeTwiML(req, res) {
   }
 
   const payload = await readTwilioPayload(req);
-  const twimlConfig = readTwiMLConfig();
+  const twimlConfig = options.twimlConfig || readTwiMLConfig();
   const twimlXml = buildVoiceTwiML(req, twimlConfig, payload || {});
 
   res.setHeader("Content-Type", "text/xml; charset=utf-8");
@@ -251,7 +252,7 @@ async function handleTwilioCallWebhook(req, res) {
   }
 
   const callSid = asText(payload.CallSid);
-  const callerId = asText(req.query?.caller_id || payload.CallerId || payload.caller_id);
+  let callerId = asText(req.query?.caller_id || payload.CallerId || payload.caller_id);
   const callStatus = asText(payload.CallStatus).toLowerCase();
   const callDurationSec = asInt(payload.CallDuration, null);
   const eventType = asText(req.query?.event || "call").toLowerCase();
@@ -261,7 +262,17 @@ async function handleTwilioCallWebhook(req, res) {
   }
 
   if (!callerId) {
-    return res.status(400).json({ error: "Missing caller_id in callback query parameters" });
+    const { data: existingRow } = await supabaseAdmin
+      .from("call_logs")
+      .select("caller_id")
+      .eq("twilio_call_sid", callSid)
+      .maybeSingle();
+
+    callerId = asText(existingRow?.caller_id);
+  }
+
+  if (!callerId) {
+    return res.status(400).json({ error: "Missing caller_id in callback query parameters and no existing call log row matched CallSid" });
   }
 
   const leadName = asText(req.query?.lead_name || payload.LeadName);
@@ -325,7 +336,7 @@ async function handleTwilioCallWebhook(req, res) {
   let transcriptionRequested = false;
   let transcriptionError = "";
 
-  const shouldRequestTranscription = asBool(process.env.TWILIO_ENABLE_TRANSCRIPTION, false)
+  const shouldRequestTranscription = asBool(process.env.TWILIO_ENABLE_TRANSCRIPTION, true)
     && eventType === "recording"
     && recordingSid
     && recordingStatus === "completed";
@@ -415,12 +426,25 @@ function readTwilioConfig() {
   const apiKey = asText(process.env.TWILIO_API_KEY);
   const apiSecret = asText(process.env.TWILIO_API_SECRET);
   const outgoingApplicationSid = asText(process.env.TWILIO_TWIML_APP_SID);
+  const callerId = asText(process.env.TWILIO_CALLER_ID);
   const pushCredentialSid = asText(process.env.TWILIO_PUSH_CREDENTIAL_SID);
   const authToken = asText(process.env.TWILIO_AUTH_TOKEN);
-  const syncTwimlApp = asBool(process.env.TWILIO_SYNC_TWIML_APP, false);
+  const syncTwimlApp = asBool(process.env.TWILIO_SYNC_TWIML_APP, true);
+  const autoCreateTwimlApp = asBool(process.env.TWILIO_AUTO_CREATE_TWIML_APP, true);
+  const autoResolveCallerId = asBool(process.env.TWILIO_AUTO_RESOLVE_CALLER_ID, true);
+  const twimlAppFriendlyName = asText(process.env.TWILIO_TWIML_APP_FRIENDLY_NAME, "DealBank Voice Dialer");
 
-  if (!accountSid || !apiKey || !apiSecret || !outgoingApplicationSid) {
-    throw new Error("Missing Twilio env vars: TWILIO_ACCOUNT_SID, TWILIO_API_KEY, TWILIO_API_SECRET, TWILIO_TWIML_APP_SID");
+  if (!accountSid || !apiKey || !apiSecret) {
+    throw new Error("Missing Twilio env vars: TWILIO_ACCOUNT_SID, TWILIO_API_KEY, TWILIO_API_SECRET");
+  }
+
+  const needsAppResolution = !outgoingApplicationSid;
+  const needsAppSync = syncTwimlApp;
+  const needsCallerResolution = !callerId && autoResolveCallerId;
+  const needsAuthToken = needsAppResolution || needsAppSync || needsCallerResolution;
+
+  if (needsAuthToken && !authToken) {
+    throw new Error("TWILIO_AUTH_TOKEN is required for automatic TwiML app sync/creation and caller ID resolution");
   }
 
   return {
@@ -428,10 +452,153 @@ function readTwilioConfig() {
     apiKey,
     apiSecret,
     outgoingApplicationSid,
+    callerId,
     pushCredentialSid,
     authToken,
     syncTwimlApp,
+    autoCreateTwimlApp,
+    autoResolveCallerId,
+    twimlAppFriendlyName,
   };
+}
+
+let twilioRuntimeCache = {
+  key: "",
+  expiresAt: 0,
+  config: null,
+};
+
+function twilioRuntimeCacheKey(req, config) {
+  const voiceUrl = resolveAbsoluteUrl(
+    req,
+    asText(process.env.TWILIO_TWIML_VOICE_URL, "/api/twilio-access-token?mode=twiml"),
+    "/api/twilio-access-token?mode=twiml",
+  );
+
+  return [
+    config.accountSid,
+    config.outgoingApplicationSid,
+    config.callerId,
+    config.syncTwimlApp,
+    config.autoCreateTwimlApp,
+    config.autoResolveCallerId,
+    config.twimlAppFriendlyName,
+    voiceUrl,
+  ].join("|");
+}
+
+async function resolveOutgoingTwimlAppSid(req, config, restClient) {
+  let outgoingApplicationSid = asText(config.outgoingApplicationSid);
+  const voiceUrl = resolveAbsoluteUrl(
+    req,
+    asText(process.env.TWILIO_TWIML_VOICE_URL, "/api/twilio-access-token?mode=twiml"),
+    "/api/twilio-access-token?mode=twiml",
+  );
+
+  const applicationsApi = restClient
+    .api
+    .v2010
+    .accounts(config.accountSid)
+    .applications;
+
+  if (!outgoingApplicationSid) {
+    if (!config.autoCreateTwimlApp) {
+      throw new Error("Missing TWILIO_TWIML_APP_SID and auto-create is disabled");
+    }
+
+    const existingApps = await applicationsApi.list({
+      friendlyName: config.twimlAppFriendlyName,
+      limit: 20,
+    });
+
+    const matchingApp = existingApps.find((app) => asText(app?.voiceUrl) === voiceUrl) || existingApps[0];
+
+    if (matchingApp?.sid) {
+      outgoingApplicationSid = asText(matchingApp.sid);
+    } else {
+      const createdApp = await applicationsApi.create({
+        friendlyName: config.twimlAppFriendlyName,
+        voiceUrl,
+        voiceMethod: "POST",
+      });
+      outgoingApplicationSid = asText(createdApp?.sid);
+    }
+  }
+
+  if (!outgoingApplicationSid) {
+    throw new Error("Unable to resolve Twilio outgoing application SID");
+  }
+
+  if (config.syncTwimlApp) {
+    await applicationsApi(outgoingApplicationSid).update({
+      voiceUrl,
+      voiceMethod: "POST",
+    });
+  }
+
+  return outgoingApplicationSid;
+}
+
+async function resolveCallerId(config, restClient) {
+  let callerId = asText(config.callerId);
+
+  if (!callerId && config.autoResolveCallerId) {
+    const incomingNumbers = await restClient.incomingPhoneNumbers.list({ limit: 20 });
+    const firstAvailable = incomingNumbers.find((entry) => asText(entry?.phoneNumber));
+    callerId = asText(firstAvailable?.phoneNumber);
+  }
+
+  if (!callerId) {
+    throw new Error("Missing TWILIO_CALLER_ID and no incoming phone number could be resolved automatically");
+  }
+
+  return callerId;
+}
+
+async function resolveTwilioRuntimeConfig(req, config) {
+  const needsAppResolution = !asText(config.outgoingApplicationSid);
+  const needsAppSync = Boolean(config.syncTwimlApp);
+  const needsCallerResolution = !asText(config.callerId) && Boolean(config.autoResolveCallerId);
+  const requiresRestClient = needsAppResolution || needsAppSync || needsCallerResolution;
+
+  if (!requiresRestClient) {
+    return {
+      ...config,
+      outgoingApplicationSid: asText(config.outgoingApplicationSid),
+      callerId: asText(config.callerId),
+    };
+  }
+
+  const cacheKey = twilioRuntimeCacheKey(req, config);
+  if (
+    twilioRuntimeCache.config
+    && twilioRuntimeCache.key === cacheKey
+    && Date.now() < twilioRuntimeCache.expiresAt
+  ) {
+    return twilioRuntimeCache.config;
+  }
+
+  if (!config.authToken) {
+    throw new Error("TWILIO_AUTH_TOKEN is required to resolve runtime Twilio voice configuration");
+  }
+
+  const restClient = twilio(config.accountSid, config.authToken);
+  const outgoingApplicationSid = await resolveOutgoingTwimlAppSid(req, config, restClient);
+  const callerId = await resolveCallerId(config, restClient);
+
+  const resolvedConfig = {
+    ...config,
+    outgoingApplicationSid,
+    callerId,
+  };
+
+  twilioRuntimeCache = {
+    key: cacheKey,
+    expiresAt: Date.now() + 5 * 60_000,
+    config: resolvedConfig,
+  };
+
+  return resolvedConfig;
 }
 
 function createVoiceToken(config, identity) {
@@ -454,31 +621,6 @@ function createVoiceToken(config, identity) {
 
   accessToken.addGrant(voiceGrant);
   return accessToken.toJwt();
-}
-
-async function maybeSyncTwimlVoiceUrl(req, config) {
-  if (!config.syncTwimlApp || !config.authToken) return;
-
-  try {
-    const voiceUrl = resolveAbsoluteUrl(
-      req,
-      asText(process.env.TWILIO_TWIML_VOICE_URL, "/api/twilio-access-token?mode=twiml"),
-      "/api/twilio-access-token?mode=twiml",
-    );
-
-    const restClient = twilio(config.accountSid, config.authToken);
-    await restClient
-      .api
-      .v2010
-      .accounts(config.accountSid)
-      .applications(config.outgoingApplicationSid)
-      .update({
-        voiceUrl,
-        voiceMethod: "POST",
-      });
-  } catch {
-    // no-op: token creation should continue even if app sync fails.
-  }
 }
 
 export default async function handler(req, res) {
@@ -515,6 +657,18 @@ export default async function handler(req, res) {
   const hasAuthHeader = Boolean(asText(req.headers?.authorization));
   const twimlRequest = mode === "twiml" || (req.method === "POST" && !hasAuthHeader);
 
+  let twimlServeConfig = null;
+
+  if (twimlRequest) {
+    try {
+      const baseTwilioConfig = readTwilioConfig();
+      const runtimeConfig = await resolveTwilioRuntimeConfig(req, baseTwilioConfig);
+      twimlServeConfig = readTwiMLConfig({ callerId: runtimeConfig.callerId });
+    } catch (error) {
+      return res.status(503).json({ error: error?.message || "Twilio not configured" });
+    }
+  }
+
   if (!twimlRequest) {
     const rateLimit = enforceRateLimit(req, res, {
       keyPrefix: "twilio-access-token",
@@ -526,7 +680,7 @@ export default async function handler(req, res) {
     }
   }
 
-  const twimlHandled = await maybeServeTwiML(req, res);
+  const twimlHandled = await maybeServeTwiML(req, res, twimlServeConfig ? { twimlConfig: twimlServeConfig } : {});
   if (twimlHandled) return;
 
   let supabaseAdmin;
@@ -544,16 +698,16 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: error?.message || "Unauthorized token request" });
   }
 
-  let twilioConfig;
+  let twilioRuntimeConfig;
   try {
-    twilioConfig = readTwilioConfig();
+    const twilioConfig = readTwilioConfig();
+    twilioRuntimeConfig = await resolveTwilioRuntimeConfig(req, twilioConfig);
   } catch (error) {
     return res.status(503).json({ error: error?.message || "Twilio not configured" });
   }
 
   try {
-    await maybeSyncTwimlVoiceUrl(req, twilioConfig);
-    const token = createVoiceToken(twilioConfig, identity);
+    const token = createVoiceToken(twilioRuntimeConfig, identity);
     return res.status(200).json({ token, identity });
   } catch (error) {
     return res.status(500).json({ error: error?.message || "Failed to create Twilio token" });

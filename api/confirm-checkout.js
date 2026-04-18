@@ -126,6 +126,16 @@ async function insertCreditPurchaseIfMissing(supabase, payload) {
   if (error) throw error;
 }
 
+async function updateUserActivation(supabase, userId, isActive) {
+  const { error } = await supabase
+    .from("users")
+    .update({ is_active: Boolean(isActive) })
+    .eq("id", userId)
+    .in("type", ["dealmaker", "contractor", "realtor"]);
+
+  if (error) throw error;
+}
+
 async function inferPriceConfig(stripe, session) {
   const metadataPriceId = asText(session?.metadata?.priceId);
   if (metadataPriceId) {
@@ -173,6 +183,7 @@ async function persistCheckoutSession({ stripe, supabase, session, userId }) {
     };
 
     await upsertSubscriptionByStripeId(supabase, payload);
+    await updateUserActivation(supabase, userId, payload.status === "active" || payload.status === "trialing");
     return {
       mode,
       status: payload.status,

@@ -136,13 +136,10 @@ export default function ContractsEscrowPaymentPanel({
       }
 
       const normalizedBeneficiary = String(beneficiaryUserId || "").trim();
-      if (!normalizedBeneficiary) {
-        throw new Error("beneficiaryUserId is required.");
-      }
 
       const result = await createEarnestMoneyEscrow({
         contractId,
-        beneficiaryUserId: normalizedBeneficiary,
+        beneficiaryUserId: normalizedBeneficiary || undefined,
         amount: normalizedAmount,
         currency: "usd",
         platformFeeRate: asCurrencyValue(platformFeeRate) || 1.5,
@@ -162,6 +159,7 @@ export default function ContractsEscrowPaymentPanel({
       setEscrowSummary({
         escrowId: result.escrowId,
         paymentIntentId: result.paymentIntentId,
+        beneficiaryUserId: result.beneficiaryUserId,
         amount: result.amount,
         currency: result.currency,
         status: result.status,
@@ -180,7 +178,7 @@ export default function ContractsEscrowPaymentPanel({
     <div style={{ ...card, marginTop: 10, borderColor: `${G.blue}44` }}>
       <div style={{ ...lbl, color: G.blue, marginBottom: 6 }}>Stripe Escrow Payment (PaymentElement)</div>
       <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.7, marginBottom: 8 }}>
-        Create escrow PaymentIntent, then pay it directly from this contract view.
+        Create escrow PaymentIntent, then pay it directly from this contract view. Beneficiary is auto-resolved from contract parties unless you override it below.
       </div>
 
       {!STRIPE_PUBLISHABLE_KEY && (
@@ -191,11 +189,11 @@ export default function ContractsEscrowPaymentPanel({
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8, marginBottom: 8 }}>
         <div>
-          <div style={lbl}>Beneficiary User ID</div>
+          <div style={lbl}>Beneficiary User ID (optional override)</div>
           <input
             value={beneficiaryUserId}
             onChange={(event) => setBeneficiaryUserId(event.target.value)}
-            placeholder="UUID of contractor/realtor recipient"
+            placeholder="Leave empty to auto-resolve from contract parties"
             style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: "8px 10px", boxSizing: "border-box", outline: "none" }}
           />
         </div>
@@ -269,6 +267,7 @@ export default function ContractsEscrowPaymentPanel({
         <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "8px 10px", fontSize: 9, color: G.muted, marginBottom: 8, lineHeight: 1.7 }}>
           Escrow ID: {escrowSummary.escrowId}<br />
           PaymentIntent: {escrowSummary.paymentIntentId}<br />
+          Beneficiary User: {escrowSummary.beneficiaryUserId || "auto-resolved"}<br />
           Status: {escrowSummary.status}<br />
           Amount: {escrowSummary.amount} {String(escrowSummary.currency || "usd").toUpperCase()}
         </div>

@@ -1,11 +1,24 @@
 import TopBar from "../components/TopBar";
+import { formatMoney } from "../core/adminDashboardFormat";
 import useIsMobile from "../core/useIsMobile";
 import { getLaunchIntegrationStatus, integrationStatusColor } from "../core/integrations";
+import useAdminLiveData from "../hooks/useAdminLiveData";
 import useAdminMetrics from "../hooks/useAdminMetrics";
+import AdminDealsPanel from "./admin/AdminDealsPanel";
+import AdminRecentActivityCard from "./admin/AdminRecentActivityCard";
+import AdminUsersPanel from "./admin/AdminUsersPanel";
 
 export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACTORS, adminTab, setAdminTab, userName, user, onSignOut }) {
   const isMobile = useIsMobile(820);
   const { metrics, loading: metricsLoading, error: metricsError, reload } = useAdminMetrics(user);
+  const {
+    users: adminUsers,
+    deals: adminDeals,
+    activity: adminActivity,
+    loading: liveDataLoading,
+    error: liveDataError,
+    reload: reloadLiveData,
+  } = useAdminLiveData(user);
   const dealMakerCount = metrics.dealMakerUsers;
   const contractorCount = metrics.contractorUsers;
   const totalMrr = metrics.totalMrr;
@@ -24,30 +37,12 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
   const platformFeeSharePct = totalCashRevenue > 0 ? Math.round((platformFeesRevenue / totalCashRevenue) * 100) : 0;
   const launchIntegrations = getLaunchIntegrationStatus();
 
-  const money = (value) => `$${Number(value || 0).toLocaleString()}`;
-
   const ATABS = [
     { id: "overview", icon: "OV", label: "Overview" },
     { id: "users", icon: "US", label: "Users" },
     { id: "revenue", icon: "RV", label: "Revenue" },
     { id: "deals", icon: "DL", label: "Deals" },
     { id: "contractors", icon: "CT", label: "Contractors" },
-  ];
-
-  const userRows = [
-    { name: "Daniel P.", email: "daniel@cashoffers.com", type: "dealmaker", status: "Active", joined: "Apr 1" },
-    { name: "Ray Dominguez", email: "ray@contractor.com", type: "contractor", status: "Active", joined: "Mar 28" },
-    { name: "Sandra Okafor", email: "sandra@kw.com", type: "realtor", status: "Active", joined: "Mar 15" },
-    { name: "Mike Torres", email: "mike@hvac.com", type: "contractor", status: "Active", joined: "Apr 3" },
-    { name: "T. Williams", email: "twilliams@flip.com", type: "dealmaker", status: "Trial", joined: "Apr 8" },
-    { name: "M. Johnson", email: "mj@invest.com", type: "dealmaker", status: "Active", joined: "Feb 20" },
-  ];
-
-  const dealRows = [
-    { addr: "4605 Old Mill Ct, Salida CA", user: "Daniel P.", stage: "Analyzing", arv: "$385,000", offer: "$198,000", profit: "$72,000", date: "Apr 10" },
-    { addr: "1842 Maple St, Sacramento CA", user: "T. Williams", stage: "Renovating", arv: "$420,000", offer: "$215,000", profit: "$84,000", date: "Mar 28" },
-    { addr: "534 Oak Blvd, Stockton CA", user: "M. Johnson", stage: "Selling", arv: "$310,000", offer: "$161,000", profit: "$61,000", date: "Feb 14" },
-    { addr: "3421 Poplar Ave, Sacramento CA", user: "S. Park", stage: "Closed", arv: "$385,000", offer: "$195,000", profit: "$78,000", date: "Jan 30" },
   ];
 
   return (
@@ -87,9 +82,9 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
-                { l: "MRR", v: money(totalMrr), c: G.green, sub: "Active + trialing subscriptions" },
+                { l: "MRR", v: formatMoney(totalMrr), c: G.green, sub: "Active + trialing subscriptions" },
                 { l: "Deals Tracked", v: String(metrics.dealsTotal), c: G.text, sub: `${metrics.dealsClosed} closed` },
-                { l: "Cash Revenue", v: money(totalCashRevenue), c: G.gold, sub: "Credit packs + platform fees" },
+                { l: "Cash Revenue", v: formatMoney(totalCashRevenue), c: G.gold, sub: "Credit packs + platform fees" },
               ].map(({ l, v, c, sub }) => (
                 <div key={l} style={{ ...card }}>
                   <div style={lbl}>{l}</div>
@@ -122,20 +117,16 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
               </div>
 
               <div style={{ ...card }}>
-                <div style={{ ...lbl, marginBottom: 10 }}>Recent Platform Activity</div>
-                {[
-                  { e: "New deal maker signup", t: "2 min ago", c: G.green },
-                  { e: "Deal saved to pipeline", t: "5 min ago", c: G.text },
-                  { e: "Contractor quote sent", t: "12 min ago", c: G.gold },
-                  { e: "Realtor match accepted", t: "28 min ago", c: G.blue },
-                  { e: "Deal closed - split earned", t: "1h ago", c: G.green },
-                  { e: "New contractor sub", t: "2h ago", c: G.gold },
-                ].map(({ e, t, c }, index) => (
-                  <div key={index} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: index < 5 ? `1px solid ${G.faint}` : "none" }}>
-                    <span style={{ fontSize: 10, color: c }}>- {e}</span>
-                    <span style={{ fontSize: 9, color: G.muted }}>{t}</span>
-                  </div>
-                ))}
+                <AdminRecentActivityCard
+                  G={G}
+                  card={{ border: "none", padding: 0, background: "transparent" }}
+                  lbl={lbl}
+                  btnO={btnO}
+                  activity={adminActivity}
+                  loading={liveDataLoading}
+                  error={liveDataError}
+                  onReload={reloadLiveData}
+                />
               </div>
             </div>
 
@@ -172,80 +163,17 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
         )}
 
         {adminTab === "users" && (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-              <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text }}>User Management</div>
-              <div style={{ fontSize: 10, color: G.muted }}>{totalUsers} total users</div>
-            </div>
-
-            <div style={{ ...card }}>
-              {!isMobile && (
-                <>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
-                      padding: "8px 12px",
-                      background: G.surface,
-                      borderRadius: "4px 4px 0 0",
-                      borderBottom: `1px solid ${G.border}`,
-                      marginBottom: 0,
-                    }}
-                  >
-                    {["NAME / EMAIL", "TYPE", "STATUS", "JOINED", "ACTION"].map((header) => (
-                      <div key={header} style={{ fontSize: 8, color: G.muted, letterSpacing: 2 }}>
-                        {header}
-                      </div>
-                    ))}
-                  </div>
-
-                  {userRows.map((userRow, index) => (
-                    <div key={index} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", padding: "10px 12px", borderBottom: `1px solid ${G.faint}`, alignItems: "center" }}>
-                      <div>
-                        <div style={{ fontSize: 11, color: G.text }}>{userRow.name}</div>
-                        <div style={{ fontSize: 9, color: G.muted }}>{userRow.email}</div>
-                      </div>
-                      <div style={{ fontSize: 9, color: userRow.type === "dealmaker" ? G.green : userRow.type === "contractor" ? G.gold : G.blue, textTransform: "capitalize" }}>{userRow.type}</div>
-                      <div style={{ fontSize: 9, color: userRow.status === "Active" ? G.green : G.gold }}>{userRow.status}</div>
-                      <div style={{ fontSize: 9, color: G.muted }}>{userRow.joined}</div>
-                      <button
-                        onClick={() => window.alert(`User: ${userRow.name}\nType: ${userRow.type}\nEmail: ${userRow.email}\nStatus: ${userRow.status}`)}
-                        style={{ ...btnO, padding: "4px 10px", fontSize: 8 }}
-                      >
-                        View
-                      </button>
-                    </div>
-                  ))}
-                </>
-              )}
-
-              {isMobile && (
-                <div>
-                  {userRows.map((userRow) => (
-                    <div key={`${userRow.email}-${userRow.joined}`} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "10px", marginBottom: 8 }}>
-                      <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, marginBottom: 2 }}>{userRow.name}</div>
-                      <div style={{ fontSize: 9, color: G.muted, marginBottom: 8 }}>{userRow.email}</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
-                        <div style={{ fontSize: 9, color: G.muted }}>
-                          Type: <span style={{ color: userRow.type === "dealmaker" ? G.green : userRow.type === "contractor" ? G.gold : G.blue, textTransform: "capitalize" }}>{userRow.type}</span>
-                        </div>
-                        <div style={{ fontSize: 9, color: G.muted }}>
-                          Status: <span style={{ color: userRow.status === "Active" ? G.green : G.gold }}>{userRow.status}</span>
-                        </div>
-                        <div style={{ fontSize: 9, color: G.muted }}>Joined: {userRow.joined}</div>
-                      </div>
-                      <button
-                        onClick={() => window.alert(`User: ${userRow.name}\nType: ${userRow.type}\nEmail: ${userRow.email}\nStatus: ${userRow.status}`)}
-                        style={{ ...btnO, padding: "6px 10px", fontSize: 8, width: "100%" }}
-                      >
-                        View
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <AdminUsersPanel
+            G={G}
+            card={card}
+            btnO={btnO}
+            isMobile={isMobile}
+            totalUsers={adminUsers.length || totalUsers}
+            users={adminUsers}
+            loading={liveDataLoading}
+            error={liveDataError}
+            onReload={reloadLiveData}
+          />
         )}
 
         {adminTab === "revenue" && (
@@ -253,12 +181,12 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
             <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 12 }}>Revenue Dashboard</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
-                { l: "Deal Maker Subs", v: money(dealMakerMrr), sub: `${dealMakerCount} active users`, c: G.green },
-                { l: "Contractor Subs", v: money(contractorMrr), sub: `${contractorCount} active users`, c: G.gold },
-                { l: "Lead Credit Sales", v: money(creditsRevenue), sub: "One-time credit purchases", c: G.blue },
-                { l: "Platform Fees", v: money(platformFeesRevenue), sub: `${metrics.platformFeeDisbursed} disbursed · ${metrics.platformFeePending} pending`, c: G.text },
-                { l: "Total MRR", v: money(totalMrr), sub: "Monthly recurring", c: G.green },
-                { l: "ARR Projection", v: money(arrProjection), sub: "Annualized", c: G.green },
+                { l: "Deal Maker Subs", v: formatMoney(dealMakerMrr), sub: `${dealMakerCount} active users`, c: G.green },
+                { l: "Contractor Subs", v: formatMoney(contractorMrr), sub: `${contractorCount} active users`, c: G.gold },
+                { l: "Lead Credit Sales", v: formatMoney(creditsRevenue), sub: "One-time credit purchases", c: G.blue },
+                { l: "Platform Fees", v: formatMoney(platformFeesRevenue), sub: `${metrics.platformFeeDisbursed} disbursed · ${metrics.platformFeePending} pending`, c: G.text },
+                { l: "Total MRR", v: formatMoney(totalMrr), sub: "Monthly recurring", c: G.green },
+                { l: "ARR Projection", v: formatMoney(arrProjection), sub: "Annualized", c: G.green },
               ].map(({ l, v, sub, c }) => (
                 <div key={l} style={{ ...card }}>
                   <div style={lbl}>{l}</div>
@@ -290,36 +218,18 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
         )}
 
         {adminTab === "deals" && (
-          <div>
-            <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 12 }}>
-              All Deals - Platform Wide ({metrics.dealsTotal} total · {metrics.dealsClosed} closed)
-            </div>
-            {dealRows.map((deal, index) => (
-              <div key={index} style={{ ...card, marginBottom: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
-                  <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold" }}>{deal.addr}</div>
-                  <div style={{ fontSize: 8, color: deal.stage === "Closed" ? G.green : deal.stage === "Selling" ? G.gold : G.muted, background: G.greenGlow, borderRadius: 3, padding: "2px 8px", letterSpacing: 1 }}>
-                    {deal.stage}
-                  </div>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5,minmax(0,1fr))", gap: 6, fontSize: 9, color: G.muted }}>
-                  <span>
-                    User: <strong style={{ color: G.text }}>{deal.user}</strong>
-                  </span>
-                  <span>
-                    ARV: <strong style={{ color: G.green }}>{deal.arv}</strong>
-                  </span>
-                  <span>
-                    Offer: <strong style={{ color: G.text }}>{deal.offer}</strong>
-                  </span>
-                  <span>
-                    Profit: <strong style={{ color: G.green }}>{deal.profit}</strong>
-                  </span>
-                  <span>Date: {deal.date}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <AdminDealsPanel
+            G={G}
+            card={card}
+            btnO={btnO}
+            isMobile={isMobile}
+            deals={adminDeals}
+            loading={liveDataLoading}
+            error={liveDataError}
+            dealsTotal={metrics.dealsTotal}
+            dealsClosed={metrics.dealsClosed}
+            onReload={reloadLiveData}
+          />
         )}
 
         {adminTab === "contractors" && (

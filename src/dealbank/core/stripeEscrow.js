@@ -70,9 +70,10 @@ export async function beginConnectOnboarding(input = {}) {
 }
 
 export async function createEarnestMoneyEscrow(input) {
+  const beneficiaryUserId = asText(input?.beneficiaryUserId);
   const payload = {
     contractId: asText(input?.contractId) || undefined,
-    beneficiaryUserId: asText(input?.beneficiaryUserId),
+    beneficiaryUserId: beneficiaryUserId || undefined,
     amount: Number(input?.amount || 0),
     currency: asText(input?.currency) || "usd",
     platformFeeRate: Number(input?.platformFeeRate || 1.5),
@@ -81,10 +82,6 @@ export async function createEarnestMoneyEscrow(input) {
     idempotencyKey: asText(input?.idempotencyKey) || undefined,
     metadata: input?.metadata && typeof input.metadata === "object" ? input.metadata : {},
   };
-
-  if (!payload.beneficiaryUserId) {
-    throw new Error("beneficiaryUserId is required");
-  }
 
   if (!Number.isFinite(payload.amount) || payload.amount <= 0) {
     throw new Error("amount must be greater than zero");

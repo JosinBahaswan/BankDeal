@@ -109,7 +109,7 @@ async function ensurePublicUserMatchesAuth(authUser) {
         email,
         name: existingById.name || authUser.user_metadata?.name || email.split("@")[0],
         type: existingById.type || authUser.user_metadata?.type || "dealmaker",
-        password_hash: "supabase_auth_managed",
+        email_verified: Boolean(authUser.email_confirmed_at),
         last_login: new Date().toISOString(),
       })
       .eq("id", authId);
@@ -125,7 +125,6 @@ async function ensurePublicUserMatchesAuth(authUser) {
       id: authId,
       email,
       name: authUser.user_metadata?.name || email.split("@")[0],
-      password_hash: "supabase_auth_managed",
       type: authUser.user_metadata?.type || "dealmaker",
       company: null,
       phone: null,
@@ -157,7 +156,6 @@ async function ensurePublicUserMatchesAuth(authUser) {
     id: authId,
     email,
     name: existingByEmail.name || authUser.user_metadata?.name || email.split("@")[0],
-    password_hash: "supabase_auth_managed",
     type: existingByEmail.type || authUser.user_metadata?.type || "dealmaker",
     company: existingByEmail.company || null,
     phone: existingByEmail.phone || null,

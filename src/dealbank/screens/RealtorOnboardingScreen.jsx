@@ -267,10 +267,17 @@ export default function RealtorOnboardingScreen({
               </div>
             </div>
 
+            <div style={{ ...card, background: "#062013", borderColor: `${G.green}66`, padding: 14, marginBottom: 14 }}>
+              <div style={{ fontSize: 9, color: G.green, letterSpacing: 3, marginBottom: 5 }}>SUBSCRIPTION CHECKOUT</div>
+              <div style={{ fontSize: 10, color: G.text, lineHeight: 1.7 }}>
+                After profile setup, you will be redirected to secure Stripe checkout to activate Realtor dashboard access.
+              </div>
+            </div>
+
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", flexDirection: isMobile ? "column" : "row" }}>
               <button onClick={goBack} style={{ ...btnO, padding: "10px 16px", width: isMobile ? "100%" : "auto" }}>Back</button>
               <button onClick={launch} disabled={onboarding.submitting} style={{ ...btnG, padding: "10px 16px", width: isMobile ? "100%" : "auto", opacity: onboarding.submitting ? 0.75 : 1, cursor: onboarding.submitting ? "not-allowed" : "pointer" }}>
-                {onboarding.submitting ? "Launching..." : "Launch Realtor Dashboard"}
+                {onboarding.submitting ? "Redirecting..." : "Continue to Stripe Checkout"}
               </button>
             </div>
           </div>

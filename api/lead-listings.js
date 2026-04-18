@@ -1,10 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import { enforceCors, enforceRateLimit } from "../lib/server/httpSecurity.js";
-
-function asText(value, fallback = "") {
-  const normalized = typeof value === "string" ? value.trim() : "";
-  return normalized || fallback;
-}
+import {
+  asText,
+  createSupabaseAdminClient,
+  createSupabaseUserClient,
+  jsonBody,
+  verifyContractActor,
+} from "../lib/server/contractsShared.js";
 
 function asNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -25,60 +26,6 @@ function firstAddressLine(address) {
 function clampLimit(rawLimit) {
   const limit = Math.floor(asNumber(rawLimit, 120));
   return Math.max(1, Math.min(200, limit));
-}
-
-function createSupabaseAdminClient() {
-  const supabaseUrl = asText(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
-  const serviceRole = asText(process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-  if (!supabaseUrl || !serviceRole) {
-    throw new Error("Server is missing SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY");
-  }
-
-  return createClient(supabaseUrl, serviceRole, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
-
-async function verifyIdentity(req, supabaseAdmin) {
-  const authHeader = asText(req.headers?.authorization);
-  if (!authHeader.toLowerCase().startsWith("bearer ")) {
-    throw new Error("Missing bearer authorization token");
-  }
-
-  const token = authHeader.slice(7).trim();
-  if (!token) {
-    throw new Error("Missing bearer authorization token");
-  }
-
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data?.user) {
-    throw new Error(error?.message || "Invalid Supabase auth token");
-  }
-
-  const userId = asText(data.user.id);
-  const { data: appUser, error: appUserError } = await supabaseAdmin
-    .from("users")
-    .select("id, type")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (appUserError) {
-    throw new Error(`Unable to resolve user profile: ${appUserError.message}`);
-  }
-
-  const userType = asText(appUser?.type || data.user?.user_metadata?.type).toLowerCase();
-  if (!["dealmaker", "admin"].includes(userType)) {
-    throw new Error("Only deal makers can pull production lead lists");
-  }
-
-  return {
-    userId,
-    userType,
-  };
 }
 
 function mapListingToLeadCandidate(row, sellerById, filters) {
@@ -108,9 +55,41 @@ function mapListingToLeadCandidate(row, sellerById, filters) {
   };
 }
 
+function estimateCreditCost(candidateCount) {
+  const count = Math.max(0, Number(candidateCount || 0));
+  if (count === 0) return 0;
+  return Math.max(1, Math.ceil(count * 1.2));
+}
+
+async function consumeCreditsForPull({ actor, creditsRequired }) {
+  if (creditsRequired <= 0) {
+    return { consumed: 0, remaining: null };
+  }
+
+  const userScopedClient = createSupabaseUserClient(actor.token);
+  const { data, error } = await userScopedClient
+    .rpc("consume_data_credits", { p_credits: creditsRequired });
+
+  if (error) {
+    const message = asText(error.message).toLowerCase();
+    if (message.includes("insufficient")) {
+      const err = new Error(error.message || "Insufficient data credits");
+      err.code = "insufficient_credits";
+      throw err;
+    }
+
+    throw new Error(error.message || "Failed to consume data credits");
+  }
+
+  return {
+    consumed: Number(data?.[0]?.consumed || creditsRequired),
+    remaining: Number(data?.[0]?.remaining),
+  };
+}
+
 export default async function handler(req, res) {
   const cors = enforceCors(req, res, {
-    methods: "GET, OPTIONS",
+    methods: "POST, OPTIONS",
     headers: "Content-Type, Authorization",
   });
   if (cors.handled) return;
@@ -124,9 +103,14 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: "Too many requests. Please retry later." });
   }
 
-  if (req.method !== "GET") {
-    res.setHeader("Allow", "GET, OPTIONS");
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST, OPTIONS");
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const body = jsonBody(req);
+  if (!body) {
+    return res.status(400).json({ error: "Invalid JSON body" });
   }
 
   let supabaseAdmin;
@@ -136,17 +120,20 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: error?.message || "Unable to initialize Supabase admin client" });
   }
 
+  let actor;
   try {
-    await verifyIdentity(req, supabaseAdmin);
+    actor = await verifyContractActor(req, supabaseAdmin, {
+      allowedTypes: ["dealmaker"],
+    });
   } catch (error) {
     return res.status(401).json({ error: error?.message || "Unauthorized" });
   }
 
-  const cityFilter = asText(req.query?.city);
-  const minEquity = Math.max(0, asNumber(req.query?.minEquity, 0));
-  const listType = asText(req.query?.listType, "High Equity");
-  const propertyType = asText(req.query?.propertyType, "Single Family");
-  const limit = clampLimit(req.query?.limit);
+  const cityFilter = asText(body.city);
+  const minEquity = Math.max(0, asNumber(body.minEquity, 0));
+  const listType = asText(body.listType, "High Equity");
+  const propertyType = asText(body.propertyType, "Single Family");
+  const limit = clampLimit(body.limit);
 
   let listingQuery = supabaseAdmin
     .from("marketplace_listings")
@@ -191,9 +178,48 @@ export default async function handler(req, res) {
   };
 
   const candidates = (listingRows || []).map((row) => mapListingToLeadCandidate(row, sellerById, filters));
+  const creditsRequired = estimateCreditCost(candidates.length);
+
+  let creditResult;
+  try {
+    creditResult = await consumeCreditsForPull({
+      actor,
+      creditsRequired,
+    });
+  } catch (error) {
+    if (error?.code === "insufficient_credits") {
+      return res.status(402).json({
+        error: error.message || "Insufficient data credits",
+        creditsRequired,
+      });
+    }
+
+    return res.status(500).json({
+      error: error?.message || "Failed to consume data credits",
+    });
+  }
+
+  await supabaseAdmin
+    .from("lead_pull_audit_logs")
+    .insert({
+      user_id: actor.userId,
+      candidate_count: candidates.length,
+      credits_consumed: Number(creditResult?.consumed || creditsRequired),
+      credits_remaining: Number(creditResult?.remaining || 0),
+      filters: {
+        city: cityFilter,
+        minEquity,
+        listType,
+        propertyType,
+        limit,
+      },
+    });
 
   return res.status(200).json({
     count: candidates.length,
+    creditsRequired,
+    creditsConsumed: Number(creditResult?.consumed || creditsRequired),
+    creditsRemaining: Number.isFinite(Number(creditResult?.remaining)) ? Number(creditResult.remaining) : null,
     candidates,
   });
 }

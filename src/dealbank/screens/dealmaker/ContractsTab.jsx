@@ -5,6 +5,12 @@ import ContractsSignView from "./contracts/ContractsSignView";
 import ContractsDashboardView from "./contracts/ContractsDashboardView";
 import ContractsEscrowPaymentPanel from "./contracts/ContractsEscrowPaymentPanel";
 import {
+  createSignatureAttestation,
+  downloadContractPdfBlob,
+  generateAndPersistContractPdf,
+  triggerExecutedContractDelivery,
+} from "./contracts/contractsDeliveryApi";
+import {
   TEMPLATE_CONFIG,
   TEMPLATE_ORDER,
   UI_TO_DB_STATUS,
@@ -21,11 +27,9 @@ import {
   templateParties,
   contractBody,
   safeFilename,
-  wrapText,
 } from "./contracts/contractConfig";
 
 const CONTRACTS_BUCKET = String(import.meta.env.VITE_CONTRACTS_BUCKET || "contracts").trim();
-const EXECUTED_CONTRACT_WEBHOOK_URL = String(import.meta.env.VITE_EXECUTED_CONTRACT_WEBHOOK_URL || "/api/notify-contract").trim();
 
 function isHttpUrl(value) {
   return /^https?:\/\//i.test(String(value || ""));
@@ -107,192 +111,6 @@ export default function ContractsTab({ ctx }) {
     }
   }
 
-  async function uploadPdfToStorage(contractId, pdfBytes) {
-    if (!CONTRACTS_BUCKET) {
-      throw new Error("VITE_CONTRACTS_BUCKET is not configured for contract PDF uploads.");
-    }
-
-    if (!pdfBytes?.length) {
-      throw new Error("No PDF bytes available for upload.");
-    }
-
-    if (!user?.id) {
-      throw new Error("You must be logged in to upload contract PDFs.");
-    }
-
-    try {
-      const path = `contracts/${contractId}/executed-${Date.now()}.pdf`;
-      const { error } = await supabase.storage.from(CONTRACTS_BUCKET).upload(path, pdfBytes, { upsert: true, contentType: "application/pdf" });
-      if (error) {
-        throw new Error(error.message || "Supabase PDF upload failed");
-      }
-
-      const { error: updateError } = await supabase
-        .from("contracts")
-        .update({ pdf_url: path })
-        .eq("id", contractId)
-        .eq("creator_id", user.id);
-
-      if (updateError) {
-        throw new Error(updateError.message || "Failed to persist uploaded PDF path");
-      }
-
-      const signedUrl = await resolveStorageUrl(path, 60 * 60 * 24 * 7);
-      if (!signedUrl) {
-        throw new Error("PDF uploaded but failed to create signed URL");
-      }
-
-      return signedUrl;
-    } catch (error) {
-      throw new Error(error?.message || "PDF upload failed");
-    }
-  }
-
-  async function buildContractPdfBytes(contract) {
-    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
-
-    const template = TEMPLATE_CONFIG[contract.templateId] || defaultTemplate;
-    const pdfDoc = await PDFDocument.create();
-    let page = pdfDoc.addPage([612, 792]);
-    const titleFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    const bodyFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const signFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
-
-    let y = 760;
-    const marginLeft = 42;
-
-    const writeLine = (text, options = {}) => {
-      const size = options.size || 10;
-      const lineGap = options.gap || 14;
-      page.drawText(String(text || ""), {
-        x: options.x || marginLeft,
-        y,
-        size,
-        font: options.font || bodyFont,
-        color: options.color || rgb(0.12, 0.12, 0.12),
-      });
-      y -= lineGap;
-    };
-
-    writeLine("DEALBANK", { font: titleFont, size: 24, gap: 30 });
-    writeLine("REAL ESTATE INVESTMENT PLATFORM", { font: bodyFont, size: 10, gap: 18 });
-    writeLine(`Document: ${contract.name}`, { font: titleFont, size: 14, gap: 18 });
-    writeLine(`Template: ${template.label}`, { font: bodyFont, size: 10 });
-    writeLine(`Status: ${contract.status}`, { font: bodyFont, size: 10 });
-    writeLine(`Generated: ${new Date().toLocaleString()}`, { font: bodyFont, size: 10 });
-    writeLine(`Document Hash: ${contract.docHash || "pending"}`, { font: bodyFont, size: 9, gap: 18 });
-    writeLine("This file includes immutable signature records from DealBank.", { font: bodyFont, size: 9, gap: 12 });
-
-    page = pdfDoc.addPage([612, 792]);
-    y = 760;
-
-    writeLine("DealBank Contract", { font: titleFont, size: 16, gap: 20 });
-    writeLine(`Contract: ${contract.name}`, { font: bodyFont, size: 11 });
-    writeLine(`Template: ${template.label}`, { font: bodyFont, size: 10 });
-    writeLine(`Status: ${contract.status}`, { font: bodyFont, size: 10 });
-    writeLine(`Created: ${contract.created}`, { font: bodyFont, size: 10 });
-    writeLine(`Doc Hash (SHA-256): ${contract.docHash || "pending"}`, { font: bodyFont, size: 9, gap: 18 });
-
-    writeLine("Contract Terms", { font: titleFont, size: 12, gap: 16 });
-    const bodyLines = contractBody(template, contract.formVals).split("\n");
-
-    bodyLines.forEach((line) => {
-      wrapText(line, 96).forEach((wrapped) => {
-        if (y < 110) {
-          y = 760;
-          page = pdfDoc.addPage([612, 792]);
-        }
-        writeLine(wrapped, { font: bodyFont, size: 9, gap: 12 });
-      });
-    });
-
-    y -= 8;
-    writeLine("Signatures", { font: titleFont, size: 12, gap: 16 });
-
-    for (const party of contract.parties) {
-      if (y < 90) {
-        y = 760;
-        page = pdfDoc.addPage([612, 792]);
-      }
-
-      const lineTop = y;
-      writeLine(`${party.role}: ${party.signerName || "Pending"}`, { font: bodyFont, size: 10, gap: 12 });
-      writeLine(`Status: ${party.status}${party.signedAt ? ` at ${party.signedAt}` : ""}`, { font: bodyFont, size: 9, gap: 12 });
-
-      if (party.status === "Signed") {
-        if (party.signatureImageUrl) {
-          try {
-            const signatureUrl = await resolveStorageUrl(party.signatureImageUrl, 60 * 60 * 24);
-            const response = await fetch(signatureUrl || party.signatureImageUrl);
-            const bytes = await response.arrayBuffer();
-            const contentType = String(response.headers.get("content-type") || "").toLowerCase();
-            const lowerSource = String(signatureUrl || party.signatureImageUrl).toLowerCase();
-            const image = contentType.includes("jpeg") || lowerSource.includes(".jpg") || lowerSource.includes("jpeg")
-              ? await pdfDoc.embedJpg(bytes)
-              : await pdfDoc.embedPng(bytes);
-            page.drawImage(image, { x: 380, y: lineTop - 16, width: 150, height: 44 });
-          } catch {
-            page.drawText(party.signerName || "Signed", { x: 380, y: lineTop - 8, size: 16, font: signFont, color: rgb(0.14, 0.35, 0.18) });
-          }
-        } else {
-          page.drawText(party.signerName || "Signed", { x: 380, y: lineTop - 8, size: 16, font: signFont, color: rgb(0.14, 0.35, 0.18) });
-        }
-      }
-
-      y -= 10;
-    }
-
-    return pdfDoc.save();
-  }
-
-  async function notifyExecutedContractDelivery(contract, payload) {
-    if (!EXECUTED_CONTRACT_WEBHOOK_URL) {
-      return { delivered: false, reason: "delivery_webhook_not_configured" };
-    }
-
-    try {
-      const response = await fetch(EXECUTED_CONTRACT_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contractId: contract.id,
-          contractName: contract.name,
-          templateId: contract.templateId,
-          status: contract.status,
-          docHash: contract.docHash,
-          pdfUrl: payload?.pdfUrl || contract.pdfUrl || "",
-          propertyAddress: contract.formVals?.propertyAddress || "",
-          closeDate: contract.formVals?.closeDate || "",
-          assignmentFee: contract.formVals?.assignmentFee || "",
-          platformFeePct: contract.feePct || "1.5%",
-          platformFeeAmount: contract.feeAmount || 0,
-          titleCompany: contract.formVals?.titleCompany || "",
-          titleCompanyEmail: contract.formVals?.titleCompanyEmail || "",
-          parties: contract.parties.map((party) => ({
-            role: party.role,
-            signerName: party.signerName,
-            email: party.email || "",
-            status: party.status,
-            signedAt: party.signedAt,
-          })),
-        }),
-      });
-
-      if (!response.ok) {
-        const responseText = await response.text();
-        const details = String(responseText || "").trim();
-        return {
-          delivered: false,
-          reason: details ? `delivery_http_${response.status}: ${details.slice(0, 160)}` : `delivery_http_${response.status}`,
-        };
-      }
-
-      return { delivered: true };
-    } catch (error) {
-      return { delivered: false, reason: error?.message || "delivery_request_failed" };
-    }
-  }
-
   const loadContracts = useCallback(async (options = {}) => {
     const { focusId = "", nextView = "", silent = false } = options;
 
@@ -334,7 +152,7 @@ export default function ContractsTab({ ctx }) {
             .in("contract_id", contractIds),
           supabase
             .from("contract_signatures")
-            .select("id, contract_id, party_id, party_role, signer_name, signer_email, sig_method, signed_at, sig_image_url, doc_hash")
+            .select("id, contract_id, party_id, party_role, signer_name, signer_email, signer_ip, sig_method, signed_at, sig_image_url, doc_hash, signature_algorithm, signing_cert_fingerprint")
             .in("contract_id", contractIds)
             .order("signed_at", { ascending: false }),
         ]);
@@ -417,10 +235,13 @@ export default function ContractsTab({ ctx }) {
             role,
             signerName: signature.signer_name || "-",
             signerEmail: signature.signer_email || "",
+            signerIp: signature.signer_ip || "",
             method: signature.sig_method || "-",
             signedAt: signedAtLabel,
             signatureImageUrl: signature.sig_image_url || "",
             docHash: signature.doc_hash || "",
+            signatureAlgorithm: signature.signature_algorithm || "",
+            signingCertFingerprint: signature.signing_cert_fingerprint || "",
           });
         });
 
@@ -676,10 +497,6 @@ export default function ContractsTab({ ctx }) {
     setDrawnReady(false);
   }
 
-  async function resolveSignerIp() {
-    return "";
-  }
-
   async function applySignature() {
     if (!user?.id) {
       setContractsError("You must be logged in to sign contracts.");
@@ -718,21 +535,36 @@ export default function ContractsTab({ ctx }) {
         signatureImageUrl = await uploadDataUrlToStorage(`signatures/${activeContract.id}/${roleSlug}-${Date.now()}.png`, dataUrl);
       }
 
-      const signerIp = await resolveSignerIp();
+      const attestation = await createSignatureAttestation({
+        contractId: activeContract.id,
+        partyRole: nextSigner.role,
+        signerName: appliedName,
+        signerEmail,
+        sigMethod: method,
+        signedAt: signedAtIso,
+        docHash,
+      });
 
       const { error: signatureError } = await supabase
         .from("contract_signatures")
         .insert({
           contract_id: activeContract.id,
           party_id: nextSigner.partyId || null,
+          signer_user_id: user.id,
           signer_name: appliedName,
           signer_email: signerEmail,
-          signer_ip: signerIp || null,
+          signer_ip: attestation?.signerIp || null,
           signed_at: signedAtIso,
+          server_signed_at: attestation?.serverSignedAt || signedAtIso,
           sig_method: method,
           sig_image_url: signatureImageUrl || null,
           doc_hash: docHash,
           party_role: nextSigner.role,
+          signature_algorithm: attestation?.algorithm || "RS256",
+          signature_payload: attestation?.signaturePayload || "",
+          signature_value: attestation?.signatureValue || "",
+          signing_cert_fingerprint: attestation?.certFingerprint || null,
+          signing_cert_pem: attestation?.certPem || null,
         });
 
       if (signatureError) throw signatureError;
@@ -756,20 +588,33 @@ export default function ContractsTab({ ctx }) {
 
       if (fullyExecuted && refreshedContract) {
         try {
-          const pdfBytes = await buildContractPdfBytes({ ...refreshedContract, docHash });
-          const uploadedPdfUrl = await uploadPdfToStorage(refreshedContract.id, pdfBytes);
-          const deliveryResult = await notifyExecutedContractDelivery(
-            { ...refreshedContract, docHash, pdfUrl: uploadedPdfUrl || refreshedContract.pdfUrl },
-            { pdfUrl: uploadedPdfUrl || refreshedContract.pdfUrl },
-          );
+          const pdfResult = await generateAndPersistContractPdf(refreshedContract.id);
+          const uploadedPdfUrl = String(pdfResult?.pdfUrl || refreshedContract.pdfUrl || "").trim();
+
+          if (uploadedPdfUrl) {
+            setContracts((prev) => prev.map((item) => (
+              item.id === refreshedContract.id
+                ? {
+                    ...item,
+                    pdfPath: String(pdfResult?.pdfPath || item.pdfPath || ""),
+                    pdfUrl: uploadedPdfUrl,
+                  }
+                : item
+            )));
+          }
+
+          const deliveryResult = await triggerExecutedContractDelivery({
+            contractId: refreshedContract.id,
+            pdfUrl: uploadedPdfUrl,
+          });
 
           if (deliveryResult.delivered) {
-            setDeliveryNote("Contract fully executed. PDF generated and delivery webhook triggered.");
+            setDeliveryNote("Contract fully executed. Server PDF generated and delivery emails sent.");
           } else {
-            setDeliveryNote(`Contract fully executed. Delivery pending (${deliveryResult.reason}).`);
+            setDeliveryNote(`Contract fully executed. Delivery retry is queued for pending recipients (${deliveryResult.pendingCount || 0}).`);
           }
         } catch (error) {
-          setDeliveryNote(`Contract fully executed. Signature recorded, but PDF/email failed (${error?.message || "unknown error"}).`);
+          setDeliveryNote(`Contract fully executed. Signature recorded, but PDF/email pipeline failed (${error?.message || "unknown error"}).`);
         }
       }
 
@@ -784,20 +629,27 @@ export default function ContractsTab({ ctx }) {
 
   async function downloadContract(contract) {
     try {
-      const pdfBytes = await buildContractPdfBytes(contract);
-
       if (contract.status === "Fully Executed") {
         try {
-          const uploadedPdfUrl = await uploadPdfToStorage(contract.id, pdfBytes);
-          if (uploadedPdfUrl) {
-            setContracts((prev) => prev.map((item) => (item.id === contract.id ? { ...item, pdfUrl: uploadedPdfUrl } : item)));
+          const persisted = await generateAndPersistContractPdf(contract.id);
+          const uploadedPdfUrl = String(persisted?.pdfUrl || "").trim();
+          if (uploadedPdfUrl || persisted?.pdfPath) {
+            setContracts((prev) => prev.map((item) => (
+              item.id === contract.id
+                ? {
+                    ...item,
+                    pdfPath: String(persisted?.pdfPath || item.pdfPath || ""),
+                    pdfUrl: uploadedPdfUrl || item.pdfUrl,
+                  }
+                : item
+            )));
           }
         } catch (error) {
-          setContractsError(error?.message || "Failed to upload executed PDF to storage.");
+          setContractsError(error?.message || "Failed to persist executed PDF to storage.");
         }
       }
 
-      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      const blob = await downloadContractPdfBlob(contract.id);
       const href = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = href;
@@ -806,8 +658,8 @@ export default function ContractsTab({ ctx }) {
       anchor.click();
       document.body.removeChild(anchor);
       URL.revokeObjectURL(href);
-    } catch {
-      setContractsError("Failed to generate PDF contract.");
+    } catch (error) {
+      setContractsError(error?.message || "Failed to generate PDF contract.");
     }
   }
 

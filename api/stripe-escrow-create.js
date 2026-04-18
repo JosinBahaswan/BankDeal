@@ -26,6 +26,45 @@ function sanitizeMetadata(input) {
   return next;
 }
 
+async function resolveBeneficiaryFromContract(supabaseAdmin, contractId, payerUserId) {
+  const normalizedContractId = asText(contractId);
+  if (!normalizedContractId) return "";
+
+  const { data: partyRows, error: partyError } = await supabaseAdmin
+    .from("contract_parties")
+    .select("email")
+    .eq("contract_id", normalizedContractId);
+
+  if (partyError) {
+    throw new Error(`Unable to resolve contract parties: ${partyError.message}`);
+  }
+
+  const partyEmails = Array.from(new Set((partyRows || [])
+    .map((row) => asText(row.email).toLowerCase())
+    .filter(Boolean)));
+
+  if (partyEmails.length === 0) return "";
+
+  const { data: userRows, error: userError } = await supabaseAdmin
+    .from("users")
+    .select("id, email")
+    .in("email", partyEmails);
+
+  if (userError) {
+    throw new Error(`Unable to resolve contract beneficiary users: ${userError.message}`);
+  }
+
+  const matchingIds = Array.from(new Set((userRows || [])
+    .map((row) => asText(row.id))
+    .filter((userId) => userId && userId !== payerUserId)));
+
+  if (matchingIds.length === 1) {
+    return matchingIds[0];
+  }
+
+  return "";
+}
+
 export default async function handler(req, res) {
   const cors = setCors(req, res, "POST, OPTIONS");
 
@@ -76,7 +115,7 @@ export default async function handler(req, res) {
   }
 
   const contractId = asText(body.contractId);
-  const beneficiaryUserId = asText(body.beneficiaryUserId);
+  const requestedBeneficiaryUserId = asText(body.beneficiaryUserId);
   const currency = normalizeCurrency(body.currency, "usd");
   const amount = asNumber(body.amount, 0);
   const feeRate = asNumber(body.platformFeeRate, asNumber(process.env.STRIPE_ESCROW_PLATFORM_FEE_RATE, 1.5));
@@ -85,8 +124,39 @@ export default async function handler(req, res) {
   const idempotencyKey = asText(body.idempotencyKey);
   const metadata = sanitizeMetadata(body.metadata);
 
+  let beneficiaryUserId = requestedBeneficiaryUserId;
+  if (contractId) {
+    const { data: contractRow, error: contractError } = await supabaseAdmin
+      .from("contracts")
+      .select("id, creator_id")
+      .eq("id", contractId)
+      .maybeSingle();
+
+    if (contractError) {
+      return res.status(500).json({ error: `Unable to validate contract: ${contractError.message}` });
+    }
+
+    if (!contractRow?.id) {
+      return res.status(404).json({ error: "Contract was not found" });
+    }
+
+    if (!actor.isAdmin && asText(contractRow.creator_id) !== actor.userId) {
+      return res.status(403).json({ error: "Only the contract owner can create escrow from this contract" });
+    }
+  }
+
   if (!beneficiaryUserId) {
-    return res.status(400).json({ error: "beneficiaryUserId is required" });
+    try {
+      beneficiaryUserId = await resolveBeneficiaryFromContract(supabaseAdmin, contractId, actor.userId);
+    } catch (error) {
+      return res.status(500).json({ error: error?.message || "Unable to auto-resolve escrow beneficiary" });
+    }
+  }
+
+  if (!beneficiaryUserId) {
+    return res.status(400).json({
+      error: "Unable to auto-resolve beneficiaryUserId from contract parties. Provide beneficiaryUserId explicitly.",
+    });
   }
 
   if (amount <= 0) {
@@ -137,6 +207,7 @@ export default async function handler(req, res) {
       beneficiary_user_id: beneficiaryUserId,
       contract_id: contractId || "",
       platform_fee_rate: String(feeRate),
+      beneficiary_source: requestedBeneficiaryUserId ? "explicit" : "auto_contract_party",
       ...metadata,
     },
   };
@@ -194,6 +265,7 @@ export default async function handler(req, res) {
     status: escrowRow.status,
     paymentIntentId: paymentIntent.id,
     clientSecret: paymentIntent.client_secret,
+    beneficiaryUserId,
     amount: toMajorUnits(paymentIntent.amount),
     currency,
     transferGroup,

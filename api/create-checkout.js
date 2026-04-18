@@ -146,7 +146,11 @@ function enforceCheckoutRules({ userType, mode, priceConfig, source }) {
       throw new Error("Deal maker checkout can only use dealmaker subscription plan");
     }
 
-    if (!["contractor", "dealmaker"].includes(userType)) {
+    if (userType === "realtor" && plan !== "realtor") {
+      throw new Error("Realtor checkout can only use realtor subscription plan");
+    }
+
+    if (!["contractor", "dealmaker", "realtor"].includes(userType)) {
       throw new Error("This user type is not allowed to start subscription checkout");
     }
   }
@@ -163,6 +167,10 @@ function enforceCheckoutRules({ userType, mode, priceConfig, source }) {
 
   if (normalizedSource === "contractor_onboarding" && !(userType === "contractor" && mode === "subscription")) {
     throw new Error("Invalid checkout context for contractor onboarding");
+  }
+
+  if (normalizedSource === "realtor_onboarding" && !(userType === "realtor" && mode === "subscription")) {
+    throw new Error("Invalid checkout context for realtor onboarding");
   }
 
   if (normalizedSource === "leads_tool" && !(userType === "dealmaker" && mode === "payment")) {

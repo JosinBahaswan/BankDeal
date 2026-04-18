@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import BuyerNetworkView from "./marketplace/BuyerNetworkView";
+import {
+  incrementListingView,
+  listingDays,
+  loadBuyerNetwork,
+  loadListingBuyerMatches,
+  summarizeBuyerNetwork,
+} from "./marketplace/marketplaceApi";
 
 const DEAL_TYPE_TO_DB = {
   Wholesale: "wholesale",
@@ -37,13 +45,6 @@ function statusLabel(status) {
   if (value === "closed") return "Closed";
   if (value === "withdrawn") return "Withdrawn";
   return "Active";
-}
-
-function listingDays(publishedAt) {
-  if (!publishedAt) return 0;
-  const ms = Date.now() - new Date(publishedAt).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return 0;
-  return Math.floor(ms / (1000 * 60 * 60 * 24));
 }
 
 function calcRoi(arv, ask, reno, fee) {
@@ -86,13 +87,14 @@ function mapListingRow(row, user) {
     equity: Number(row.equity || fallbackEquity || 0),
     roi,
     type: DB_TO_DEAL_TYPE[row.deal_type] || "Wholesale",
-    days: listingDays(row.published_at),
+    days: listingDays(row.published_at, row.closed_at),
     condition: DB_TO_CONDITION[row.condition] || "Condition not listed",
     desc: row.description || "No description provided.",
     highlights: Array.isArray(row.highlights) ? row.highlights : [],
     views: Number(row.view_count || 0),
     saved: Number(row.save_count || 0),
     status: statusLabel(row.status),
+    isOwner,
     contact: isOwner
       ? {
         name: user?.name || "You",
@@ -142,6 +144,12 @@ export default function MarketplaceTab({ ctx }) {
   const [submitBusy, setSubmitBusy] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
+  const [buyersLoading, setBuyersLoading] = useState(false);
+  const [buyersError, setBuyersError] = useState("");
+  const [buyers, setBuyers] = useState([]);
+  const [listingMatchesLoading, setListingMatchesLoading] = useState(false);
+  const [listingMatchesError, setListingMatchesError] = useState("");
+  const [listingMatches, setListingMatches] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -151,15 +159,22 @@ export default function MarketplaceTab({ ctx }) {
         if (!active) return;
         setListings([]);
         setSavedDeals([]);
+        setBuyers([]);
+        setBuyersError("");
+        setListingMatches([]);
+        setListingMatchesError("");
         setListingsLoading(false);
+        setBuyersLoading(false);
         setListingsError("Please sign in to access marketplace listings.");
         return;
       }
 
       setListingsLoading(true);
+      setBuyersLoading(true);
       setListingsError("");
+      setBuyersError("");
 
-      const [listingsResult, savesResult] = await Promise.all([
+      const [listingsResult, savesResult, buyersResult] = await Promise.all([
         supabase
           .from("marketplace_listings")
           .select("*")
@@ -168,6 +183,9 @@ export default function MarketplaceTab({ ctx }) {
           .from("marketplace_saves")
           .select("listing_id")
           .eq("user_id", user.id),
+        loadBuyerNetwork(supabase)
+          .then((data) => ({ data, error: null }))
+          .catch((error) => ({ data: [], error })),
       ]);
 
       if (!active) return;
@@ -185,9 +203,18 @@ export default function MarketplaceTab({ ctx }) {
         setSavedDeals((savesResult.data || []).map((row) => row.listing_id));
       }
 
+      if (buyersResult.error) {
+        setBuyers([]);
+        setBuyersError(`Failed to load buyer network: ${buyersResult.error?.message || "unknown error"}`);
+      } else {
+        setBuyers(buyersResult.data || []);
+        setBuyersError("");
+      }
+
       const mappedListings = (listingsResult.data || []).map((row) => mapListingRow(row, user));
       setListings(mappedListings);
       setListingsLoading(false);
+      setBuyersLoading(false);
 
       if (activeListing?.id) {
         const refreshedActive = mappedListings.find((row) => row.id === activeListing.id) || null;
@@ -201,6 +228,78 @@ export default function MarketplaceTab({ ctx }) {
       active = false;
     };
   }, [user, refreshTick, setSavedDeals, activeListing?.id, setActiveListing]);
+
+  useEffect(() => {
+    if (!user?.id || !activeListing?.id) return undefined;
+
+    let active = true;
+
+    async function trackListingOpen() {
+      try {
+        const counters = await incrementListingView(supabase, activeListing.id);
+        if (!active) return;
+
+        setListings((prev) => prev.map((item) => (
+          item.id === activeListing.id
+            ? {
+                ...item,
+                views: counters.viewCount,
+                saved: counters.saveCount,
+                days: counters.daysOnMarket,
+              }
+            : item
+        )));
+
+        setActiveListing((prev) => (
+          prev && prev.id === activeListing.id
+            ? {
+                ...prev,
+                views: counters.viewCount,
+                saved: counters.saveCount,
+                days: counters.daysOnMarket,
+              }
+            : prev
+        ));
+      } catch {
+        // Silent no-op so listing detail still works if view tracking fails.
+      }
+    }
+
+    trackListingOpen();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, activeListing?.id, setActiveListing]);
+
+  useEffect(() => {
+    if (!user?.id || !activeListing?.id || !activeListing.isOwner) return undefined;
+
+    let active = true;
+
+    async function loadMatches() {
+      setListingMatchesLoading(true);
+      setListingMatchesError("");
+
+      try {
+        const rows = await loadListingBuyerMatches(supabase, activeListing.id, 8);
+        if (!active) return;
+        setListingMatches(rows);
+        setListingMatchesLoading(false);
+      } catch (error) {
+        if (!active) return;
+        setListingMatches([]);
+        setListingMatchesLoading(false);
+        setListingMatchesError(error?.message || "Failed to load buyer matches");
+      }
+    }
+
+    loadMatches();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, activeListing?.id, activeListing?.isOwner]);
 
   useEffect(() => {
     if (!user?.id) return undefined;
@@ -257,6 +356,12 @@ export default function MarketplaceTab({ ctx }) {
     if (mktSort === "price") return a.ask - b.ask;
     return 0;
   }), [listings, mktFilter, mktSort]);
+
+  const buyerStats = useMemo(() => summarizeBuyerNetwork(buyers), [buyers]);
+  const activeBuyerCount = Math.max(0, Number(buyerStats.activeBuyers || 0));
+  const activeBuyerCountLabel = activeBuyerCount > 0
+    ? `${activeBuyerCount} active buyers`
+    : "active buyers currently in network";
 
   const wUpdate = (field, value) => setWForm((prev) => ({ ...prev, [field]: value }));
   const roiColor = (r) => (r >= 25 ? G.green : r >= 18 ? G.gold : G.orange);
@@ -451,6 +556,50 @@ export default function MarketplaceTab({ ctx }) {
               </button>
               <div style={{ marginTop: 8, fontSize: 8, color: G.muted, textAlign: "center", lineHeight: 1.6 }}>DealBank charges a 1.5% platform fee on closed transactions. No upfront cost.</div>
             </div>
+
+            {activeListing.isOwner && (
+              <div style={{ ...card, marginTop: 10, borderColor: `${G.blue}44` }}>
+                <div style={{ ...lbl, color: G.blue, marginBottom: 8 }}>Buyer Matchmaking</div>
+                <div style={{ fontSize: 9, color: G.muted, marginBottom: 8 }}>DealBank ranks live buyers from your market based on buy box, deal type, capacity, and close speed.</div>
+
+                {listingMatchesError && (
+                  <div style={{ fontSize: 9, color: G.red, marginBottom: 8 }}>
+                    {listingMatchesError}
+                  </div>
+                )}
+
+                {listingMatchesLoading && (
+                  <div style={{ fontSize: 9, color: G.muted, marginBottom: 8 }}>
+                    Refreshing buyer matches...
+                  </div>
+                )}
+
+                {!listingMatchesLoading && listingMatches.length === 0 && !listingMatchesError && (
+                  <div style={{ fontSize: 9, color: G.muted, marginBottom: 8 }}>
+                    No buyer candidates matched this listing yet.
+                  </div>
+                )}
+
+                {listingMatches.map((match) => (
+                  <div key={match.id} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "8px 10px", marginBottom: 7 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                      <div style={{ fontSize: 10, color: G.text, fontWeight: "bold" }}>
+                        {match.companyName} {match.isVerified ? "· Verified" : ""}
+                      </div>
+                      <div style={{ fontSize: 8, color: G.green, border: `1px solid ${G.green}44`, background: G.greenGlow, borderRadius: 3, padding: "2px 6px" }}>
+                        Match {Math.round(match.score)}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 9, color: G.muted, marginBottom: 2 }}>
+                      {match.marketsLabel}
+                    </div>
+                    <div style={{ fontSize: 9, color: G.muted }}>
+                      Buy box {match.buyBoxLabel} · {match.financingLabel} · Capacity {match.monthlyCapacity || 0}/mo · Close {match.closeTimeDays || "-"}d
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -469,7 +618,13 @@ export default function MarketplaceTab({ ctx }) {
             <div style={{ fontSize: 11, color: G.muted, lineHeight: 1.8, marginBottom: 20, maxWidth: 400, margin: "0 auto 20px" }}>Your deal is under review. DealBank will verify the numbers and push it to our buyer network within 24 hours. You'll be notified when buyers express interest.</div>
             <div style={{ ...card, borderColor: G.border, textAlign: "left", marginBottom: 16, maxWidth: 400, margin: "0 auto 16px" }}>
               <div style={{ ...lbl, marginBottom: 8 }}>What happens next</div>
-              {["DealBank reviews and verifies your deal (24hrs)", "We push it to 30+ active buyers in your market", "Interested buyers contact you directly", "Deal closes, you pay 1.5% platform fee at assignment", "Get paid and post your next deal"].map((s, i) => (
+              {[
+                "DealBank reviews and verifies your deal (24hrs)",
+                `We push it to ${activeBuyerCountLabel} in your market`,
+                "Interested buyers contact you directly",
+                "Deal closes, you pay 1.5% platform fee at assignment",
+                "Get paid and post your next deal",
+              ].map((s, i) => (
                 <div key={i} style={{ display: "flex", gap: 10, marginBottom: 8, fontSize: 10, color: G.text }}><span style={{ color: G.green, fontWeight: "bold", minWidth: 16 }}>{i + 1}.</span>{s}</div>
               ))}
             </div>
@@ -612,51 +767,16 @@ export default function MarketplaceTab({ ctx }) {
 
   if (mktView === "buyers") {
     return (
-      <div>
-        <button onClick={() => setMktView("feed")} style={{ ...btnO, marginBottom: 14, padding: "5px 12px", fontSize: 9 }}>← Back to Deals</button>
-        <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 4 }}>Active Buyer Network</div>
-        <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>30 verified cash buyers actively looking for deals. Below are 8 active profile samples.</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 14 }}>
-          {[{ l: "Active Buyers", v: "30", c: G.green }, { l: "Avg Buy Box", v: "$150K-$350K", c: G.text }, { l: "Deals/Mo Capacity", v: "45+", c: G.gold }, { l: "Avg Close Time", v: "12 days", c: G.green }].map(({ l, v, c }) => (
-            <div key={l} style={{ ...card, textAlign: "center" }}>
-              <div style={{ ...lbl, marginBottom: 4 }}>{l}</div>
-              <div style={{ fontFamily: G.serif, fontSize: 15, color: c, fontWeight: "bold" }}>{v}</div>
-            </div>
-          ))}
-        </div>
-        {[
-          { name: "Pacific Equity Group", markets: "Sacramento, Stockton, Modesto", buyBox: "$120K-$380K", type: "Fix & Flip", closes: "8-10/mo", cash: true, hm: false, verified: true },
-          { name: "Central Valley Investments", markets: "Fresno, Bakersfield, Visalia", buyBox: "$90K-$280K", type: "Wholesale/Flip", closes: "5-7/mo", cash: true, hm: true, verified: true },
-          { name: "Bay Area Cash Buyers", markets: "Sacramento, Bay Area", buyBox: "$250K-$600K", type: "Fix & Flip / BRRRR", closes: "4-6/mo", cash: true, hm: false, verified: true },
-          { name: "Independent Buyer - T. Williams", markets: "Sacramento metro", buyBox: "$150K-$320K", type: "Fix & Flip", closes: "2-3/mo", cash: true, hm: true, verified: true },
-          { name: "Golden State Deal Makers", markets: "Statewide CA", buyBox: "$100K-$500K", type: "All types", closes: "15+/mo", cash: true, hm: false, verified: false },
-          { name: "Redwood Capital Partners", markets: "Sacramento, Roseville, Elk Grove", buyBox: "$180K-$450K", type: "Fix & Flip", closes: "6-8/mo", cash: true, hm: false, verified: true },
-          { name: "Delta Turnkey Holdings", markets: "Stockton, Lodi, Tracy", buyBox: "$110K-$300K", type: "BRRRR / Rental", closes: "4-5/mo", cash: false, hm: true, verified: true },
-          { name: "Sierra Equity Buyers", markets: "Fresno, Clovis, Madera", buyBox: "$130K-$340K", type: "Wholesale / Wholetail", closes: "3-4/mo", cash: true, hm: true, verified: true },
-        ].map((b, i) => (
-          <div key={i} style={{ ...card, marginBottom: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                  <div style={{ fontFamily: G.serif, fontSize: 14, color: G.text, fontWeight: "bold" }}>{b.name}</div>
-                  {b.verified && <div style={{ fontSize: 7, color: G.green, background: G.greenGlow, border: `1px solid ${G.green}44`, borderRadius: 3, padding: "1px 5px", letterSpacing: 1 }}>✓ VERIFIED</div>}
-                </div>
-                <div style={{ fontSize: 9, color: G.muted }}>{b.markets}</div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 10, color: G.green, fontFamily: G.serif, fontWeight: "bold" }}>{b.closes}</div>
-                <div style={{ fontSize: 8, color: G.muted }}>deals/mo</div>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 14, fontSize: 9, color: G.muted }}>
-              <span>Buy box: <strong style={{ color: G.text }}>{b.buyBox}</strong></span>
-              <span>Type: <strong style={{ color: G.text }}>{b.type}</strong></span>
-              {b.cash && <span style={{ color: G.green }}>✓ Cash</span>}
-              {b.hm && <span style={{ color: G.blue }}>✓ Hard Money</span>}
-            </div>
-          </div>
-        ))}
-      </div>
+      <BuyerNetworkView
+        G={G}
+        card={card}
+        btnO={btnO}
+        buyersLoading={buyersLoading}
+        buyersError={buyersError}
+        buyers={buyers}
+        buyerStats={buyerStats}
+        onBack={() => setMktView("feed")}
+      />
     );
   }
 
@@ -669,7 +789,7 @@ export default function MarketplaceTab({ ctx }) {
           <div style={{ fontSize: 10, color: G.muted, marginTop: 2 }}>{listingsLoading ? "Loading listings..." : `${filtered.length} deals available · Live from Supabase`}</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setMktView("buyers")} style={{ ...btnO, fontSize: 9, padding: "7px 12px", borderColor: G.blue, color: G.blue }}>👥 Buyer Network (30)</button>
+          <button onClick={() => setMktView("buyers")} style={{ ...btnO, fontSize: 9, padding: "7px 12px", borderColor: G.blue, color: G.blue }}>Buyer Network ({activeBuyerCount})</button>
           <button onClick={() => setMktView("submit")} style={{ ...btnG, fontSize: 9, padding: "7px 12px" }}>+ Submit a Deal</button>
         </div>
       </div>

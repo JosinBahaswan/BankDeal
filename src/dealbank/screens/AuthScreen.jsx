@@ -33,17 +33,20 @@ export default function AuthScreen({
   lbl,
   smIn,
   btnG,
+  btnO,
   TRADES,
   authMode,
   userType,
   authForm,
   authError,
+  authNeedsVerification,
   setAuthMode,
   setUserType,
   setAuthForm,
   setAuthError,
   setScreen,
   handleAuth,
+  resendVerificationEmail,
 }) {
   const isMobile = useIsMobile(960);
   const role = resolveRole(userType);
@@ -145,6 +148,16 @@ export default function AuthScreen({
             ))}
 
             {authError && <div style={{ color: G.red, fontSize: 10, marginBottom: 10 }}>{authError}</div>}
+
+            {authNeedsVerification && authMode === "login" && (
+              <button
+                onClick={resendVerificationEmail}
+                style={{ ...btnO, width: "100%", marginBottom: 10, padding: isMobile ? "10px 14px" : btnO.padding, fontSize: 10 }}
+              >
+                Resend Verification Email
+              </button>
+            )}
+
             <button onClick={handleAuth} style={{ ...btnG, width: "100%", marginBottom: 10, padding: isMobile ? "11px 14px" : btnG.padding }}>
               {authMode === "signup" ? "Create Account" : "Log In"}
             </button>

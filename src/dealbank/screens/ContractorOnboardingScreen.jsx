@@ -1,7 +1,8 @@
 import { useState } from "react";
 import useIsMobile from "../core/useIsMobile";
+import { supabase } from "../../lib/supabaseClient";
 
-const CSLB_VERIFY_ENDPOINT = String(import.meta.env.VITE_CSLB_VERIFY_ENDPOINT || "").trim();
+const CSLB_VERIFY_ENDPOINT = String(import.meta.env.VITE_CSLB_VERIFY_ENDPOINT || "/api/cslb-verify").trim();
 const CSLB_VERIFICATION_REQUIRED = String(import.meta.env.VITE_REQUIRE_CSLB_VERIFICATION || "false").toLowerCase() === "true";
 
 const CONTRACTOR_TRADE_OPTIONS = [
@@ -126,7 +127,7 @@ export default function ContractorOnboardingScreen({
     if (!CSLB_VERIFY_ENDPOINT) {
       setLicenseVerification({
         state: "failed",
-        message: "CSLB verification endpoint is not configured (Phase 2).",
+        message: "CSLB verification endpoint is not configured.",
       });
       return;
     }
@@ -144,10 +145,21 @@ export default function ContractorOnboardingScreen({
     setOnboarding((prev) => ({ ...prev, error: "" }));
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = String(sessionData?.session?.access_token || "").trim();
+      if (!accessToken) {
+        setLicenseVerification({
+          state: "failed",
+          message: "Session expired. Sign in again and retry CSLB verification.",
+        });
+        return;
+      }
+
       const response = await fetch(CSLB_VERIFY_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ licenseNumber }),
       });
@@ -312,7 +324,7 @@ export default function ContractorOnboardingScreen({
                       cursor: licenseVerification.state === "checking" ? "wait" : !CSLB_VERIFY_ENDPOINT ? "not-allowed" : "pointer",
                     }}
                   >
-                    {licenseVerification.state === "checking" ? "Checking..." : !CSLB_VERIFY_ENDPOINT ? "Phase 2" : "Verify"}
+                    {licenseVerification.state === "checking" ? "Checking..." : !CSLB_VERIFY_ENDPOINT ? "Unavailable" : "Verify"}
                   </button>
                 </div>
                 {licenseVerification.message && (

@@ -4,6 +4,12 @@ import { supabase } from "../../../../lib/supabaseClient";
 import { DIALER_OUTCOMES, DIALER_QUEUE_SEED } from "./toolData";
 
 const TWILIO_TOKEN_ENDPOINT = String(import.meta.env.VITE_TWILIO_ACCESS_TOKEN_ENDPOINT || "/api/twilio-access-token").trim();
+const DIALER_SIMULATION_ALLOWED = String(import.meta.env.VITE_ALLOW_DIALER_SIMULATION || "").toLowerCase() === "true";
+const CSV_MAX_ROWS = Math.max(1, Number(import.meta.env.VITE_DIALER_CSV_MAX_ROWS || 2000));
+const CSV_MAX_FILE_BYTES = Math.max(10_000, Number(import.meta.env.VITE_DIALER_CSV_MAX_FILE_BYTES || 1_500_000));
+const CSV_NAME_HEADERS = ["name", "fullname", "ownername", "contactname"];
+const CSV_PHONE_HEADERS = ["phone", "phonenumber", "mobile", "telephone"];
+const CSV_ADDRESS_HEADERS = ["address", "propertyaddress", "streetaddress"];
 
 function fmtClock(totalSec) {
   const sec = Math.max(0, totalSec || 0);
@@ -19,6 +25,25 @@ function normalizeCsvHeader(header) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+function hasCsvHeader(fields, aliases) {
+  return aliases.some((entry) => fields.includes(entry));
+}
+
+function normalizeDialTarget(rawPhone) {
+  const text = String(rawPhone || "").trim();
+  if (!text) return "";
+
+  if (text.startsWith("+")) {
+    const normalizedE164 = `+${text.slice(1).replace(/[^0-9]/g, "")}`;
+    return /^\+[1-9]\d{7,14}$/.test(normalizedE164) ? normalizedE164 : "";
+  }
+
+  const digits = text.replace(/[^0-9]/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return "";
+}
+
 function readCsvField(row, keys) {
   for (const key of keys) {
     const value = String(row?.[key] || "").trim();
@@ -29,79 +54,105 @@ function readCsvField(row, keys) {
 
 function parseCsvRows(text) {
   const rawCsv = String(text || "");
-  if (!rawCsv.trim()) return [];
+  if (!rawCsv.trim()) {
+    return { rows: [], error: "CSV file is empty." };
+  }
 
   const importSeed = Date.now();
-  const headerParse = Papa.parse(rawCsv, {
+  const parsed = Papa.parse(rawCsv, {
     header: true,
-    skipEmptyLines: true,
+    skipEmptyLines: "greedy",
     transformHeader: normalizeCsvHeader,
   });
 
-  const headerFields = Array.isArray(headerParse.meta?.fields) ? headerParse.meta.fields : [];
-  const hasKnownHeaders = headerFields.some((field) => ["name", "fullname", "phone", "phonenumber", "address", "propertyaddress"].includes(field));
+  const parseErrors = Array.isArray(parsed.errors) ? parsed.errors.filter((entry) => {
+    const code = String(entry?.code || "").toLowerCase();
+    const type = String(entry?.type || "").toLowerCase();
+    return code !== "undetectabledelimiter" && type !== "delimiter";
+  }) : [];
 
-  if (hasKnownHeaders) {
-    return (Array.isArray(headerParse.data) ? headerParse.data : [])
-      .map((row, index) => {
-        const name = readCsvField(row, ["name", "fullname", "ownername", "contactname"]);
-        const phone = readCsvField(row, ["phone", "phonenumber", "mobile", "telephone"]);
-        const address = readCsvField(row, ["address", "propertyaddress", "streetaddress"]) || "Address not provided";
-
-        if (!name || !phone) return null;
-
-        return {
-          id: `imp-${importSeed}-${index}`,
-          name,
-          phone,
-          address,
-          tags: ["Imported"],
-        };
-      })
-      .filter(Boolean);
+  if (parseErrors.length > 0) {
+    const firstError = parseErrors[0];
+    return {
+      rows: [],
+      error: `CSV parse error near row ${Number(firstError?.row || 0) + 1}: ${firstError?.message || "invalid format"}`,
+    };
   }
 
-  const fallbackParse = Papa.parse(rawCsv, {
-    header: false,
-    skipEmptyLines: true,
-  });
+  const headerFields = Array.isArray(parsed.meta?.fields) ? parsed.meta.fields : [];
+  const hasNameHeader = hasCsvHeader(headerFields, CSV_NAME_HEADERS);
+  const hasPhoneHeader = hasCsvHeader(headerFields, CSV_PHONE_HEADERS);
 
-  const rows = Array.isArray(fallbackParse.data) ? fallbackParse.data : [];
-  if (rows.length === 0) return [];
+  if (!hasNameHeader || !hasPhoneHeader) {
+    return {
+      rows: [],
+      error: "CSV must include headers for name and phone (aliases allowed: name/fullname and phone/phonenumber).",
+    };
+  }
 
-  const firstRowText = (Array.isArray(rows[0]) ? rows[0] : [])
-    .map((cell) => normalizeCsvHeader(cell))
-    .join(" ");
-  const hasFirstRowHeader = /name|phone|address/.test(firstRowText);
-  const dataRows = hasFirstRowHeader ? rows.slice(1) : rows;
+  const dataRows = Array.isArray(parsed.data) ? parsed.data : [];
+  if (dataRows.length === 0) {
+    return { rows: [], error: "CSV has no data rows." };
+  }
 
-  return dataRows
-    .map((row, index) => {
-      const cols = (Array.isArray(row) ? row : []).map((item) => String(item || "").trim());
-      if (cols.length < 2 || !cols[0] || !cols[1]) return null;
-      return {
-        id: `imp-${importSeed}-${index}`,
-        name: cols[0],
-        phone: cols[1],
-        address: cols[2] || "Address not provided",
-        tags: ["Imported"],
-      };
-    })
-    .filter(Boolean);
-}
+  if (dataRows.length > CSV_MAX_ROWS) {
+    return { rows: [], error: `CSV exceeds ${CSV_MAX_ROWS} rows. Split file into smaller batches.` };
+  }
 
-function normalizeDialTarget(rawPhone) {
-  const digits = String(rawPhone || "").replace(/[^0-9+]/g, "");
-  if (!digits) return "";
-  if (digits.startsWith("+")) return digits;
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  if (digits.length > 11) return `+${digits.slice(-11)}`;
-  return "";
+  const seenPhones = new Set();
+  const normalizedRows = [];
+  const rowErrors = [];
+
+  for (let index = 0; index < dataRows.length; index += 1) {
+    const row = dataRows[index] || {};
+    const lineNumber = index + 2;
+
+    const name = readCsvField(row, CSV_NAME_HEADERS);
+    const rawPhone = readCsvField(row, CSV_PHONE_HEADERS);
+    const phone = normalizeDialTarget(rawPhone);
+    const address = readCsvField(row, CSV_ADDRESS_HEADERS) || "Address not provided";
+
+    if (!name || !rawPhone) {
+      rowErrors.push(`Row ${lineNumber}: name and phone are required.`);
+      continue;
+    }
+
+    if (!phone) {
+      rowErrors.push(`Row ${lineNumber}: phone must be E.164 or a valid US 10/11-digit number.`);
+      continue;
+    }
+
+    if (seenPhones.has(phone)) {
+      rowErrors.push(`Row ${lineNumber}: duplicate phone ${phone}.`);
+      continue;
+    }
+
+    seenPhones.add(phone);
+    normalizedRows.push({
+      id: `imp-${importSeed}-${normalizedRows.length}`,
+      name,
+      phone,
+      address,
+      tags: ["Imported"],
+    });
+  }
+
+  if (rowErrors.length > 0) {
+    return {
+      rows: [],
+      error: `CSV validation failed. ${rowErrors.slice(0, 3).join(" ")}`,
+    };
+  }
+
+  return { rows: normalizedRows, error: "" };
 }
 
 export default function PowerDialerToolTab({ ctx }) {
   const { G, card, btnG, btnO, user } = ctx;
+  const isLocalHost = typeof window !== "undefined"
+    && ["localhost", "127.0.0.1"].includes(String(window.location?.hostname || "").toLowerCase());
+  const simulationAllowed = DIALER_SIMULATION_ALLOWED || isLocalHost;
+
   const [dialerMode, setDialerMode] = useState("checking");
   const [dialerModeDetail, setDialerModeDetail] = useState("");
   const twilioDeviceRef = useRef(null);
@@ -121,7 +172,7 @@ export default function PowerDialerToolTab({ ctx }) {
   const [waveSeed, setWaveSeed] = useState(0);
   const fileRef = useRef(null);
   const callLogSeqRef = useRef(0);
-  const dialerDemoMode = dialerMode !== "live";
+  const dialerDemoMode = dialerMode === "demo";
 
   const currentLead = queue[activeIndex] || null;
 
@@ -217,19 +268,26 @@ export default function PowerDialerToolTab({ ctx }) {
 
   useEffect(() => {
     let active = true;
+    const applyUnavailableMode = (message) => {
+      if (!active) return;
+      if (simulationAllowed) {
+        setDialerMode("demo");
+        setDialerModeDetail(message);
+        return;
+      }
+
+      setDialerMode("blocked");
+      setDialerModeDetail(message);
+    };
 
     async function detectDialerMode() {
       if (!user?.id) {
-        if (!active) return;
-        setDialerMode("demo");
-        setDialerModeDetail("Sign in required for live Twilio calls.");
+        applyUnavailableMode("Sign in required for live Twilio calls.");
         return;
       }
 
       if (!TWILIO_TOKEN_ENDPOINT) {
-        if (!active) return;
-        setDialerMode("demo");
-        setDialerModeDetail("Twilio token endpoint is not configured.");
+        applyUnavailableMode("Twilio token endpoint is not configured.");
         return;
       }
 
@@ -239,9 +297,12 @@ export default function PowerDialerToolTab({ ctx }) {
         setDialerMode("live");
         setDialerModeDetail("Live Twilio voice enabled.");
       } catch (error) {
-        if (!active) return;
-        setDialerMode("demo");
-        setDialerModeDetail(error?.message || "Twilio unavailable - using simulation mode.");
+        const fallbackMessage = error?.message || "Twilio unavailable.";
+        applyUnavailableMode(
+          simulationAllowed
+            ? `${fallbackMessage} Using simulation mode.`
+            : `${fallbackMessage} Simulation mode is disabled for this environment.`,
+        );
       }
     }
 
@@ -250,7 +311,7 @@ export default function PowerDialerToolTab({ ctx }) {
     return () => {
       active = false;
     };
-  }, [user?.id, ensureTwilioDevice]);
+  }, [user?.id, ensureTwilioDevice, simulationAllowed]);
 
   useEffect(() => () => {
     try {
@@ -271,6 +332,12 @@ export default function PowerDialerToolTab({ ctx }) {
 
   const startCall = async () => {
     if (!currentLead) return;
+
+    if (dialerMode === "blocked") {
+      setToast(dialerModeDetail || "Live Twilio calling is required in this environment.");
+      return;
+    }
+
     if (!sessionActive) setSessionActive(true);
     setElapsedSec(0);
     setNotes("");
@@ -324,8 +391,13 @@ export default function PowerDialerToolTab({ ctx }) {
     } catch (error) {
       twilioCallRef.current = null;
       setCallState("idle");
-      setDialerMode("demo");
-      setDialerModeDetail(error?.message || "Twilio call failed, using simulation mode.");
+      if (simulationAllowed) {
+        setDialerMode("demo");
+        setDialerModeDetail(error?.message || "Twilio call failed, using simulation mode.");
+      } else {
+        setDialerMode("blocked");
+        setDialerModeDetail(error?.message || "Twilio call failed and simulation mode is disabled.");
+      }
       setToast(`Live call failed: ${error?.message || "Unknown error"}`);
     }
   };
@@ -390,7 +462,7 @@ export default function PowerDialerToolTab({ ctx }) {
 
   const markOutcome = async (outcomeId) => {
     if (!currentLead) return;
-    const wasLiveTwilioCall = !dialerDemoMode;
+    const wasLiveTwilioCall = dialerMode === "live";
 
     try {
       twilioCallRef.current?.disconnect();
@@ -434,6 +506,10 @@ export default function PowerDialerToolTab({ ctx }) {
         notes: notes || null,
         duration_sec: elapsedSec,
         called_at: new Date().toISOString(),
+        twilio_call_sid: null,
+        twilio_status: null,
+        from_number: null,
+        to_number: null,
       });
 
       if (error) {
@@ -456,12 +532,20 @@ export default function PowerDialerToolTab({ ctx }) {
   };
 
   const onUploadCsv = async (event) => {
-    const file = event.target.files?.[0];
+    const input = event.target;
+    const file = input.files?.[0];
     if (!file) return;
 
-    const rows = parseCsvRows(await file.text());
-    if (rows.length === 0) {
-      setToast("CSV import failed. Use name,phone,address format.");
+    if (file.size > CSV_MAX_FILE_BYTES) {
+      setToast(`CSV too large. Max size is ${Math.round(CSV_MAX_FILE_BYTES / 1024)} KB.`);
+      input.value = "";
+      return;
+    }
+
+    const { rows, error } = parseCsvRows(await file.text());
+    if (error || rows.length === 0) {
+      setToast(error || "CSV import failed.");
+      input.value = "";
       return;
     }
 
@@ -472,6 +556,7 @@ export default function PowerDialerToolTab({ ctx }) {
     setNotes("");
     setCsvName(file.name);
     setToast(`Imported ${rows.length} leads`);
+    input.value = "";
   };
 
   return (
@@ -479,7 +564,16 @@ export default function PowerDialerToolTab({ ctx }) {
       <div style={{ fontFamily: G.serif, fontSize: 18, marginBottom: 4 }}>Power Dialer</div>
       <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Run focused call waves, log outcomes, and keep momentum high.</div>
 
-      {dialerDemoMode ? (
+      {dialerMode === "blocked" ? (
+        <div style={{ ...card, borderColor: `${G.red}66`, background: `${G.red}12`, marginBottom: 12, padding: "10px 12px" }}>
+          <div style={{ display: "inline-block", fontSize: 8, letterSpacing: 1.5, color: G.red, border: `1px solid ${G.red}88`, borderRadius: 999, padding: "2px 8px", marginBottom: 6 }}>
+            LIVE MODE REQUIRED
+          </div>
+          <div style={{ fontSize: 10, color: G.text }}>
+            {dialerModeDetail || "Twilio must be configured before calls can start in this environment."}
+          </div>
+        </div>
+      ) : dialerDemoMode ? (
         <div style={{ ...card, borderColor: `${G.gold}66`, background: `${G.gold}12`, marginBottom: 12, padding: "10px 12px" }}>
           <div style={{ display: "inline-block", fontSize: 8, letterSpacing: 1.5, color: G.gold, border: `1px solid ${G.gold}88`, borderRadius: 999, padding: "2px 8px", marginBottom: 6 }}>
             DEMO MODE
@@ -532,7 +626,7 @@ export default function PowerDialerToolTab({ ctx }) {
           </div>
 
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-            <button onClick={startCall} style={{ ...btnG, fontSize: 9, padding: "7px 11px" }} disabled={!currentLead || callState !== "idle" || dialerMode === "checking"}>
+            <button onClick={startCall} style={{ ...btnG, fontSize: 9, padding: "7px 11px" }} disabled={!currentLead || callState !== "idle" || dialerMode === "checking" || dialerMode === "blocked"}>
               {dialerDemoMode ? "Start Simulated Call" : "Start Live Call"}
             </button>
             <button onClick={skipLead} style={{ ...btnO, fontSize: 9, padding: "7px 11px" }} disabled={!currentLead}>Skip Lead</button>

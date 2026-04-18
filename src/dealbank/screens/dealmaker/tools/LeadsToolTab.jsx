@@ -5,20 +5,14 @@ import { LEAD_FILTERS, LEAD_LIST_TYPES } from "./toolData";
 
 const LEAD_LISTINGS_ENDPOINT = String(import.meta.env.VITE_LEAD_LISTINGS_ENDPOINT || "/api/lead-listings").trim();
 
-function estimateListPull(candidateCount) {
-  const estimatedCount = Math.max(0, Number(candidateCount || 0));
-  const creditCost = Math.max(0, Math.ceil(estimatedCount * 1.2));
-  return { estimatedCount, creditCost };
-}
-
-function buildLeadListingsQuery(buildForm) {
-  const params = new URLSearchParams();
-  params.set("city", String(buildForm.city || ""));
-  params.set("propertyType", String(buildForm.propertyType || ""));
-  params.set("listType", String(buildForm.listType || ""));
-  params.set("minEquity", String(buildForm.minEquity || "0"));
-  params.set("limit", "120");
-  return params.toString();
+function buildLeadListingsPayload(buildForm) {
+  return {
+    city: String(buildForm.city || ""),
+    propertyType: String(buildForm.propertyType || ""),
+    listType: String(buildForm.listType || ""),
+    minEquity: String(buildForm.minEquity || "0"),
+    limit: 120,
+  };
 }
 
 function statusBadge(status, G) {
@@ -217,20 +211,29 @@ export default function LeadsToolTab({ ctx }) {
       throw new Error("Session expired. Please sign in again.");
     }
 
-    const query = buildLeadListingsQuery(buildForm);
-    const response = await fetch(`${LEAD_LISTINGS_ENDPOINT}?${query}`, {
-      method: "GET",
+    const response = await fetch(LEAD_LISTINGS_ENDPOINT, {
+      method: "POST",
       headers: {
+        "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
       },
+      body: JSON.stringify(buildLeadListingsPayload(buildForm)),
     });
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload?.error || `Lead source request failed (${response.status})`);
+      const error = new Error(payload?.error || `Lead source request failed (${response.status})`);
+      error.code = response.status === 402 ? "insufficient_credits" : "lead_source_failed";
+      error.creditsRequired = Number(payload?.creditsRequired || 0);
+      throw error;
     }
 
-    return Array.isArray(payload?.candidates) ? payload.candidates : [];
+    return {
+      candidates: Array.isArray(payload?.candidates) ? payload.candidates : [],
+      creditsRequired: Number(payload?.creditsRequired || 0),
+      creditsConsumed: Number(payload?.creditsConsumed || 0),
+      creditsRemaining: payload?.creditsRemaining,
+    };
   }
 
   async function persistLeads(candidates) {
@@ -302,18 +305,36 @@ export default function LeadsToolTab({ ctx }) {
     setLeadsError("");
 
     let leadCandidates = [];
+    let creditsToConsume = 0;
+    let remainingCredits = null;
 
     try {
-      leadCandidates = await fetchLeadCandidatesFromApi();
+      const apiResult = await fetchLeadCandidatesFromApi();
+      leadCandidates = apiResult.candidates;
+      creditsToConsume = Math.max(0, Number(apiResult.creditsConsumed || apiResult.creditsRequired || 0));
+      if (apiResult.creditsRemaining === null || apiResult.creditsRemaining === undefined || apiResult.creditsRemaining === "") {
+        remainingCredits = null;
+      } else {
+        const parsedRemaining = Number(apiResult.creditsRemaining);
+        remainingCredits = Number.isFinite(parsedRemaining) ? parsedRemaining : null;
+      }
+      setPullEstimate({
+        estimatedCount: leadCandidates.length,
+        creditCost: Math.max(0, Number(apiResult.creditsRequired || creditsToConsume)),
+      });
     } catch (error) {
       setLeadsLoading(false);
-      setLeadsError(error?.message || "Failed to pull production lead candidates.");
-      showToast("Failed to pull production lead candidates");
+      if (error?.code === "insufficient_credits") {
+        const required = Number(error?.creditsRequired || 0);
+        setLeadsError(required > 0 ? `Insufficient data credits. Need ${required}.` : "Insufficient data credits.");
+        setShowCreditModal(true);
+        showToast("Insufficient credits for this list pull");
+      } else {
+        setLeadsError(error?.message || "Failed to pull production lead candidates.");
+        showToast("Failed to pull production lead candidates");
+      }
       return;
     }
-
-    const { estimatedCount, creditCost } = estimateListPull(leadCandidates.length);
-    setPullEstimate({ estimatedCount, creditCost });
 
     if (leadCandidates.length === 0) {
       setLeadsLoading(false);
@@ -321,35 +342,11 @@ export default function LeadsToolTab({ ctx }) {
       return;
     }
 
-    const creditsToConsume = Math.max(1, creditCost);
-
-    if (credits.dataCredits < creditsToConsume) {
-      setLeadsLoading(false);
-      setLeadsError(`Insufficient data credits. Need ${creditsToConsume}, available ${credits.dataCredits}.`);
-      setShowCreditModal(true);
-      showToast("Insufficient credits for this list pull");
-      return;
-    }
-
-    const { data: consumeRows, error: consumeError } = await supabase
-      .rpc("consume_data_credits", { p_credits: creditsToConsume });
-
-    if (consumeError) {
-      setLeadsLoading(false);
-      setLeadsError(`Failed to consume credits: ${consumeError.message}`);
-      if (String(consumeError.message || "").toLowerCase().includes("insufficient")) {
-        setShowCreditModal(true);
-      }
-      showToast("Unable to consume credits");
-      return;
-    }
-
-    const remainingFromRpc = Number(consumeRows?.[0]?.remaining);
     setCredits((prev) => ({
       ...prev,
-      dataCredits: Number.isFinite(remainingFromRpc)
-        ? remainingFromRpc
-        : Math.max(0, prev.dataCredits - creditsToConsume),
+      dataCredits: Number.isFinite(remainingCredits)
+        ? remainingCredits
+        : Math.max(0, prev.dataCredits - Math.max(0, creditsToConsume)),
     }));
 
     try {
