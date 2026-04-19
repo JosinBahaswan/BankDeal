@@ -1,11 +1,17 @@
-const CACHE_VERSION = "dealbank-static-v1";
+const CACHE_VERSION = "dealbank-static-v2";
+const SCOPE_URL = new URL(self.registration.scope);
+const BASE_PATH = SCOPE_URL.pathname.endsWith("/")
+  ? SCOPE_URL.pathname
+  : `${SCOPE_URL.pathname}/`;
+const INDEX_URL = new URL("index.html", self.registration.scope).toString();
+
 const STATIC_CACHE_URLS = [
-  "/",
-  "/index.html",
-  "/site.webmanifest",
-  "/image.png",
-  "/robots.txt",
-  "/sitemap.xml",
+  new URL("", self.registration.scope).toString(),
+  INDEX_URL,
+  new URL("site.webmanifest", self.registration.scope).toString(),
+  new URL("image.png", self.registration.scope).toString(),
+  new URL("robots.txt", self.registration.scope).toString(),
+  new URL("sitemap.xml", self.registration.scope).toString(),
 ];
 
 self.addEventListener("install", (event) => {
@@ -35,7 +41,7 @@ self.addEventListener("message", (event) => {
 
 function isStaticAssetRequest(requestUrl) {
   return requestUrl.origin === self.location.origin
-    && (requestUrl.pathname.startsWith("/assets/")
+    && (requestUrl.pathname.startsWith(`${BASE_PATH}assets/`)
       || requestUrl.pathname.endsWith(".js")
       || requestUrl.pathname.endsWith(".css")
       || requestUrl.pathname.endsWith(".png")
@@ -70,11 +76,11 @@ async function networkFirstNavigation(request) {
   try {
     const response = await fetch(request);
     if (response && response.ok) {
-      cache.put("/index.html", response.clone());
+      cache.put(INDEX_URL, response.clone());
     }
     return response;
   } catch {
-    const cachedPage = await cache.match("/index.html");
+    const cachedPage = await cache.match(INDEX_URL);
     if (cachedPage) return cachedPage;
     return new Response("Offline", { status: 503, statusText: "Offline" });
   }

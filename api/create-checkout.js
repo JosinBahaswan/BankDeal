@@ -21,13 +21,43 @@ function jsonBody(req) {
   return null;
 }
 
+function firstForwardedValue(value) {
+  const raw = asText(value);
+  if (!raw) return "";
+  return raw.split(",")[0].trim();
+}
+
+function normalizedForwardedProto(value) {
+  const proto = firstForwardedValue(value).toLowerCase();
+  if (proto === "http" || proto === "https") return proto;
+  return "https";
+}
+
+function normalizedForwardedHost(value) {
+  const host = firstForwardedValue(value);
+  if (!host) return "";
+  return host.replace(/^https?:\/\//i, "").trim();
+}
+
+function isValidHttpUrl(value) {
+  const raw = asText(value);
+  if (!raw) return false;
+
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function appBaseUrl(req) {
-  const forwardedProto = asText(req.headers?.["x-forwarded-proto"], "https");
-  const forwardedHost = asText(req.headers?.["x-forwarded-host"] || req.headers?.host);
+  const forwardedProto = normalizedForwardedProto(req.headers?.["x-forwarded-proto"]);
+  const forwardedHost = normalizedForwardedHost(req.headers?.["x-forwarded-host"] || req.headers?.host);
   const forwardedBase = forwardedHost ? `${forwardedProto}://${forwardedHost}`.replace(/\/$/, "") : "";
 
   const configured = asText(process.env.APP_URL).replace(/\/$/, "");
-  if (configured) {
+  if (configured && isValidHttpUrl(configured)) {
     let configuredHost = "";
     try {
       configuredHost = new URL(configured).hostname.toLowerCase();
@@ -48,9 +78,13 @@ function appBaseUrl(req) {
   }
 
   const vercelHost = asText(process.env.VERCEL_URL);
-  if (vercelHost) return `https://${vercelHost}`.replace(/\/$/, "");
+  if (vercelHost && isValidHttpUrl(`https://${vercelHost}`)) {
+    return `https://${vercelHost}`.replace(/\/$/, "");
+  }
 
-  if (forwardedHost) return `${forwardedProto}://${forwardedHost}`.replace(/\/$/, "");
+  if (forwardedBase && isValidHttpUrl(forwardedBase)) {
+    return forwardedBase;
+  }
 
   return "http://localhost:5173";
 }
@@ -270,6 +304,12 @@ export default async function handler(req, res) {
   const checkoutKind = priceConfig.mode === "subscription" ? "subscription" : "credits";
   const successPath = safePath(body.context?.successPath);
   const successUrl = `${rootUrl}${successPath}`;
+
+  if (!isValidHttpUrl(successUrl)) {
+    return res.status(400).json({
+      error: "Checkout callback URL is invalid. Verify APP_URL/x-forwarded headers.",
+    });
+  }
 
   const metadata = checkoutMetadata({
     userId,
