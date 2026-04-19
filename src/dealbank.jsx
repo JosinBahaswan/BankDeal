@@ -20,7 +20,6 @@ import {
   confirmCheckoutSession,
   getContractorSubscriptionPriceId,
   getDealmakerSubscriptionPriceId,
-  getRealtorSubscriptionPriceId,
 } from "./dealbank/core/billing";
 import {
   AD_SLOTS,
@@ -390,7 +389,6 @@ export default function App() {
   const [contractorBillingRefreshTick, setContractorBillingRefreshTick] = useState(0);
   const [showRealtorOnboarding, setShowRealtorOnboarding] = useState(false);
   const [realtorOnboarding, setRealtorOnboarding] = useState(() => createRealtorOnboardingState());
-  const [realtorBillingRefreshTick, setRealtorBillingRefreshTick] = useState(0);
 
   const offerRef = useRef(null);
   const confirmedCheckoutSessionsRef = useRef(new Set());
@@ -672,7 +670,6 @@ export default function App() {
         setContractorBillingRefreshTick(0);
         setShowRealtorOnboarding(false);
         setRealtorOnboarding(createRealtorOnboardingState());
-        setRealtorBillingRefreshTick(0);
         return;
       }
 
@@ -1076,35 +1073,11 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    let billingRefreshTimer;
 
     async function syncRealtorOnboardingState() {
       if (!user?.id || user?.type !== "realtor") {
         if (active) setShowRealtorOnboarding(false);
         return;
-      }
-
-      const checkoutParams = typeof window !== "undefined"
-        ? new URLSearchParams(window.location.search)
-        : null;
-      const checkoutKind = checkoutParams?.get("kind") || "";
-      const checkoutStatus = checkoutParams?.get("checkout") || "";
-      const checkoutSessionId = checkoutParams?.get("session_id") || "";
-
-      if (checkoutKind === "subscription" && checkoutStatus === "success" && checkoutSessionId) {
-        const alreadyConfirmed = confirmedCheckoutSessionsRef.current.has(checkoutSessionId);
-        if (!alreadyConfirmed) {
-          confirmedCheckoutSessionsRef.current.add(checkoutSessionId);
-          try {
-            await confirmCheckoutSession({
-              sessionId: checkoutSessionId,
-              userId: user.id,
-            });
-          } catch (error) {
-            confirmedCheckoutSessionsRef.current.delete(checkoutSessionId);
-            pushToast(error?.message || "Subscription payment received. Waiting for activation sync...", "info");
-          }
-        }
       }
 
       const { data: realtorProfile, error: profileError } = await supabase
@@ -1118,16 +1091,10 @@ export default function App() {
       if (!realtorProfile) {
         setShowRealtorOnboarding(true);
         setRealtorOnboarding((prev) => {
-          const checkoutMessage = checkoutKind === "subscription" && checkoutStatus === "cancel"
-            ? "Stripe checkout canceled. Complete subscription to unlock realtor dashboard access."
-            : checkoutKind === "subscription" && checkoutStatus === "success"
-              ? "Payment received. Finalizing your subscription..."
-              : prev.error;
-
           if (prev.step !== 1 || prev.dreLicense || prev.brokerage || prev.bio) return prev;
           return {
             ...createRealtorOnboardingState(),
-            error: checkoutMessage || "",
+            error: "",
           };
         });
         return;
@@ -1149,46 +1116,20 @@ export default function App() {
       const specialties = (specialtyRows || []).map((row) => row.specialty).filter(Boolean);
       const profileCompleted = markets.length > 0 && specialties.length > 0;
 
-      const { data: activeSubscription, error: subscriptionError } = await supabase
-        .from("subscriptions")
-        .select("id, status, plan")
-        .eq("user_id", user.id)
-        .in("status", ["active", "trialing"])
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!active || subscriptionError) return;
-
-      const hasBillingAccess = isActiveSubscriptionStatus(activeSubscription?.status)
-        && String(activeSubscription?.plan || "").toLowerCase() === "realtor";
-
-      if (checkoutKind === "subscription" && checkoutStatus === "success" && !hasBillingAccess) {
-        billingRefreshTimer = setTimeout(() => {
-          if (!active) return;
-          setRealtorBillingRefreshTick((prev) => prev + 1);
-        }, 3500);
-      }
-
-      if (profileCompleted && hasBillingAccess) {
+      if (profileCompleted) {
         setShowRealtorOnboarding(false);
         setRealtorOnboarding(createRealtorOnboardingState());
         setUser((prev) => {
           if (!prev || prev.id !== user.id) return prev;
           return { ...prev, location: markets[0] || prev.location || "" };
         });
-
-        if (checkoutKind === "subscription" && (checkoutStatus === "success" || checkoutStatus === "cancel") && typeof window !== "undefined") {
-          const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
-          window.history.replaceState({}, document.title, cleanUrl);
-        }
         return;
       }
 
       setShowRealtorOnboarding(true);
       setRealtorOnboarding((prev) => ({
         ...prev,
-        step: profileCompleted ? 2 : (prev.step || 1),
+        step: prev.step > 1 ? prev.step : 2,
         dreLicense: prev.dreLicense || realtorProfile.dre_license || "",
         brokerage: prev.brokerage || realtorProfile.brokerage || "",
         avgDaysToClose: prev.avgDaysToClose || String(realtorProfile.avg_days_to_close || ""),
@@ -1197,28 +1138,16 @@ export default function App() {
         markets: prev.markets.length > 0 ? prev.markets : markets,
         specialties: prev.specialties.length > 0 ? prev.specialties : specialties,
         submitting: false,
-        error: profileCompleted
-          ? checkoutKind === "subscription" && checkoutStatus === "cancel"
-            ? "Stripe checkout canceled. Complete subscription to unlock realtor dashboard access."
-            : checkoutKind === "subscription" && checkoutStatus === "success"
-              ? "Payment received. Finalizing your subscription..."
-              : "Subscription required before realtor dashboard access."
-          : prev.error,
+        error: "Select at least one market and one specialty to activate your realtor dashboard.",
       }));
-
-      if (checkoutKind === "subscription" && checkoutStatus === "cancel" && typeof window !== "undefined") {
-        const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
-        window.history.replaceState({}, document.title, cleanUrl);
-      }
     }
 
     syncRealtorOnboardingState();
 
     return () => {
       active = false;
-      if (billingRefreshTimer) clearTimeout(billingRefreshTimer);
     };
-  }, [user?.id, user?.type, realtorBillingRefreshTick, pushToast]);
+  }, [user?.id, user?.type]);
 
   async function completeRealtorOnboarding() {
     if (!user?.id) return;
@@ -1300,30 +1229,9 @@ export default function App() {
         };
       });
 
-      const checkoutEmail = String(user.email || authForm.email || "").trim();
-      if (!checkoutEmail) {
-        throw new Error("User email is missing. Please sign in again before subscribing.");
-      }
-
-      const checkoutPriceId = getRealtorSubscriptionPriceId();
-      if (!checkoutPriceId) {
-        throw new Error("Unable to resolve realtor Stripe price id.");
-      }
-
-      await beginCheckout({
-        priceId: checkoutPriceId,
-        userId: user.id,
-        email: checkoutEmail,
-        mode: "subscription",
-        source: "realtor_onboarding",
-        successPath: "/",
-      });
-
-      setRealtorOnboarding((prev) => ({
-        ...prev,
-        submitting: false,
-        error: "Redirecting to Stripe checkout...",
-      }));
+      setShowRealtorOnboarding(false);
+      setRealtorOnboarding(createRealtorOnboardingState());
+      pushToast("Realtor profile activated. Dashboard unlocked.", "success");
     } catch (error) {
       setRealtorOnboarding((prev) => ({
         ...prev,
@@ -1974,7 +1882,6 @@ SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
     setContractorBillingRefreshTick(0);
     setShowRealtorOnboarding(false);
     setRealtorOnboarding(createRealtorOnboardingState());
-    setRealtorBillingRefreshTick(0);
 
     // Local scope clears persisted session instantly and avoids blocking UI on network calls.
     supabase.auth.signOut({ scope: "local" }).catch(() => {

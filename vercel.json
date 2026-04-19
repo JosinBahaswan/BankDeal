@@ -1,0 +1,44 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/contract-delivery-retry",
+      "destination": "/api/deferred?route=contract-delivery-retry"
+    },
+    {
+      "source": "/api/contracts-generate-pdf",
+      "destination": "/api/deferred?route=contracts-generate-pdf"
+    },
+    {
+      "source": "/api/contracts-signature-attestation",
+      "destination": "/api/deferred?route=contracts-signature-attestation"
+    },
+    {
+      "source": "/api/cslb-verify",
+      "destination": "/api/deferred?route=cslb-verify"
+    },
+    {
+      "source": "/api/get-client-ip",
+      "destination": "/api/deferred?route=get-client-ip"
+    },
+    {
+      "source": "/api/mobile-push-token",
+      "destination": "/api/deferred?route=mobile-push-token"
+    },
+    {
+      "source": "/api/notify-contract",
+      "destination": "/api/deferred?route=notify-contract"
+    },
+    {
+      "source": "/api/partner-referral-event",
+      "destination": "/api/deferred?route=partner-referral-event"
+    },
+    {
+      "source": "/api/realtor-commission-review",
+      "destination": "/api/deferred?route=realtor-commission-review"
+    },
+    {
+      "source": "/api/title-portal",
+      "destination": "/api/deferred?route=title-portal"
+    }
+  ]
+}
