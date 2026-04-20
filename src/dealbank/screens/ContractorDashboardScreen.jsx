@@ -3,6 +3,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { capturePhotoBlob } from "../core/mobileRuntime";
 import TopBar from "../components/TopBar";
 import AppActionModal from "../components/AppActionModal";
+import DashboardWorkspace from "../components/DashboardWorkspace";
 import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
 import useViewport from "../core/useViewport";
 
@@ -517,6 +518,49 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
   const contractorDisplayName = user?.name || "Contractor";
   const contractorFirstName = contractorDisplayName.split(" ").filter(Boolean)[0] || "Contractor";
   const monthValueDisplay = `$${Math.round(earningsSummary.thisMonth || stats.totalValue || 0).toLocaleString()}`;
+  const activeTab = CTABS.find((tab) => tab.id === contractorTab);
+  const activeTabLabel = activeTab?.label || "Job Leads";
+  const activeTabSummaryMap = {
+    leads: "Respond to quality leads quickly to keep your quote win-rate high.",
+    jobs: "Advance every active job daily so payouts do not stall.",
+    profile: "Maintain a strong profile so deal makers trust your scope and speed.",
+    earnings: "Track month-over-month performance and protect gross margin.",
+    reviews: "Turn project outcomes into reviews that lift conversion.",
+  };
+  const workspaceMetrics = [
+    { label: "Focus", value: activeTabLabel, color: G.green },
+    { label: "New leads", value: leadStats.total, color: G.text },
+    { label: "This month", value: monthValueDisplay, color: G.green },
+  ];
+  const contractorRailSections = [
+    {
+      title: "Priority",
+      tone: "green",
+      items: [
+        `Now: ${activeTabLabel}`,
+        leadStats.urgentCount > 0 ? `${leadStats.urgentCount} urgent leads need bids.` : "No urgent leads right now.",
+        leadStats.quotedCount > 0 ? `${leadStats.quotedCount} quotes already sent.` : "Send first quote to start momentum.",
+      ],
+    },
+    {
+      title: "Weekly Targets",
+      tone: "blue",
+      items: [
+        "Reply to new leads in under 2 hours.",
+        "Keep in-progress jobs moving every day.",
+        "Request review after completion and payout.",
+      ],
+    },
+    {
+      title: "Field Notes",
+      tone: "gold",
+      items: [
+        "Confirm scope assumptions before final quote.",
+        "Photograph milestones for transparent updates.",
+        "Flag permit risks before schedule commitments.",
+      ],
+    },
+  ];
 
   async function bumpProgress(jobId) {
     const selectedJob = activeJobs.find((row) => row.id === jobId);
@@ -615,26 +659,14 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
     <div className="db-dashboard-root" style={pageShellStyle(G)}>
       <TopBar title="CONTRACTOR" tabs={CTABS} active={contractorTab} onTab={setContractorTab} userName={user?.name} onSignOut={onSignOut} G={G} btnO={btnO} />
       <div style={dashboardContainerStyle(mode)}>
-        <div style={{ background: `linear-gradient(135deg, ${G.green}10 0%, ${G.faint} 100%)`, border: `1px solid ${G.border}`, borderRadius: 12, padding: isMobile ? "14px" : "16px 18px", marginBottom: 14 }}>
-          <div style={{ fontFamily: G.serif, fontSize: isMobile ? 28 : 34, color: G.text, marginBottom: 4, fontWeight: "bold", letterSpacing: "-0.02em" }}>
-            Hey {contractorFirstName}
-          </div>
-          <div style={{ fontSize: 13, color: G.muted, marginBottom: 12 }}>
-            {leadStats.urgentCount > 0 ? "Prioritize urgent leads first for faster wins." : "Get verified to unlock priority leads."}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
-            {[
-              { label: "New leads", value: leadStats.total, color: G.green },
-              { label: "Active jobs", value: stats.activeCount, color: G.text },
-              { label: "This month", value: monthValueDisplay, color: G.green },
-            ].map((item) => (
-              <div key={item.label} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 10, padding: "10px 12px" }}>
-                <div style={{ fontSize: 11, color: G.muted, marginBottom: 3 }}>{item.label}</div>
-                <div style={{ fontFamily: G.serif, fontSize: 30, color: item.color, fontWeight: "bold", letterSpacing: "-0.03em", lineHeight: 1.05 }}>{item.value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <DashboardWorkspace
+          G={G}
+          mode={mode}
+          headline={`Crew Board for ${contractorFirstName}`}
+          subhead={activeTabSummaryMap[contractorTab] || activeTabSummaryMap.leads}
+          metrics={workspaceMetrics}
+          railSections={contractorRailSections}
+        >
 
         {contractorTab === "leads" && (
           <div>
@@ -1013,6 +1045,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
             ))}
           </div>
         )}
+        </DashboardWorkspace>
       </div>
 
       <AppActionModal

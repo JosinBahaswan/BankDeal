@@ -1,4 +1,5 @@
 import TopBar from "../components/TopBar";
+import DashboardWorkspace from "../components/DashboardWorkspace";
 import { formatMoney } from "../core/adminDashboardFormat";
 import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
 import { getLaunchIntegrationStatus, integrationStatusColor } from "../core/integrations";
@@ -48,10 +49,67 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
     { id: "contractors", icon: "CT", label: "Contractors" },
   ];
 
+  const adminDisplayName = userName || user?.name || "Admin";
+  const adminFirstName = adminDisplayName.split(" ").filter(Boolean)[0] || "Admin";
+  const activeTab = ATABS.find((tab) => tab.id === adminTab);
+  const activeTabLabel = activeTab?.label || "Overview";
+  const launchReadyCount = launchIntegrations.filter((item) => String(item.status || "").toLowerCase() === "ready").length;
+  const launchActionCount = Math.max(0, launchIntegrations.length - launchReadyCount);
+  const activeTabSummaryMap = {
+    overview: "Monitor platform health, growth, and launch readiness from one command view.",
+    users: "Track user distribution and resolve onboarding friction quickly.",
+    revenue: "Watch subscription and transactional streams to protect monthly targets.",
+    deals: "Audit deal flow and close bottlenecks before they affect payouts.",
+    titlePortal: "Issue and monitor title tokens for secure external collaboration.",
+    contractors: "Maintain trusted contractor network coverage by trade and market.",
+  };
+  const workspaceMetrics = [
+    { label: "Focus", value: activeTabLabel, color: G.green },
+    { label: "Users", value: totalUsers, color: G.text },
+    { label: "MRR", value: formatMoney(totalMrr), color: G.green },
+  ];
+  const adminRailSections = [
+    {
+      title: "Control",
+      tone: "green",
+      items: [
+        `Operator: ${adminFirstName}`,
+        `${metrics.dealsClosed} deals closed / ${metrics.dealsTotal} tracked.`,
+        `${adminDeals.length} live deal records synced.`,
+      ],
+    },
+    {
+      title: "Health",
+      tone: "blue",
+      items: [
+        `${launchReadyCount}/${launchIntegrations.length} launch checks ready.`,
+        launchActionCount > 0 ? `${launchActionCount} launch checks need action.` : "No launch blockers detected.",
+        metricsError || liveDataError ? "One or more feeds returned errors." : "Metrics and live data feed healthy.",
+      ],
+    },
+    {
+      title: "Operator Checklist",
+      tone: "gold",
+      items: [
+        "Review compliance and payout traces daily.",
+        "Refresh user-growth and conversion snapshots.",
+        "Confirm title portal token hygiene weekly.",
+      ],
+    },
+  ];
+
   return (
     <div className="db-dashboard-root" style={pageShellStyle(G)}>
       <TopBar title="ADMIN" tabs={ATABS} active={adminTab} onTab={setAdminTab} userName={userName} onSignOut={onSignOut} G={G} btnO={btnO} />
       <div style={dashboardContainerStyle(mode)}>
+        <DashboardWorkspace
+          G={G}
+          mode={mode}
+          headline={`Command Center for ${adminFirstName}`}
+          subhead={activeTabSummaryMap[adminTab] || activeTabSummaryMap.overview}
+          metrics={workspaceMetrics}
+          railSections={adminRailSections}
+        >
         {metricsLoading && (
           <div style={{ ...card, marginBottom: 10, borderColor: `${G.green}44` }}>
             <div style={{ fontSize: 10, color: G.green }}>Syncing live metrics from Supabase...</div>
@@ -298,6 +356,7 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
             </div>
           </div>
         )}
+        </DashboardWorkspace>
       </div>
     </div>
   );

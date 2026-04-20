@@ -47,7 +47,12 @@ export function dashboardContainerStyle(mode) {
     return style;
   }
 
-  style.maxWidth = 1000;
+  if (mode === "tablet") {
+    style.maxWidth = 1160;
+    return style;
+  }
+
+  style.maxWidth = 1320;
 
   return {
     ...style,

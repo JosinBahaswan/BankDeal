@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import TopBar from "../components/TopBar";
 import AppActionModal from "../components/AppActionModal";
+import DashboardWorkspace from "../components/DashboardWorkspace";
 import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
 import useViewport from "../core/useViewport";
 import CommissionCompliancePanel from "./realtor/CommissionCompliancePanel";
@@ -455,31 +456,62 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
   const repeatClientsStat = Math.min(dealsClosedStat, Math.max(0, Math.round(dealsClosedStat * 0.4)));
   const realtorFirstName = displayName.split(" ").filter(Boolean)[0] || "Realtor";
   const ytdNetLabel = toCurrency(netYtd || projectedCommission || 0);
+  const activeTab = RTABS.find((tab) => tab.id === realtorTab);
+  const activeTabLabel = activeTab?.label || "Referrals";
+  const activeTabSummaryMap = {
+    referrals: "Work investor referrals fast so listings move before momentum fades.",
+    listings: "Keep active listings priced and positioned for speed to close.",
+    closed: "Review closed volume and commission quality for compounding growth.",
+    profile: "A complete profile improves routing quality and partner trust.",
+    earnings: "Monitor split health and compliance readiness on every transaction.",
+  };
+  const workspaceMetrics = [
+    { label: "Focus", value: activeTabLabel, color: G.blue },
+    { label: "Referrals", value: activeReferralCount, color: G.text },
+    { label: "YTD net", value: ytdNetLabel, color: G.green },
+  ];
+  const realtorRailSections = [
+    {
+      title: "Pipeline",
+      tone: "green",
+      items: [
+        `${readyToListCount} referrals are ready to list.`,
+        `${activeListings.length} active listings in market.`,
+        `Average DOM: ${avgActiveDom} days.`,
+      ],
+    },
+    {
+      title: "Execution",
+      tone: "blue",
+      items: [
+        "Contact ready referrals same day.",
+        "Refresh pricing when DOM rises.",
+        "Submit compliance review after close.",
+      ],
+    },
+    {
+      title: "Positioning",
+      tone: "gold",
+      items: [
+        `Markets: ${markets.length > 0 ? markets.join(", ") : "Not configured"}`,
+        `Specialties: ${specialties.length > 0 ? specialties.join(", ") : "Not configured"}`,
+        `Repeat clients est.: ${repeatClientsStat}`,
+      ],
+    },
+  ];
 
   return (
     <div className="db-dashboard-root" style={pageShellStyle(G)}>
       <TopBar title="REALTOR" tabs={RTABS} active={realtorTab} onTab={setRealtorTab} userName={displayName} onSignOut={onSignOut} G={G} btnO={btnO} />
       <div style={dashboardContainerStyle(mode)}>
-        <div style={{ background: `linear-gradient(135deg, ${G.green}10 0%, ${G.faint} 100%)`, border: `1px solid ${G.border}`, borderRadius: 12, padding: isMobile ? "14px" : "16px 18px", marginBottom: 14 }}>
-          <div style={{ fontFamily: G.serif, fontSize: isMobile ? 28 : 34, color: G.text, marginBottom: 4, fontWeight: "bold", letterSpacing: "-0.02em" }}>
-            Welcome, {realtorFirstName}
-          </div>
-          <div style={{ fontSize: 13, color: G.muted, marginBottom: 12 }}>
-            {activeReferralCount > 0 ? "Your referral-ready pipeline is active across current markets." : "Verify profile details to unlock more referral opportunities."}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
-            {[
-              { label: "Referrals", value: activeReferralCount, color: G.green },
-              { label: "Ready to list", value: readyToListCount, color: G.text },
-              { label: "YTD net", value: ytdNetLabel, color: G.green },
-            ].map((item) => (
-              <div key={item.label} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 10, padding: "10px 12px" }}>
-                <div style={{ fontSize: 11, color: G.muted, marginBottom: 3 }}>{item.label}</div>
-                <div style={{ fontFamily: G.serif, fontSize: 30, color: item.color, fontWeight: "bold", letterSpacing: "-0.03em", lineHeight: 1.05 }}>{item.value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <DashboardWorkspace
+          G={G}
+          mode={mode}
+          headline={`Referral Desk for ${realtorFirstName}`}
+          subhead={activeTabSummaryMap[realtorTab] || activeTabSummaryMap.referrals}
+          metrics={workspaceMetrics}
+          railSections={realtorRailSections}
+        >
 
         {error && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{error}</div>}
         {loading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading realtor pipeline from Supabase...</div>}
@@ -808,6 +840,7 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
             </div>
           </div>
         )}
+        </DashboardWorkspace>
       </div>
 
       <AppActionModal
