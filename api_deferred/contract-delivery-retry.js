@@ -19,11 +19,25 @@ function hasRequiredMessageFields(payload) {
   return true;
 }
 
-function authorizeRetryRequest(req, supabaseAdmin) {
-  const expectedSecret = asText(process.env.CONTRACT_DELIVERY_CRON_SECRET);
-  const receivedSecret = asText(req.headers?.["x-contract-delivery-secret"] || req.headers?.["x-cron-secret"]);
+function bearerToken(req) {
+  const authHeader = asText(req.headers?.authorization);
+  if (!authHeader.toLowerCase().startsWith("bearer ")) return "";
+  return asText(authHeader.slice(7));
+}
 
-  if (expectedSecret && receivedSecret && receivedSecret === expectedSecret) {
+function authorizeRetryRequest(req, supabaseAdmin) {
+  const configuredSecrets = [
+    asText(process.env.CONTRACT_DELIVERY_CRON_SECRET),
+    asText(process.env.CRON_SECRET),
+  ].filter(Boolean);
+
+  const receivedHeaderSecret = asText(req.headers?.["x-contract-delivery-secret"] || req.headers?.["x-cron-secret"]);
+  const receivedBearerSecret = bearerToken(req);
+  const matchedSecret = configuredSecrets.some(
+    (secret) => secret === receivedHeaderSecret || secret === receivedBearerSecret,
+  );
+
+  if (matchedSecret) {
     return Promise.resolve({ userId: "cron", userType: "system", isAdmin: true });
   }
 
@@ -34,7 +48,7 @@ function authorizeRetryRequest(req, supabaseAdmin) {
 
 export default async function handler(req, res) {
   const cors = enforceCors(req, res, {
-    methods: "POST, OPTIONS",
+    methods: "GET, POST, OPTIONS",
     headers: "Content-Type, Authorization, X-Contract-Delivery-Secret, X-Cron-Secret",
   });
   if (cors.handled) return;
@@ -48,8 +62,11 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: "Too many requests. Please retry later." });
   }
 
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST, OPTIONS");
+  if (![
+    "GET",
+    "POST",
+  ].includes(req.method)) {
+    res.setHeader("Allow", "GET, POST, OPTIONS");
     return res.status(405).json({ error: "Method not allowed" });
   }
 

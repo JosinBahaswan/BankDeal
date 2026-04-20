@@ -200,6 +200,7 @@ const ADMIN_TAB_LABELS = {
   users: "Users",
   revenue: "Revenue",
   deals: "Deals",
+  titlePortal: "Title Portal",
   contractors: "Contractors",
 };
 
@@ -1771,15 +1772,21 @@ export default function App() {
       }
 
       const normalized = intelligence?.normalized;
+      const propertyHasCoreFields = Number(normalized?.property?.squareFootage || 0) > 0
+        || Number(normalized?.property?.bedrooms || 0) > 0
+        || Number(normalized?.property?.bathrooms || 0) > 0
+        || Number(normalized?.property?.yearBuilt || 0) > 0;
+      const avmHasCoreFields = Number(normalized?.avm?.price || 0) > 0
+        || Number(normalized?.avm?.priceRangeHigh || 0) > 0;
 
       if (normalized?.property && typeof normalized.property === "object") {
         setPropData(normalized.property);
-        hasStructuredData = true;
+        hasStructuredData = hasStructuredData || propertyHasCoreFields;
       }
 
       if (normalized?.avm && typeof normalized.avm === "object") {
         setAvmData(normalized.avm);
-        hasStructuredData = hasStructuredData || Number(normalized?.avm?.price || 0) > 0;
+        hasStructuredData = hasStructuredData || avmHasCoreFields;
       }
 
       if (Array.isArray(normalized?.comps) && normalized.comps.length > 0) {

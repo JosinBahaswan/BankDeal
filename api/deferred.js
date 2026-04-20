@@ -7,7 +7,9 @@ const DEFERRED_ROUTE_LOADERS = {
   "mobile-push-token": () => import("../api_deferred/mobile-push-token.js"),
   "notify-contract": () => import("../api_deferred/notify-contract.js"),
   "partner-referral-event": () => import("../api_deferred/partner-referral-event.js"),
+  "property-intelligence": () => import("../api_deferred/property-intelligence.js"),
   "realtor-commission-review": () => import("../api_deferred/realtor-commission-review.js"),
+  "title-portal-admin": () => import("../api_deferred/title-portal-admin.js"),
   "title-portal": () => import("../api_deferred/title-portal.js"),
 };
 

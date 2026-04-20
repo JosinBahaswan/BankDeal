@@ -4,7 +4,12 @@ import useViewport from "../core/useViewport";
 import { supabase } from "../../lib/supabaseClient";
 
 const CSLB_VERIFY_ENDPOINT = String(import.meta.env.VITE_CSLB_VERIFY_ENDPOINT || "/api/cslb-verify").trim();
-const CSLB_VERIFICATION_REQUIRED = String(import.meta.env.VITE_REQUIRE_CSLB_VERIFICATION || "false").toLowerCase() === "true";
+const CSLB_VERIFICATION_REQUIRED = (() => {
+  const normalized = String(import.meta.env.VITE_REQUIRE_CSLB_VERIFICATION || "").trim().toLowerCase();
+  if (["1", "true", "yes"].includes(normalized)) return true;
+  if (["0", "false", "no"].includes(normalized)) return false;
+  return Boolean(import.meta.env.PROD);
+})();
 
 const CONTRACTOR_TRADE_OPTIONS = [
   "GC",
@@ -311,7 +316,7 @@ export default function ContractorOnboardingScreen({
             <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text, fontWeight: "bold", marginBottom: 5 }}>Step 2 - Business Details</div>
             <div style={{ fontSize: 10, color: G.muted, marginBottom: 16 }}>
               Fill your profile so deal makers can review and send qualified jobs.
-              {CSLB_VERIFICATION_REQUIRED ? " CSLB verification is required." : " CSLB verification is optional (Phase 2)."}
+              {CSLB_VERIFICATION_REQUIRED ? " CSLB verification is required." : " CSLB verification is optional in this environment."}
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>

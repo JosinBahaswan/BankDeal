@@ -33,12 +33,26 @@
       "destination": "/api/deferred?route=partner-referral-event"
     },
     {
+      "source": "/api/property-intelligence",
+      "destination": "/api/deferred?route=property-intelligence"
+    },
+    {
       "source": "/api/realtor-commission-review",
       "destination": "/api/deferred?route=realtor-commission-review"
     },
     {
+      "source": "/api/title-portal-admin",
+      "destination": "/api/deferred?route=title-portal-admin"
+    },
+    {
       "source": "/api/title-portal",
       "destination": "/api/deferred?route=title-portal"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/contract-delivery-retry",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

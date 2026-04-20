@@ -32,6 +32,8 @@ The frontend calls this endpoint first for property details, AVM hints, and comp
 
 - `RAPIDAPI_KEY_REALTY_BASE` (or fallback `RAPIDAPI_KEY`)
 
+If `RAPIDAPI_KEY_REALTY_BASE` is missing (or Realty Base is temporarily unavailable), the endpoint now returns a fallback payload with a warning so the app can continue with Claude/manual underwriting instead of hard failing.
+
 ### Optional Server Environment Variables
 
 - `RAPIDAPI_REALTY_BASE_HOST` (default: `realty-base-us.p.rapidapi.com`)
@@ -110,6 +112,39 @@ Frontend env flags:
 - `VITE_CAPACITOR_ENABLED=true`
 - `VITE_CAPACITOR_PUSH_ENABLED=true`
 - `VITE_CAPACITOR_CAMERA_ENABLED=true`
+- `VITE_PUSH_PROVIDER_CONFIGURED=true` (set this only after FCM/APNs sender credentials are configured)
+
+Server env vars for push sender credentials:
+
+- `FCM_PROJECT_ID`
+- `FCM_CLIENT_EMAIL`
+- `FCM_PRIVATE_KEY`
+
+## Contract Delivery Retry Automation (Cron)
+
+Failed executed-contract delivery emails are retried through:
+
+- `POST /api/contract-delivery-retry`
+
+The project includes a Vercel cron schedule (`*/15 * * * *`) in `vercel.json`.
+
+Auth options for automated runs:
+
+- `CONTRACT_DELIVERY_CRON_SECRET` via `X-Contract-Delivery-Secret` or `X-Cron-Secret`
+- `CRON_SECRET` via `Authorization: Bearer <CRON_SECRET>` (Vercel Cron-compatible)
+
+Manual trigger is still supported for authenticated admin users.
+
+## Title Portal Admin Operations
+
+Admin-only endpoint for title portal operations:
+
+- `GET /api/title-portal-admin` -> list recent token activity
+- `POST /api/title-portal-admin` -> generate a new title portal link for a contract
+
+Recommended frontend env var:
+
+- `VITE_TITLE_PORTAL_ADMIN_ENDPOINT=/api/title-portal-admin`
 
 ## Legal Pages
 

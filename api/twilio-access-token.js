@@ -186,7 +186,8 @@ function buildAbsoluteWebhookRequestUrl(req) {
 }
 
 async function validateTwilioWebhookRequest(req, payload) {
-  const shouldValidate = asBool(process.env.TWILIO_VALIDATE_WEBHOOK_SIGNATURE, false);
+  const defaultValidation = asText(process.env.NODE_ENV).toLowerCase() === "production";
+  const shouldValidate = asBool(process.env.TWILIO_VALIDATE_WEBHOOK_SIGNATURE, defaultValidation);
   if (!shouldValidate) return true;
 
   const authToken = asText(process.env.TWILIO_AUTH_TOKEN);

@@ -350,6 +350,51 @@ function normalizePropertyPayload(payload, lookupAddress) {
   return { property, avm, comps, marketNotes };
 }
 
+function buildFallbackIntelligence(lookupAddress, warning, attempts = []) {
+  const normalized = {
+    property: {
+      address: asText(lookupAddress),
+      bedrooms: 0,
+      bathrooms: 0,
+      squareFootage: 0,
+      yearBuilt: 0,
+      propertyType: "Unknown",
+      lotSize: 0,
+      lastSalePrice: 0,
+      lastSaleDate: "",
+    },
+    avm: {
+      price: 0,
+      priceRangeLow: 0,
+      priceRangeHigh: 0,
+    },
+    comps: [],
+    marketNotes: asText(
+      warning,
+      "External property provider unavailable. Continue underwriting with manual comps or Claude-backed estimates.",
+    ),
+  };
+
+  return {
+    provider: PROVIDER,
+    endpoint: "fallback",
+    lookupAddress: asText(lookupAddress),
+    normalized,
+    promptContext: {
+      provider: PROVIDER,
+      endpoint: "fallback",
+      lookupAddress: asText(lookupAddress),
+      normalized,
+      warning: asText(warning),
+    },
+    warning: asText(
+      warning,
+      "External property provider unavailable. Continue underwriting with manual comps or Claude-backed estimates.",
+    ),
+    attempts: Array.isArray(attempts) ? attempts : [],
+  };
+}
+
 function pruneForPrompt(value, depth = 0) {
   if (value === null || value === undefined) return value;
 
@@ -480,13 +525,6 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "address is required" });
   }
 
-  const rapidApiKey = asText(process.env.RAPIDAPI_KEY_REALTY_BASE || process.env.RAPIDAPI_KEY);
-  if (!rapidApiKey) {
-    return res.status(503).json({
-      error: "Server missing RAPIDAPI_KEY_REALTY_BASE (or RAPIDAPI_KEY) for Realty Base requests.",
-    });
-  }
-
   let supabaseAdmin;
   try {
     supabaseAdmin = createSupabaseAdminClient();
@@ -498,6 +536,16 @@ export default async function handler(req, res) {
     await verifyContractActor(req, supabaseAdmin);
   } catch (error) {
     return res.status(401).json({ error: error?.message || "Unauthorized" });
+  }
+
+  const rapidApiKey = asText(process.env.RAPIDAPI_KEY_REALTY_BASE || process.env.RAPIDAPI_KEY);
+  if (!rapidApiKey) {
+    return res.status(200).json(
+      buildFallbackIntelligence(
+        address,
+        "RAPIDAPI key is not configured. Returning fallback context so Claude/manual underwriting can continue.",
+      ),
+    );
   }
 
   const host = asText(process.env.RAPIDAPI_REALTY_BASE_HOST || process.env.REALTY_BASE_RAPIDAPI_HOST, DEFAULT_HOST);
@@ -542,9 +590,15 @@ export default async function handler(req, res) {
       attempts: detailResult.attempts,
     });
   } catch (error) {
-    return res.status(502).json({
-      error: error?.message || "Failed to fetch property intelligence",
-      attempts: Array.isArray(error?.attempts) ? error.attempts : [],
-    });
+    const fallbackWarning = asText(error?.message, "Failed to fetch property intelligence");
+    const attempts = Array.isArray(error?.attempts) ? error.attempts : [];
+
+    return res.status(200).json(
+      buildFallbackIntelligence(
+        address,
+        `${fallbackWarning} Using fallback context so Claude/manual underwriting can continue.`,
+        attempts,
+      ),
+    );
   }
 }

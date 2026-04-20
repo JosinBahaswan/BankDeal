@@ -7,6 +7,7 @@ import useAdminLiveData from "../hooks/useAdminLiveData";
 import useAdminMetrics from "../hooks/useAdminMetrics";
 import AdminDealsPanel from "./admin/AdminDealsPanel";
 import AdminRecentActivityCard from "./admin/AdminRecentActivityCard";
+import AdminTitlePortalPanel from "./admin/AdminTitlePortalPanel";
 import AdminUsersPanel from "./admin/AdminUsersPanel";
 
 export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACTORS, adminTab, setAdminTab, userName, user, onSignOut }) {
@@ -43,6 +44,7 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
     { id: "users", icon: "US", label: "Users" },
     { id: "revenue", icon: "RV", label: "Revenue" },
     { id: "deals", icon: "DL", label: "Deals" },
+    { id: "titlePortal", icon: "TP", label: "Title Portal" },
     { id: "contractors", icon: "CT", label: "Contractors" },
   ];
 
@@ -230,6 +232,15 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
             dealsTotal={metrics.dealsTotal}
             dealsClosed={metrics.dealsClosed}
             onReload={reloadLiveData}
+          />
+        )}
+
+        {adminTab === "titlePortal" && (
+          <AdminTitlePortalPanel
+            G={G}
+            card={card}
+            btnO={btnO}
+            isMobile={isMobile}
           />
         )}
 

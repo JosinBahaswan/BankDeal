@@ -15,7 +15,9 @@ export function getLaunchIntegrationStatus() {
   const storageConfigured = contractsBucketConfigured && contractorPhotosBucketConfigured && propertyImagesBucketConfigured;
   const capacitorConfigured = String(import.meta.env.VITE_CAPACITOR_ENABLED || "").toLowerCase() === "true";
   const capacitorPushConfigured = String(import.meta.env.VITE_CAPACITOR_PUSH_ENABLED || "").toLowerCase() === "true";
+  const pushProviderConfigured = String(import.meta.env.VITE_PUSH_PROVIDER_CONFIGURED || "").toLowerCase() === "true";
   const capacitorCameraConfigured = String(import.meta.env.VITE_CAPACITOR_CAMERA_ENABLED || "true").toLowerCase() !== "false";
+  const mobileStackConfigured = capacitorConfigured && capacitorPushConfigured && pushProviderConfigured && capacitorCameraConfigured;
 
   return [
     {
@@ -57,13 +59,15 @@ export function getLaunchIntegrationStatus() {
     {
       id: "capacitor",
       label: "Mobile Wrapper (Capacitor)",
-      status: capacitorConfigured && capacitorPushConfigured && capacitorCameraConfigured
+      status: mobileStackConfigured
         ? "wired"
         : capacitorConfigured
           ? "planned"
           : "required",
-      details: capacitorConfigured && capacitorPushConfigured && capacitorCameraConfigured
-        ? "Capacitor, push notifications, and camera hooks are enabled."
+      details: mobileStackConfigured
+        ? "Capacitor, push registration, provider credentials, and camera hooks are enabled."
+        : capacitorConfigured && capacitorPushConfigured && !pushProviderConfigured
+          ? "Capacitor push is enabled, but provider credentials are not marked ready. Configure FCM/APNs credentials and set VITE_PUSH_PROVIDER_CONFIGURED=true."
         : capacitorConfigured
           ? "Capacitor enabled. Set push/camera flags and native credentials before launch."
           : "Wrap web app with Capacitor before production mobile launch.",
