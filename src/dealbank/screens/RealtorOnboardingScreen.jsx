@@ -1,4 +1,5 @@
-import useIsMobile from "../core/useIsMobile";
+import { pageContainerStyle, pageShellStyle } from "../core/layout";
+import useViewport from "../core/useViewport";
 
 const REALTOR_MARKETS = [
   "Sacramento",
@@ -82,7 +83,7 @@ export default function RealtorOnboardingScreen({
   onSignOut,
   userName,
 }) {
-  const isMobile = useIsMobile(820);
+  const { isMobile, mode } = useViewport();
 
   const setField = (field, value) => {
     setOnboarding((prev) => ({ ...prev, [field]: value, error: "" }));
@@ -141,18 +142,29 @@ export default function RealtorOnboardingScreen({
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
+    <div style={pageShellStyle(G)}>
       <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: isMobile ? "12px" : "12px 16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 12 }}>
-            <div style={{ position: "relative", width: 30, height: 30 }}>
-              <div style={{ position: "absolute", inset: 0, background: "#22c55e", borderRadius: 5, transform: "rotate(45deg) scale(0.7)" }} />
-              <div style={{ position: "absolute", inset: 4, background: "#050a05", borderRadius: 3, transform: "rotate(45deg) scale(0.7)" }} />
-              <div style={{ position: "absolute", inset: 9, background: "#22c55e", borderRadius: 2, transform: "rotate(45deg) scale(0.7)" }} />
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 9,
+                background: G.green,
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 800,
+                fontSize: 17,
+              }}
+            >
+              D
             </div>
             <div>
-              <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: isMobile ? 18 : 20, fontWeight: 900, letterSpacing: -0.5, lineHeight: 1 }}>
-                Deal<span style={{ color: "#22c55e" }}>Bank</span>
+              <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1 }}>
+                DealBank
               </div>
               <div style={{ fontFamily: G.serif, fontSize: isMobile ? 16 : 18, fontWeight: "bold" }}>Realtor Onboarding</div>
               <div style={{ fontSize: 9, color: G.muted, letterSpacing: isMobile ? 1 : 2, marginTop: 2 }}>SET UP PROFILE TO RECEIVE DEAL REFERRALS</div>
@@ -167,7 +179,7 @@ export default function RealtorOnboardingScreen({
         </div>
       </div>
 
-      <div style={{ maxWidth: 940, margin: "0 auto", padding: isMobile ? "14px 12px 20px" : "20px 16px 28px" }}>
+      <div style={pageContainerStyle(mode, 1260)}>
         <div style={{ ...card, marginBottom: 14 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {[1, 2].map((step) => {
@@ -191,7 +203,7 @@ export default function RealtorOnboardingScreen({
                       fontWeight: "bold",
                     }}
                   >
-                    {done ? "✓" : step}
+                    {done ? "OK" : step}
                   </div>
                   <div style={{ fontSize: 9, color, letterSpacing: 2, textTransform: "uppercase" }}>
                     {step === 1 ? "Profile" : "Markets"}
@@ -259,7 +271,7 @@ export default function RealtorOnboardingScreen({
               <ChoiceGrid items={REALTOR_SPECIALTIES} selectedItems={onboarding.specialties} onToggle={toggleSpecialty} G={G} />
             </div>
 
-            <div style={{ ...card, background: "#1a1200", borderColor: `${G.gold}66`, padding: 14, marginBottom: 14 }}>
+            <div style={{ ...card, background: `${G.gold}12`, borderColor: `${G.gold}66`, padding: 14, marginBottom: 14 }}>
               <div style={{ fontSize: 9, color: G.gold, letterSpacing: 3, marginBottom: 5 }}>SPLIT DISCLOSURE</div>
               <div style={{ fontSize: 10, color: G.text, lineHeight: 1.7 }}>
                 DealBank referral split is <span style={{ color: G.gold, fontWeight: "bold" }}>75/25</span>.
@@ -267,7 +279,7 @@ export default function RealtorOnboardingScreen({
               </div>
             </div>
 
-            <div style={{ ...card, background: "#062013", borderColor: `${G.green}66`, padding: 14, marginBottom: 14 }}>
+            <div style={{ ...card, background: G.greenGlow, borderColor: `${G.green}66`, padding: 14, marginBottom: 14 }}>
               <div style={{ fontSize: 9, color: G.green, letterSpacing: 3, marginBottom: 5 }}>FREE ACTIVATION</div>
               <div style={{ fontSize: 10, color: G.text, lineHeight: 1.7 }}>
                 After profile setup, your Realtor dashboard activates immediately with no monthly subscription fee.

@@ -2,6 +2,42 @@ import { supabase } from "../../lib/supabaseClient";
 
 const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
+async function getAccessTokenOrThrow() {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = String(sessionData?.session?.access_token || "").trim();
+  if (!accessToken) {
+    throw new Error("Session expired. Please sign in again before using AI tools.");
+  }
+
+  return accessToken;
+}
+
+async function postAuthedJson(path, payload) {
+  const accessToken = await getAccessTokenOrThrow();
+
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(`API proxy error (${response.status})`);
+  }
+
+  if (!response.ok || data?.error) {
+    throw new Error(data?.error || `API proxy error (${response.status})`);
+  }
+
+  return data;
+}
+
 export const fmt = (value) => {
   const parsed = parseFloat(String(value).replace(/,/g, ""));
   if (Number.isNaN(parsed) || parsed === 0) return "$0";
@@ -23,34 +59,20 @@ export function extractJSON(raw) {
 }
 
 export async function askClaude(prompt, maxTokens = 1400) {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const accessToken = String(sessionData?.session?.access_token || "").trim();
-  if (!accessToken) {
-    throw new Error("Session expired. Please sign in again before using AI tools.");
-  }
-
-  const response = await fetch(`${apiBaseUrl}/api/claude`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({
-      prompt,
-      maxTokens,
-    }),
+  const data = await postAuthedJson("/api/claude", {
+    prompt,
+    maxTokens,
   });
-
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new Error(`Claude proxy error (${response.status})`);
-  }
-
-  if (!response.ok || data?.error) {
-    throw new Error(data?.error || `Claude proxy error (${response.status})`);
-  }
-
   return data?.text || "";
+}
+
+export async function fetchPropertyIntelligence(address) {
+  const normalizedAddress = String(address || "").trim();
+  if (!normalizedAddress) {
+    throw new Error("address is required");
+  }
+
+  return postAuthedJson("/api/property-intelligence", {
+    address: normalizedAddress,
+  });
 }

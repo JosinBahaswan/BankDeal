@@ -1,3 +1,3 @@
-import App from "./dealbank";
+import App from "./dealbank.jsx";
 
 export default App;

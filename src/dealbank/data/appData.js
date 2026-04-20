@@ -33,7 +33,7 @@ export const TRADES = [
 export const DEALMAKER_CONTENT = [
   {
     cat: "YouTube Channels",
-    icon: "▶",
+    icon: "YT",
     color: G.red,
     items: [
       { title: "Flipping Mastery TV", sub: "Jerry Norton - #1 flip channel, 500K+ subs", url: "https://www.youtube.com/@FlippingMastery" },
@@ -45,7 +45,7 @@ export const DEALMAKER_CONTENT = [
   },
   {
     cat: "Podcasts",
-    icon: "🎙",
+    icon: "PD",
     color: G.purple,
     items: [
       { title: "Bigger Pockets Real Estate", sub: "#1 real estate investing podcast", url: "https://www.biggerpockets.com/podcasts" },
@@ -57,7 +57,7 @@ export const DEALMAKER_CONTENT = [
   },
   {
     cat: "Essential Tools",
-    icon: "🛠",
+    icon: "TL",
     color: G.gold,
     items: [
       { title: "PropStream", sub: "Best comps, skip tracing & lead lists - $99/mo", url: "https://propstream.com" },
@@ -69,7 +69,7 @@ export const DEALMAKER_CONTENT = [
   },
   {
     cat: "Education & Books",
-    icon: "📚",
+    icon: "BK",
     color: G.blue,
     items: [
       { title: "The Book on Flipping Houses", sub: "J Scott - the bible for new deal makers", url: "https://www.biggerpockets.com/store/the-book-on-flipping-houses" },

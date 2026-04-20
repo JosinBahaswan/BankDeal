@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { askClaude, calcOffer, extractJSON, fmt, toNum } from "./dealbank/core/helpers";
+import {
+  askClaude,
+  calcOffer,
+  extractJSON,
+  fetchPropertyIntelligence,
+  fmt,
+  toNum,
+} from "./dealbank/core/helpers";
 import { bootstrapMobileRuntime } from "./dealbank/core/mobileRuntime";
 import {
   cacheAndSyncPushToken,
@@ -344,6 +351,7 @@ export default function App() {
   const [compsData, setCompsData] = useState(null);
   const [avmData, setAvmData] = useState(null);
   const [mktNotes, setMktNotes] = useState("");
+  const [propertyIntel, setPropertyIntel] = useState(null);
   const [reno, setReno] = useState(() => RENO_KEYS.reduce((acc, curr) => ({ ...acc, [curr.key]: "" }), {}));
   const [offerPct, setOfferPct] = useState("60");
   const [holdMonths, setHoldMonths] = useState("6");
@@ -1353,7 +1361,7 @@ export default function App() {
 
       if (loginError || !loginData?.user) {
         if (isInvalidCredentialError(loginError) && normalizedAuthEmail.endsWith("@dealbank.local")) {
-          setAuthError("Login akun .local gagal. Pastikan password benar (default seed: DealBank2025!) atau jalankan npm run seed:auth-users jika akun auth belum dibootstrap.");
+          setAuthError("Login akun gagal periksa email dan password. Untuk akun lokal, pastikan email diakhiri dengan @dealbank.local dan password sesuai alias admin.");
           return;
         }
 
@@ -1618,7 +1626,6 @@ export default function App() {
 
   async function deleteDeal(dealId) {
     if (!user?.id || !dealId) return;
-    if (typeof window !== "undefined" && !window.confirm("Delete this deal from your pipeline?")) return;
 
     const prevPipeline = pipeline;
     const prevActiveDeal = activeDeal;
@@ -1744,30 +1751,95 @@ export default function App() {
       setLookErr("Enter an address first.");
       return;
     }
+
     setLookErr("");
     setLookLoad(true);
     setPropData(null);
     setCompsData(null);
     setAvmData(null);
+    setMktNotes("");
+    setPropertyIntel(null);
     setAnalysis("");
 
+    const warnings = [];
+    let hasStructuredData = false;
+
     try {
-      const raw = await askClaude(
-        `Real estate analyst. Return property data for "${address}".
+      const intelligence = await fetchPropertyIntelligence(address);
+      if (intelligence) {
+        setPropertyIntel(intelligence);
+      }
+
+      const normalized = intelligence?.normalized;
+
+      if (normalized?.property && typeof normalized.property === "object") {
+        setPropData(normalized.property);
+        hasStructuredData = true;
+      }
+
+      if (normalized?.avm && typeof normalized.avm === "object") {
+        setAvmData(normalized.avm);
+        hasStructuredData = hasStructuredData || Number(normalized?.avm?.price || 0) > 0;
+      }
+
+      if (Array.isArray(normalized?.comps) && normalized.comps.length > 0) {
+        setCompsData(normalized.comps);
+        hasStructuredData = true;
+      }
+
+      if (normalized?.marketNotes) {
+        setMktNotes(normalized.marketNotes);
+      }
+
+      if (intelligence?.warning) {
+        warnings.push(intelligence.warning);
+      }
+    } catch (error) {
+      warnings.push(`Realty Base: ${error?.message || "property intelligence unavailable"}`);
+    }
+
+    if (!hasStructuredData) {
+      try {
+        const raw = await askClaude(
+          `Real estate analyst. Return property data for "${address}".
 Return ONLY raw JSON no markdown:
 {"property":{"bedrooms":3,"bathrooms":2,"squareFootage":1450,"yearBuilt":1985,"propertyType":"Single Family","lotSize":6500,"lastSalePrice":310000,"lastSaleDate":"2021-03-10"},"avm":{"price":420000,"priceRangeLow":395000,"priceRangeHigh":448000},"comps":[{"address":"nearby st","price":415000,"squareFootage":1380,"bedrooms":3,"bathrooms":2,"daysOld":42,"distance":0.4},{"address":"nearby ave","price":432000,"squareFootage":1510,"bedrooms":3,"bathrooms":2,"daysOld":28,"distance":0.7},{"address":"nearby blvd","price":408000,"squareFootage":1420,"bedrooms":3,"bathrooms":2,"daysOld":65,"distance":1.2}],"marketNotes":"2 sentences about this market."}
 Use real data for "${address}". avm.price = ARV after full renovation.`,
-        1200,
-      );
-      const parsed = extractJSON(raw);
-      if (parsed.property) setPropData(parsed.property);
-      if (parsed.avm) setAvmData(parsed.avm);
-      if (parsed.comps?.length) setCompsData(parsed.comps);
-      if (parsed.marketNotes) setMktNotes(parsed.marketNotes);
-      setTimeout(() => offerRef.current?.scrollIntoView({ behavior: "smooth" }), 200);
-    } catch (err) {
-      setLookErr(`Failed: ${err.message}`);
+          1200,
+        );
+
+        const parsed = extractJSON(raw);
+
+        if (parsed.property) {
+          setPropData(parsed.property);
+          hasStructuredData = true;
+        }
+        if (parsed.avm) {
+          setAvmData(parsed.avm);
+          hasStructuredData = true;
+        }
+        if (parsed.comps?.length) {
+          setCompsData(parsed.comps);
+          hasStructuredData = true;
+        }
+        if (parsed.marketNotes) {
+          setMktNotes(parsed.marketNotes);
+        }
+      } catch (error) {
+        warnings.push(`Claude fallback: ${error?.message || "lookup failed"}`);
+      }
     }
+
+    if (!hasStructuredData) {
+      setLookErr(`Failed: ${warnings.join(" | ") || "unable to load property data"}`);
+    } else if (warnings.length > 0) {
+      setLookErr(`Warning: ${warnings.join(" | ")}`);
+    }
+
+    if (hasStructuredData) {
+      setTimeout(() => offerRef.current?.scrollIntoView({ behavior: "smooth" }), 200);
+    }
+
     setLookLoad(false);
   }
 
@@ -1804,10 +1876,18 @@ Fill in real numbers for this market.`,
     setAnlLoad(true);
     setAnalysis("");
     const compsText = (compsData || []).map((c) => `${c.address} - ${fmt(c.price)}, ${c.squareFootage}sqft, ${c.bedrooms}bd/${c.bathrooms}ba, ${c.daysOld}d ago`).join("\n");
+    const rawPropertyContext = propertyIntel?.promptContext
+      ? JSON.stringify(propertyIntel.promptContext)
+      : "";
+    const propertyGrounding = rawPropertyContext.length > 7000
+      ? `${rawPropertyContext.slice(0, 7000)}...[truncated]`
+      : rawPropertyContext;
 
     try {
       const text = await askClaude(
         `Senior fix-and-flip analyst. Direct deal review.
+PRIMARY MARKET DATA SOURCE: ${propertyIntel?.provider || "not available"}${propertyIntel?.endpoint ? ` (${propertyIntel.endpoint})` : ""}
+PRIMARY MARKET DATA JSON (use this as factual grounding for property/comps when available): ${propertyGrounding || "No external market JSON provided"}
 PROPERTY: ${address} | ARV: ${fmt(arvNum)} | ${offerPctNum}%: ${fmt(sixtyT)} | OFFER: ${fmt(offer)}
 COSTS: Rehab ${fmt(Math.round(totalReno))} | Holding ${fmt(Math.round(totalHolding))} | Selling ${fmt(Math.round(totalSelling))} | Soft Total ${fmt(Math.round(softNum))} | HM ${fmt(Math.round(totalHM))} | ALL-IN ${fmt(Math.round(allIn))}
 PROFIT: ${fmt(Math.round(projProfit))} | ROI: ${roi.toFixed(1)}% | TARGET: ${fmt(targetP)}
@@ -1815,6 +1895,7 @@ COMPS:\n${compsText}
 RENO: ${RENO_KEYS.map((c) => `${c.label}: ${fmt(toNum(reno[c.key]))}`).join(" | ")}
 HOLDING INPUTS: ${holdMonthsNum} mo @ ${fmt(holdMonthlyNum)}/mo + insurance ${fmt(insuranceAnnualNum)}/yr
 SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
+If PRIMARY MARKET DATA JSON and manual inputs conflict, call out the conflict and use conservative underwriting assumptions.
 **1. DEAL VERDICT** **2. OFFER PRICE** **3. ARV CHECK** **4. RENO FLAGS** **5. TOP 3 RISKS** **6. BOTTOM LINE**`,
       );
       setAnalysis(text);
@@ -1961,6 +2042,7 @@ SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
     loanPts,
     setLoanPts,
     compsData,
+    propertyIntel,
     mktNotes,
     saveDeal,
     runAnalysis,
@@ -1988,6 +2070,7 @@ SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
     pipelineFocusDealId,
     clearPipelineFocusDeal,
     toast,
+    pushToast,
     selectedState,
     setSelectedState,
     lawSection,

@@ -39,8 +39,8 @@ export default function InsuranceToolTab({ ctx }) {
       <div style={{ fontFamily: G.serif, fontSize: 18, marginBottom: 4 }}>Insurance</div>
       <div style={{ fontSize: 10, color: G.muted, marginBottom: 12 }}>Protect every acquisition with the right coverage before funding and rehab starts.</div>
 
-      <div style={{ background: "#1a0800", border: "1px solid #f9731644", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 10, color: "#fdba74", lineHeight: 1.6 }}>
-        ⚠ Most traditional homeowner policies exclude vacant properties and active rehab work. Lock your investor policy before close.
+      <div style={{ background: "#fff7ed", border: "1px solid #fdba7444", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 10, color: "#9a3412", lineHeight: 1.6 }}>
+        Important: most traditional homeowner policies exclude vacant properties and active rehab work. Lock your investor policy before close.
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginBottom: 12 }}>

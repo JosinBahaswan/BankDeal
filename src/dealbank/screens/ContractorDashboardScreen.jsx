@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { capturePhotoBlob } from "../core/mobileRuntime";
 import TopBar from "../components/TopBar";
-import useIsMobile from "../core/useIsMobile";
+import AppActionModal from "../components/AppActionModal";
+import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
+import useViewport from "../core/useViewport";
 
 const CONTRACTOR_PHOTOS_BUCKET = String(import.meta.env.VITE_CONTRACTOR_PHOTOS_BUCKET || "contractor-photos").trim();
 
@@ -101,14 +103,14 @@ function extensionFromName(fileName, fallback = "jpg") {
 }
 
 export default function ContractorDashboardScreen({ G, card, lbl, btnG, contractorTab, setContractorTab, user, onSignOut, btnO }) {
-  const isMobile = useIsMobile(820);
+  const { isMobile, mode } = useViewport();
 
   const CTABS = [
-    { id: "leads", icon: "🔔", label: "Job Leads" },
-    { id: "jobs", icon: "🏗", label: "Active Jobs" },
-    { id: "profile", icon: "👤", label: "My Profile" },
-    { id: "earnings", icon: "💰", label: "Earnings" },
-    { id: "reviews", icon: "⭐", label: "Reviews" },
+    { id: "leads", icon: "LD", label: "Job Leads" },
+    { id: "jobs", icon: "JB", label: "Active Jobs" },
+    { id: "profile", icon: "PR", label: "My Profile" },
+    { id: "earnings", icon: "ER", label: "Earnings" },
+    { id: "reviews", icon: "RV", label: "Reviews" },
   ];
 
   const [bio, setBio] = useState("Licensed contractor focused on fast turn rehab scopes and clean punch-list execution.");
@@ -135,6 +137,15 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
   const [jobsRefreshTick, setJobsRefreshTick] = useState(0);
   const [openQuoteLeadId, setOpenQuoteLeadId] = useState("");
   const [quoteDraft, setQuoteDraft] = useState({ amount: "", notes: "" });
+  const [actionModal, setActionModal] = useState({ open: false, title: "", message: "", tone: "info" });
+
+  function showActionModal(title, message, tone = "info") {
+    setActionModal({ open: true, title, message, tone });
+  }
+
+  function closeActionModal() {
+    setActionModal({ open: false, title: "", message: "", tone: "info" });
+  }
   const photoInputRef = useRef(null);
 
   useEffect(() => {
@@ -152,7 +163,6 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
         return;
       }
 
-      setLeadsLoading(true);
       setLeadsError("");
 
       let resolvedContractorProfileId = "";
@@ -450,6 +460,25 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
     };
   }, [activeJobs]);
 
+  const leadStats = useMemo(() => {
+    const urgentCount = leadRows.filter((row) => row.urgent).length;
+    const quotedCount = leadRows.filter((row) => row.quoteSentAt).length;
+    const totalPotential = leadRows.reduce((sum, row) => {
+      const numbers = (String(row.budget || "").match(/\d[\d,]*/g) || [])
+        .map((value) => Number(value.replace(/,/g, "")))
+        .filter((value) => Number.isFinite(value));
+      if (numbers.length === 0) return sum;
+      return sum + Math.max(...numbers);
+    }, 0);
+
+    return {
+      total: leadRows.length,
+      urgentCount,
+      quotedCount,
+      totalPotential,
+    };
+  }, [leadRows]);
+
   const earningsSummary = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -484,6 +513,10 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
       pending,
     };
   }, [jobHistoryRows, activeJobs]);
+
+  const contractorDisplayName = user?.name || "Contractor";
+  const contractorFirstName = contractorDisplayName.split(" ").filter(Boolean)[0] || "Contractor";
+  const monthValueDisplay = `$${Math.round(earningsSummary.thisMonth || stats.totalValue || 0).toLocaleString()}`;
 
   async function bumpProgress(jobId) {
     const selectedJob = activeJobs.find((row) => row.id === jobId);
@@ -579,13 +612,34 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
+    <div className="db-dashboard-root" style={pageShellStyle(G)}>
       <TopBar title="CONTRACTOR" tabs={CTABS} active={contractorTab} onTab={setContractorTab} userName={user?.name} onSignOut={onSignOut} G={G} btnO={btnO} />
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: isMobile ? "14px 12px 20px" : "20px 16px" }}>
+      <div style={dashboardContainerStyle(mode)}>
+        <div style={{ background: `linear-gradient(135deg, ${G.green}10 0%, ${G.faint} 100%)`, border: `1px solid ${G.border}`, borderRadius: 12, padding: isMobile ? "14px" : "16px 18px", marginBottom: 14 }}>
+          <div style={{ fontFamily: G.serif, fontSize: isMobile ? 28 : 34, color: G.text, marginBottom: 4, fontWeight: "bold", letterSpacing: "-0.02em" }}>
+            Hey {contractorFirstName}
+          </div>
+          <div style={{ fontSize: 13, color: G.muted, marginBottom: 12 }}>
+            {leadStats.urgentCount > 0 ? "Prioritize urgent leads first for faster wins." : "Get verified to unlock priority leads."}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
+            {[
+              { label: "New leads", value: leadStats.total, color: G.green },
+              { label: "Active jobs", value: stats.activeCount, color: G.text },
+              { label: "This month", value: monthValueDisplay, color: G.green },
+            ].map((item) => (
+              <div key={item.label} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 10, padding: "10px 12px" }}>
+                <div style={{ fontSize: 11, color: G.muted, marginBottom: 3 }}>{item.label}</div>
+                <div style={{ fontFamily: G.serif, fontSize: 30, color: item.color, fontWeight: "bold", letterSpacing: "-0.03em", lineHeight: 1.05 }}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {contractorTab === "leads" && (
           <div>
-            <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 4 }}>Job Leads</div>
-            <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Deal makers nearby are requesting bids in your selected trades.</div>
+            <div style={{ fontFamily: G.serif, fontSize: 22, color: G.text, marginBottom: 4 }}>Job Leads</div>
+            <div style={{ fontSize: 13, color: G.muted, marginBottom: 14 }}>Deal makers nearby are requesting bids in your selected trades.</div>
             {leadsError && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{leadsError}</div>}
             {leadsLoading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading fresh job leads...</div>}
             {!leadsLoading && leadRows.length === 0 && (
@@ -593,65 +647,108 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
                 No leads are available yet for your trade profile.
               </div>
             )}
-            {leadRows.map((lead) => (
-              <div key={lead.id} style={{ ...card, marginBottom: 10, borderColor: lead.urgent ? `${G.gold}66` : G.border }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 8, flexWrap: "wrap" }}>
-                  <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold" }}>{lead.addr}</div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    {lead.urgent && <div style={{ fontSize: 7, color: G.gold, background: "#1a1200", border: `1px solid ${G.gold}44`, borderRadius: 3, padding: "2px 6px", letterSpacing: 1 }}>URGENT</div>}
-                    <div style={{ fontSize: 9, color: G.muted }}>{lead.posted}</div>
-                  </div>
-                </div>
-                <div style={{ fontSize: 10, color: G.muted, marginBottom: 8, lineHeight: 1.6 }}>
-                  Trade: <span style={{ color: G.green }}>{lead.trade}</span> · Budget: <span style={{ color: G.text }}>{lead.budget}</span> · Deal Maker: <span style={{ color: G.text }}>{lead.flipper}</span>
-                </div>
 
-                {lead.quoteSentAt && (
-                  <div style={{ background: G.greenGlow, border: `1px solid ${G.green}44`, borderRadius: 6, padding: "8px 10px", marginBottom: 8 }}>
-                    <div style={{ fontSize: 9, color: G.green, letterSpacing: 1, marginBottom: 3 }}>QUOTE SENT</div>
-                    <div style={{ fontSize: 10, color: G.text, marginBottom: 2 }}>Amount: ${Number(lead.quoteAmount || 0).toLocaleString()}</div>
-                    <div style={{ fontSize: 9, color: G.muted }}>Sent: {lead.quoteSentAt}</div>
-                  </div>
-                )}
-
-                {!lead.quoteSentAt && openQuoteLeadId === lead.id && (
-                  <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "10px", marginBottom: 8 }}>
-                    <div style={lbl}>Quote Amount</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
-                      <span style={{ color: G.muted, fontSize: 12 }}>$</span>
-                      <input
-                        value={quoteDraft.amount}
-                        onChange={(event) => setQuoteDraft((prev) => ({ ...prev, amount: event.target.value.replace(/[^0-9]/g, "") }))}
-                        placeholder="18500"
-                        style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${G.border}`, color: G.text, fontSize: 13, fontFamily: G.mono, outline: "none" }}
-                      />
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,0.65fr)", gap: 12 }}>
+              <div>
+                {leadRows.map((lead) => (
+                  <div key={lead.id} style={{ ...card, marginBottom: 10, borderColor: lead.urgent ? `${G.gold}66` : G.border }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ fontFamily: G.serif, fontSize: 16, color: G.text, fontWeight: "bold" }}>{lead.addr}</div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        {lead.urgent && <div style={{ fontSize: 10, color: G.gold, background: `${G.gold}1a`, border: `1px solid ${G.gold}55`, borderRadius: 999, padding: "3px 9px", letterSpacing: 1 }}>URGENT</div>}
+                        <div style={{ fontSize: 12, color: G.muted }}>{lead.posted}</div>
+                      </div>
                     </div>
-                    <div style={lbl}>Notes (optional)</div>
-                    <textarea
-                      value={quoteDraft.notes}
-                      onChange={(event) => setQuoteDraft((prev) => ({ ...prev, notes: event.target.value }))}
-                      rows={2}
-                      placeholder="Scope assumptions, materials, timeline..."
-                      style={{ width: "100%", boxSizing: "border-box", background: G.card, border: `1px solid ${G.border}`, borderRadius: 5, color: G.text, fontSize: 10, fontFamily: G.mono, padding: "8px", marginBottom: 8, resize: "vertical", outline: "none" }}
-                    />
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={() => setOpenQuoteLeadId("")} style={{ ...btnO, flex: 1, fontSize: 8, padding: "6px 10px" }}>Cancel</button>
-                      <button onClick={() => submitQuote(lead)} disabled={!quoteDraft.amount} style={{ ...btnG, flex: 2, fontSize: 8, padding: "6px 10px", background: quoteDraft.amount ? G.green : G.faint, color: quoteDraft.amount ? "#000" : G.muted }}>
-                        Confirm Quote Sent
-                      </button>
+                    <div style={{ fontSize: 13, color: G.muted, marginBottom: 8, lineHeight: 1.6 }}>
+                      Trade: <span style={{ color: G.green }}>{lead.trade}</span> · Budget: <span style={{ color: G.text }}>{lead.budget}</span> · Deal Maker: <span style={{ color: G.text }}>{lead.flipper}</span>
                     </div>
-                  </div>
-                )}
 
-                <button
-                  onClick={() => openQuoteForm(lead)}
-                  disabled={Boolean(lead.quoteSentAt)}
-                  style={{ ...btnG, width: "100%", fontSize: 9, padding: "8px", background: lead.quoteSentAt ? G.faint : G.green, color: lead.quoteSentAt ? G.muted : "#000" }}
-                >
-                  {lead.quoteSentAt ? "Quote Sent" : openQuoteLeadId === lead.id ? "Editing Quote" : "Send Quote"}
-                </button>
+                    {lead.quoteSentAt && (
+                      <div style={{ background: G.greenGlow, border: `1px solid ${G.green}44`, borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, color: G.green, letterSpacing: 1, marginBottom: 3 }}>QUOTE SENT</div>
+                        <div style={{ fontSize: 13, color: G.text, marginBottom: 2 }}>Amount: ${Number(lead.quoteAmount || 0).toLocaleString()}</div>
+                        <div style={{ fontSize: 11, color: G.muted }}>Sent: {lead.quoteSentAt}</div>
+                      </div>
+                    )}
+
+                    {!lead.quoteSentAt && openQuoteLeadId === lead.id && (
+                      <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 8, padding: "10px", marginBottom: 8 }}>
+                        <div style={lbl}>Quote Amount</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
+                          <span style={{ color: G.muted, fontSize: 12 }}>$</span>
+                          <input
+                            value={quoteDraft.amount}
+                            onChange={(event) => setQuoteDraft((prev) => ({ ...prev, amount: event.target.value.replace(/[^0-9]/g, "") }))}
+                            placeholder="18500"
+                            style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${G.border}`, color: G.text, fontSize: 14, fontFamily: G.mono, outline: "none" }}
+                          />
+                        </div>
+                        <div style={lbl}>Notes (optional)</div>
+                        <textarea
+                          value={quoteDraft.notes}
+                          onChange={(event) => setQuoteDraft((prev) => ({ ...prev, notes: event.target.value }))}
+                          rows={2}
+                          placeholder="Scope assumptions, materials, timeline..."
+                          style={{ width: "100%", boxSizing: "border-box", background: G.card, border: `1px solid ${G.border}`, borderRadius: 8, color: G.text, fontSize: 12, fontFamily: G.mono, padding: "8px", marginBottom: 8, resize: "vertical", outline: "none" }}
+                        />
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => setOpenQuoteLeadId("")} style={{ ...btnO, flex: 1, fontSize: 12, padding: "8px 10px" }}>Cancel</button>
+                          <button onClick={() => submitQuote(lead)} disabled={!quoteDraft.amount} style={{ ...btnG, flex: 2, fontSize: 12, padding: "8px 10px", opacity: quoteDraft.amount ? 1 : 0.55, cursor: quoteDraft.amount ? "pointer" : "not-allowed" }}>
+                            Confirm Quote Sent
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => openQuoteForm(lead)}
+                      disabled={Boolean(lead.quoteSentAt)}
+                      style={lead.quoteSentAt ? { ...btnO, width: "100%", fontSize: 12, padding: "10px" } : { ...btnG, width: "100%", fontSize: 12, padding: "10px" }}
+                    >
+                      {lead.quoteSentAt ? "Quote Sent" : openQuoteLeadId === lead.id ? "Editing Quote" : "Send Quote"}
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
+
+              <div style={{ display: "grid", gap: 10, alignContent: "start" }}>
+                <div style={{ ...card }}>
+                  <div style={{ ...lbl, marginBottom: 8 }}>Lead Snapshot</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                    {[
+                      ["Open Leads", leadStats.total],
+                      ["Urgent", leadStats.urgentCount],
+                      ["Quoted", leadStats.quotedCount],
+                      ["Pipeline $", `$${Math.round(leadStats.totalPotential).toLocaleString()}`],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ border: `1px solid ${G.border}`, borderRadius: 8, background: G.surface, padding: "10px 8px", textAlign: "center" }}>
+                        <div style={{ fontSize: 11, color: G.muted, marginBottom: 2 }}>{label}</div>
+                        <div style={{ fontFamily: G.serif, fontSize: 18, color: G.green }}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ ...card }}>
+                  <div style={{ ...lbl, marginBottom: 8 }}>Action Plan</div>
+                  {[
+                    "Respond to urgent leads first.",
+                    "Include scope assumptions in quote notes.",
+                    "Move accepted jobs to progress updates daily.",
+                  ].map((tip) => (
+                    <div key={tip} style={{ fontSize: 12, color: G.text, lineHeight: 1.7, marginBottom: 6 }}>
+                      • {tip}
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ ...card }}>
+                  <div style={{ ...lbl, marginBottom: 8 }}>Current Profile Fit</div>
+                  <div style={{ fontSize: 12, color: G.muted, lineHeight: 1.7, marginBottom: 6 }}>Trades: <span style={{ color: G.text }}>{selectedTrades.join(", ") || "Not selected"}</span></div>
+                  <div style={{ fontSize: 12, color: G.muted, lineHeight: 1.7 }}>Base rate: <span style={{ color: G.text }}>${rate || "0"}</span></div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -696,7 +793,12 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
                   <div style={{ fontSize: 9, color: G.muted }}>Progress: {job.progress}%</div>
                   <div style={{ display: "flex", gap: 6, width: isMobile ? "100%" : "auto", flexWrap: "wrap" }}>
                     <button onClick={() => bumpProgress(job.id)} style={{ ...btnG, fontSize: 8, padding: "6px 10px", flex: isMobile ? "1 1 120px" : "initial" }}>Update Progress</button>
-                    <button onClick={() => window.alert(`Messaging ${job.flipper} about ${job.address}`)} style={{ ...btnO, fontSize: 8, padding: "6px 10px", flex: isMobile ? "1 1 100px" : "initial" }}>Message</button>
+                    <button
+                      onClick={() => showActionModal("Message Sent", `Update sent to ${job.flipper} for ${job.address}.`, "success")}
+                      style={{ ...btnO, fontSize: 8, padding: "6px 10px", flex: isMobile ? "1 1 100px" : "initial" }}
+                    >
+                      Message
+                    </button>
                     <button
                       onClick={() => {
                         setContractorTab("profile");
@@ -767,7 +869,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, marginBottom: 12 }}>
                 {[
                   { l: "Jobs Won", v: "24" },
-                  { l: "Avg Rating", v: "4.8★" },
+                  { l: "Avg Rating", v: "4.8/5" },
                   { l: "Response Rate", v: "96%" },
                   { l: "On-Time", v: "91%" },
                 ].map(({ l, v }) => (
@@ -882,10 +984,10 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
                 </div>
                 <div style={{ flex: 1 }}>
                   {[
-                    ["5★", 30],
-                    ["4★", 9],
-                    ["3★", 2],
-                    ["1-2★", 1],
+                    ["5.0", 30],
+                    ["4.0", 9],
+                    ["3.0", 2],
+                    ["1.0-2.0", 1],
                   ].map(([label, count]) => (
                     <div key={label} style={{ display: "grid", gridTemplateColumns: isMobile ? "38px 1fr 24px" : "44px 1fr 30px", gap: 8, alignItems: "center", marginBottom: 5 }}>
                       <div style={{ fontSize: 8, color: G.muted }}>{label}</div>
@@ -905,13 +1007,23 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
                   <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text }}>{review.title}</div>
                   <div style={{ fontSize: 8, color: G.muted }}>{review.date}</div>
                 </div>
-                <div style={{ fontSize: 9, color: G.gold, marginBottom: 5 }}>{"★".repeat(review.stars)} <span style={{ color: G.muted }}>({review.flipper})</span></div>
+                <div style={{ fontSize: 9, color: G.gold, marginBottom: 5 }}>Rating {review.stars}/5 <span style={{ color: G.muted }}>({review.flipper})</span></div>
                 <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.7 }}>{review.text}</div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      <AppActionModal
+        G={G}
+        open={actionModal.open}
+        title={actionModal.title}
+        message={actionModal.message}
+        tone={actionModal.tone}
+        onConfirm={closeActionModal}
+        onClose={closeActionModal}
+      />
     </div>
   );
 }

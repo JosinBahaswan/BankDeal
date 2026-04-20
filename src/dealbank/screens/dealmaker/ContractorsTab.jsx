@@ -12,8 +12,8 @@ function rateLabel(rateType, rateAmount) {
 }
 
 export default function ContractorsTab({ ctx }) {
-  const { G, card, btnG, user } = ctx;
-  const isMobile = useIsMobile(820);
+  const { G, card, btnG, user, pushToast } = ctx;
+  const isMobile = useIsMobile();
   const [contractors, setContractors] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -153,15 +153,15 @@ export default function ContractorsTab({ ctx }) {
               <div style={{ flex: 1 }}>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 2 }}>
                   <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold" }}>{contractor.name}</div>
-                  {contractor.verified && <div style={{ fontSize: 7, color: G.green, background: G.greenGlow, border: `1px solid ${G.green}44`, borderRadius: 3, padding: "1px 4px", letterSpacing: 1 }}>✓ VERIFIED</div>}
+                  {contractor.verified && <div style={{ fontSize: 7, color: G.green, background: G.greenGlow, border: `1px solid ${G.green}44`, borderRadius: 3, padding: "1px 4px", letterSpacing: 1 }}>VERIFIED</div>}
                 </div>
                 <div style={{ fontSize: 9, color: G.gold }}>{contractor.trade}</div>
-                <div style={{ fontSize: 9, color: G.muted }}>{contractor.location} · ★ {contractor.rating} · {contractor.jobs} jobs · {contractor.rate}</div>
+                <div style={{ fontSize: 9, color: G.muted }}>{contractor.location} · Rating {contractor.rating}/5 · {contractor.jobs} jobs · {contractor.rate}</div>
               </div>
             </div>
             <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.6, marginBottom: 8 }}>{contractor.bio}</div>
             <button
-              onClick={() => window.alert(`Quote request sent to ${contractor.name}\nTrade: ${contractor.trade}\nRate: ${contractor.rate}`)}
+              onClick={() => pushToast?.(`Quote request sent to ${contractor.name}. Trade: ${contractor.trade}.`, "success")}
               style={{ ...btnG, width: "100%", fontSize: 9, padding: "8px" }}
             >
               Request Quote

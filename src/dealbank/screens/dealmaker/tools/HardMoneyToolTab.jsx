@@ -38,7 +38,7 @@ function makeBadge(text, color) {
 }
 
 export default function HardMoneyToolTab({ ctx }) {
-  const { G, card, btnG, btnO } = ctx;
+  const { G, card, btnG, btnO, pushToast } = ctx;
 
   const [qualify, setQualify] = useState({
     purchase: "195000",
@@ -181,15 +181,15 @@ export default function HardMoneyToolTab({ ctx }) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
                 {lender.features.map((feature) => (
                   <div key={feature} style={{ fontSize: 9, color: G.text, display: "flex", gap: 5 }}>
-                    <span style={{ color: G.green }}>✓</span>
+                    <span style={{ color: G.green, fontWeight: "bold" }}>+</span>
                     {feature}
                   </div>
                 ))}
               </div>
 
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                <button onClick={() => window.alert(`Scenario sent to ${lender.name}`)} style={{ ...btnG, fontSize: 8, padding: "6px 9px" }}>Send Scenario</button>
-                <button onClick={() => window.alert(`Term sheet requested from ${lender.name}`)} style={{ ...btnO, fontSize: 8, padding: "6px 9px" }}>Request Term Sheet</button>
+                <button onClick={() => pushToast?.(`Scenario sent to ${lender.name}.`, "success")} style={{ ...btnG, fontSize: 8, padding: "6px 9px" }}>Send Scenario</button>
+                <button onClick={() => pushToast?.(`Term sheet requested from ${lender.name}.`, "info")} style={{ ...btnO, fontSize: 8, padding: "6px 9px" }}>Request Term Sheet</button>
               </div>
             </div>
           ))}

@@ -1,4 +1,5 @@
-import useIsMobile from "../core/useIsMobile";
+import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
+import useViewport from "../core/useViewport";
 
 const DEALMAKER_PLAN_FEATURES = [
   "AI Deal Analyzer + Offer Calculator",
@@ -20,23 +21,25 @@ export default function DealMakerSubscriptionGateScreen({
   onSubscribe,
   onSignOut,
 }) {
-  const isMobile = useIsMobile(820);
+  const { isMobile, mode } = useViewport();
   const actionDisabled = checking || launching;
 
   return (
-    <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
+    <div className="db-dashboard-root" style={pageShellStyle(G)}>
       <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: isMobile ? "12px" : "12px 20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", flexWrap: "wrap", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 12 }}>
-            <div style={{ position: "relative", width: 30, height: 30 }}>
-              <div style={{ position: "absolute", inset: 0, background: "#22c55e", borderRadius: 5, transform: "rotate(45deg) scale(0.7)" }} />
-              <div style={{ position: "absolute", inset: 4, background: "#050a05", borderRadius: 3, transform: "rotate(45deg) scale(0.7)" }} />
-              <div style={{ position: "absolute", inset: 9, background: "#22c55e", borderRadius: 2, transform: "rotate(45deg) scale(0.7)" }} />
-            </div>
+            <img
+              src="/image.png"
+              alt="DealBank"
+              style={{
+                display: "block",
+                width: "auto",
+                height: isMobile ? 30 : 34,
+                flexShrink: 0,
+              }}
+            />
             <div>
-              <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: isMobile ? 18 : 20, fontWeight: 900, letterSpacing: -0.5, lineHeight: 1 }}>
-                Deal<span style={{ color: "#22c55e" }}>Bank</span>
-              </div>
               <div style={{ fontFamily: G.serif, fontSize: isMobile ? 16 : 18, fontWeight: "bold" }}>DealMaker Subscription</div>
               <div style={{ fontSize: 9, color: G.muted, letterSpacing: isMobile ? 1 : 2, marginTop: 2 }}>UNLOCK THE FULL DEALMAKER DASHBOARD</div>
             </div>
@@ -50,7 +53,7 @@ export default function DealMakerSubscriptionGateScreen({
         </div>
       </div>
 
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: isMobile ? "14px 12px 20px" : "24px 16px 30px" }}>
+      <div style={dashboardContainerStyle(mode)}>
         <div style={{ ...card, borderColor: `${G.gold}55`, marginBottom: 12 }}>
           <div style={{ fontSize: 9, color: G.gold, letterSpacing: 3, marginBottom: 6 }}>PLAN REQUIRED</div>
           <div style={{ fontFamily: G.serif, fontSize: 26, color: G.text, fontWeight: "bold", marginBottom: 3 }}>$149<span style={{ fontSize: 15, color: G.muted }}>/month</span></div>

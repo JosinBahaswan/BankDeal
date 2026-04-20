@@ -1,7 +1,8 @@
 import TopBar from "../components/TopBar";
 import { formatMoney } from "../core/adminDashboardFormat";
-import useIsMobile from "../core/useIsMobile";
+import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
 import { getLaunchIntegrationStatus, integrationStatusColor } from "../core/integrations";
+import useViewport from "../core/useViewport";
 import useAdminLiveData from "../hooks/useAdminLiveData";
 import useAdminMetrics from "../hooks/useAdminMetrics";
 import AdminDealsPanel from "./admin/AdminDealsPanel";
@@ -9,7 +10,7 @@ import AdminRecentActivityCard from "./admin/AdminRecentActivityCard";
 import AdminUsersPanel from "./admin/AdminUsersPanel";
 
 export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACTORS, adminTab, setAdminTab, userName, user, onSignOut }) {
-  const isMobile = useIsMobile(820);
+  const { isMobile, mode } = useViewport();
   const { metrics, loading: metricsLoading, error: metricsError, reload } = useAdminMetrics(user);
   const {
     users: adminUsers,
@@ -46,9 +47,9 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
+    <div className="db-dashboard-root" style={pageShellStyle(G)}>
       <TopBar title="ADMIN" tabs={ATABS} active={adminTab} onTab={setAdminTab} userName={userName} onSignOut={onSignOut} G={G} btnO={btnO} />
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: isMobile ? "14px 12px 20px" : "20px 16px" }}>
+      <div style={dashboardContainerStyle(mode)}>
         {metricsLoading && (
           <div style={{ ...card, marginBottom: 10, borderColor: `${G.green}44` }}>
             <div style={{ fontSize: 10, color: G.green }}>Syncing live metrics from Supabase...</div>

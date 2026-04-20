@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import TopBar from "../components/TopBar";
-import useIsMobile from "../core/useIsMobile";
+import AppActionModal from "../components/AppActionModal";
+import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
+import useViewport from "../core/useViewport";
 import CommissionCompliancePanel from "./realtor/CommissionCompliancePanel";
 import {
   loadRealtorCommissionReviews,
@@ -88,7 +90,7 @@ function listingDays(publishedAt, closedAt = "") {
 }
 
 export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSignOut, userName, user, realtorTab, setRealtorTab }) {
-  const isMobile = useIsMobile(820);
+  const { isMobile, mode } = useViewport();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
@@ -99,6 +101,15 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
   const [commissionReviews, setCommissionReviews] = useState([]);
   const [reviewSubmitBusyId, setReviewSubmitBusyId] = useState("");
   const [reviewError, setReviewError] = useState("");
+  const [actionModal, setActionModal] = useState({ open: false, title: "", message: "", tone: "info" });
+
+  function showActionModal(title, message, tone = "info") {
+    setActionModal({ open: true, title, message, tone });
+  }
+
+  function closeActionModal() {
+    setActionModal({ open: false, title: "", message: "", tone: "info" });
+  }
 
   useEffect(() => {
     let active = true;
@@ -115,7 +126,6 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
         return;
       }
 
-      setLoading(true);
       let nextError = "";
 
       const profileResult = await supabase
@@ -443,79 +453,148 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
   const avgDomStat = asNumber(realtorProfile?.avg_days_to_close, avgActiveDom);
   const responseStat = referrals.length > 0 ? `${Math.min(99, 88 + referrals.length)}%` : "N/A";
   const repeatClientsStat = Math.min(dealsClosedStat, Math.max(0, Math.round(dealsClosedStat * 0.4)));
+  const realtorFirstName = displayName.split(" ").filter(Boolean)[0] || "Realtor";
+  const ytdNetLabel = toCurrency(netYtd || projectedCommission || 0);
 
   return (
-    <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
+    <div className="db-dashboard-root" style={pageShellStyle(G)}>
       <TopBar title="REALTOR" tabs={RTABS} active={realtorTab} onTab={setRealtorTab} userName={displayName} onSignOut={onSignOut} G={G} btnO={btnO} />
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: isMobile ? "14px 12px 20px" : "20px 16px" }}>
+      <div style={dashboardContainerStyle(mode)}>
+        <div style={{ background: `linear-gradient(135deg, ${G.green}10 0%, ${G.faint} 100%)`, border: `1px solid ${G.border}`, borderRadius: 12, padding: isMobile ? "14px" : "16px 18px", marginBottom: 14 }}>
+          <div style={{ fontFamily: G.serif, fontSize: isMobile ? 28 : 34, color: G.text, marginBottom: 4, fontWeight: "bold", letterSpacing: "-0.02em" }}>
+            Welcome, {realtorFirstName}
+          </div>
+          <div style={{ fontSize: 13, color: G.muted, marginBottom: 12 }}>
+            {activeReferralCount > 0 ? "Your referral-ready pipeline is active across current markets." : "Verify profile details to unlock more referral opportunities."}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
+            {[
+              { label: "Referrals", value: activeReferralCount, color: G.green },
+              { label: "Ready to list", value: readyToListCount, color: G.text },
+              { label: "YTD net", value: ytdNetLabel, color: G.green },
+            ].map((item) => (
+              <div key={item.label} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 10, padding: "10px 12px" }}>
+                <div style={{ fontSize: 11, color: G.muted, marginBottom: 3 }}>{item.label}</div>
+                <div style={{ fontFamily: G.serif, fontSize: 30, color: item.color, fontWeight: "bold", letterSpacing: "-0.03em", lineHeight: 1.05 }}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {error && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{error}</div>}
         {loading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading realtor pipeline from Supabase...</div>}
 
         {realtorTab === "referrals" && (
           <div>
             <div style={{ ...card, borderColor: `${G.blue}44`, marginBottom: 14 }}>
-              <div style={{ fontSize: 9, color: "#60a5fa", letterSpacing: 3, marginBottom: 6 }}>ACTIVE REFERRALS</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8 }}>
+              <div style={{ fontSize: 11, color: G.blue, letterSpacing: 2, marginBottom: 6 }}>ACTIVE REFERRALS</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 8 }}>
                 {[
                   { l: "Active Referrals", v: activeReferralCount, c: G.blue },
                   { l: "Ready to List", v: readyToListCount, c: G.green },
                   { l: "Projected Commission", v: toCurrency(projectedCommission), c: G.green },
                   { l: "DealBank Split", v: `${Math.round(splitPct)}%`, c: G.gold },
                 ].map(({ l, v, c }) => (
-                  <div key={l} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "8px 10px", textAlign: "center" }}>
-                    <div style={{ fontSize: 7, color: G.muted, letterSpacing: 2, marginBottom: 2 }}>{l.toUpperCase()}</div>
-                    <div style={{ fontFamily: G.serif, fontSize: 14, color: c, fontWeight: "bold" }}>{v}</div>
+                  <div key={l} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 8, padding: "10px 10px", textAlign: "center" }}>
+                    <div style={{ fontSize: 11, color: G.muted, letterSpacing: 1, marginBottom: 2 }}>{l}</div>
+                    <div style={{ fontFamily: G.serif, fontSize: 22, color: c, fontWeight: "bold" }}>{v}</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {!loading && referrals.length === 0 && (
-              <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>
-                No referral-ready listings are visible yet in your current markets.
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.32fr) minmax(300px,0.68fr)", gap: 12 }}>
+              <div>
+                {!loading && referrals.length === 0 && (
+                  <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>
+                    No referral-ready listings are visible yet in your current markets.
+                  </div>
+                )}
+
+                {referrals.map((referral) => {
+                  const urgencyColor = referral.urgency === "high" ? G.green : referral.urgency === "medium" ? G.gold : G.muted;
+
+                  return (
+                    <div key={referral.id} style={{ ...card, marginBottom: 8, borderColor: `${urgencyColor}44` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 8, flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontFamily: G.serif, fontSize: 16, color: G.text, fontWeight: "bold", marginBottom: 2 }}>{referral.addr}</div>
+                          <div style={{ fontSize: 12, color: G.muted, lineHeight: 1.6 }}>
+                            {referral.beds}bd/{referral.baths}ba | {referral.sqft.toLocaleString()} sqft | Deal Maker: {referral.flipper}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 11, color: G.muted, marginBottom: 2 }}>{referral.days}d in pipeline</div>
+                          <div style={{ fontSize: 11, color: urgencyColor, border: `1px solid ${urgencyColor}44`, background: `${urgencyColor}22`, borderRadius: 999, padding: "3px 9px" }}>
+                            {referral.status}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", marginBottom: 8, gap: 6, flexWrap: "wrap" }}>
+                        <div style={{ fontSize: 13, color: G.muted }}>
+                          Target List: <span style={{ color: G.text }}>{toCurrency(referral.listPrice)}</span>
+                        </div>
+                        <div style={{ fontSize: 13, color: G.muted }}>
+                          Est. Commission: <span style={{ color: G.green, fontFamily: G.serif }}>{toCurrency(referral.estimatedNet)}</span>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: 12, color: G.muted, marginBottom: 8, lineHeight: 1.7 }}>{referral.note}</div>
+
+                      <button
+                        onClick={() => showActionModal(
+                          referral.status === "Ready to List" ? "Contact Request Sent" : "Call Scheduled",
+                          `${referral.status === "Ready to List" ? "Your contact request was sent to" : "A follow-up call was scheduled with"} ${referral.flipper} for ${referral.addr}.`,
+                          referral.status === "Ready to List" ? "success" : "info",
+                        )}
+                        style={referral.status === "Ready to List" ? { ...btnG, width: "100%", fontSize: 12, padding: "9px" } : { ...btnO, width: "100%", fontSize: 12, padding: "9px" }}
+                      >
+                        {referral.status === "Ready to List" ? "Contact Now" : "Schedule Call"}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            )}
 
-            {referrals.map((referral) => {
-              const urgencyColor = referral.urgency === "high" ? G.green : referral.urgency === "medium" ? G.gold : G.muted;
-
-              return (
-                <div key={referral.id} style={{ ...card, marginBottom: 8, borderColor: `${urgencyColor}44` }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 8, flexWrap: "wrap" }}>
-                    <div>
-                      <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold", marginBottom: 2 }}>{referral.addr}</div>
-                      <div style={{ fontSize: 9, color: G.muted, lineHeight: 1.6 }}>
-                        {referral.beds}bd/{referral.baths}ba | {referral.sqft.toLocaleString()} sqft | Deal Maker: {referral.flipper}
+              <div style={{ display: "grid", gap: 10, alignContent: "start" }}>
+                <div style={{ ...card }}>
+                  <div style={{ ...lbl, marginBottom: 8 }}>Commission Snapshot</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                    {[
+                      ["Gross YTD", toCurrency(grossYtd)],
+                      ["Your Net", toCurrency(netYtd)],
+                      ["Split", `${Math.round(splitPct)}%`],
+                      ["Avg Active DOM", `${avgActiveDom}d`],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ border: `1px solid ${G.border}`, borderRadius: 8, background: G.surface, padding: "10px 8px", textAlign: "center" }}>
+                        <div style={{ fontSize: 11, color: G.muted, marginBottom: 2 }}>{label}</div>
+                        <div style={{ fontFamily: G.serif, fontSize: 17, color: G.blue }}>{value}</div>
                       </div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 8, color: G.muted, letterSpacing: 1, marginBottom: 2 }}>{referral.days}d in pipeline</div>
-                      <div style={{ fontSize: 8, color: urgencyColor, border: `1px solid ${urgencyColor}44`, background: `${urgencyColor}22`, borderRadius: 3, padding: "2px 8px", letterSpacing: 1 }}>
-                        {referral.status}
-                      </div>
-                    </div>
+                    ))}
                   </div>
-
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", marginBottom: 8, gap: 6, flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 10, color: G.muted }}>
-                      Target List: <span style={{ color: G.text }}>{toCurrency(referral.listPrice)}</span>
-                    </div>
-                    <div style={{ fontSize: 10, color: G.muted }}>
-                      Est. Commission: <span style={{ color: G.green, fontFamily: G.serif }}>{toCurrency(referral.estimatedNet)}</span>
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: 10, color: G.muted, marginBottom: 8 }}>{referral.note}</div>
-
-                  <button
-                    onClick={() => window.alert(`${referral.status === "Ready to List" ? "Contacting" : "Opening details for"} ${referral.flipper}\nProperty: ${referral.addr}`)}
-                    style={{ ...btnG, width: "100%", fontSize: 9, padding: "7px", background: referral.status === "Ready to List" ? G.green : "#1a2e1a", color: referral.status === "Ready to List" ? "#000" : G.muted }}
-                  >
-                    {referral.status === "Ready to List" ? "Contact Now" : "Schedule Call"}
-                  </button>
                 </div>
-              );
-            })}
+
+                <div style={{ ...card }}>
+                  <div style={{ ...lbl, marginBottom: 8 }}>Priority Actions</div>
+                  {[
+                    "Contact Ready to List referrals within the same day.",
+                    "Review listings above 20 days to refresh pricing strategy.",
+                    "Log compliance reviews immediately after close.",
+                  ].map((tip) => (
+                    <div key={tip} style={{ fontSize: 12, color: G.text, lineHeight: 1.7, marginBottom: 6 }}>
+                      • {tip}
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ ...card }}>
+                  <div style={{ ...lbl, marginBottom: 8 }}>Profile Focus</div>
+                  <div style={{ fontSize: 12, color: G.muted, lineHeight: 1.7, marginBottom: 6 }}>Markets: <span style={{ color: G.text }}>{marketsLabel}</span></div>
+                  <div style={{ fontSize: 12, color: G.muted, lineHeight: 1.7 }}>Specialties: <span style={{ color: G.text }}>{specialtiesLabel}</span></div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -554,8 +633,18 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
                   <span>Offers: {listing.offers}</span>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexDirection: isMobile ? "column" : "row" }}>
-                  <button onClick={() => window.alert(`Manage listing opened for ${listing.address}`)} style={{ ...btnG, flex: 1, fontSize: 8, padding: "6px 8px" }}>Manage Listing</button>
-                  <button onClick={() => window.alert(`Message sent to deal maker for ${listing.address}`)} style={{ ...btnO, flex: 1, fontSize: 8, padding: "6px 8px" }}>Message Deal Maker</button>
+                  <button
+                    onClick={() => showActionModal("Listing Workspace Opened", `Manage listing started for ${listing.address}.`, "info")}
+                    style={{ ...btnG, flex: 1, fontSize: 8, padding: "6px 8px" }}
+                  >
+                    Manage Listing
+                  </button>
+                  <button
+                    onClick={() => showActionModal("Message Sent", `Deal maker update sent for ${listing.address}.`, "success")}
+                    style={{ ...btnO, flex: 1, fontSize: 8, padding: "6px 8px" }}
+                  >
+                    Message Deal Maker
+                  </button>
                 </div>
               </div>
             ))}
@@ -720,6 +809,16 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
           </div>
         )}
       </div>
+
+      <AppActionModal
+        G={G}
+        open={actionModal.open}
+        title={actionModal.title}
+        message={actionModal.message}
+        tone={actionModal.tone}
+        onConfirm={closeActionModal}
+        onClose={closeActionModal}
+      />
     </div>
   );
 }

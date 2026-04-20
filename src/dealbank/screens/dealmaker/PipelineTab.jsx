@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import AppActionModal from "../../components/AppActionModal";
 
 export default function PipelineTab({ ctx }) {
   const {
@@ -25,10 +26,12 @@ export default function PipelineTab({ ctx }) {
     pipelineFocusDealId,
     clearPipelineFocusDeal,
     setFlipTab,
+    pushToast,
     isMobile,
   } = ctx;
 
   const dealCardRefs = useRef({});
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!pipelineFocusDealId) return;
@@ -105,7 +108,7 @@ export default function PipelineTab({ ctx }) {
 
           <div style={{ marginTop: 10 }}>
             <button
-              onClick={() => deleteDeal(activeDeal.id)}
+              onClick={() => setDeleteConfirmOpen(true)}
               style={{
                 ...btnO,
                 padding: "6px 12px",
@@ -131,11 +134,11 @@ export default function PipelineTab({ ctx }) {
                   <div>
                     <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold" }}>{realtor.name}</div>
                     <div style={{ fontSize: 9, color: G.muted }}>{realtor.brokerage} · {realtor.location} · {realtor.deals} deals</div>
-                    <div style={{ fontSize: 9, color: "#60a5fa", marginTop: 1 }}>★ {realtor.rating} · {realtor.specialty}</div>
+                    <div style={{ fontSize: 9, color: "#60a5fa", marginTop: 1 }}>Rating {realtor.rating}/5 · {realtor.specialty}</div>
                   </div>
                 </div>
                 <button
-                  onClick={() => window.alert(`Connection request sent to ${realtor.name} (${realtor.brokerage})`) }
+                  onClick={() => pushToast?.(`Connection request sent to ${realtor.name} (${realtor.brokerage}).`, "success")}
                   style={{ ...btnG, fontSize: 9, padding: "6px 12px", width: isMobile ? "100%" : "auto", background: "#1e3a5f", color: "#60a5fa", border: `1px solid ${G.blue}44` }}
                 >
                   Connect
@@ -208,14 +211,14 @@ export default function PipelineTab({ ctx }) {
                 </div>
 
                 <button onClick={() => setWLive(true)} disabled={!wDeal.assignFee || !wDeal.daysLeft} style={{ ...btnG, width: "100%", fontSize: 11, padding: "14px", background: !wDeal.assignFee || !wDeal.daysLeft ? G.faint : G.gold, color: !wDeal.assignFee || !wDeal.daysLeft ? G.muted : "#000", letterSpacing: 4 }}>
-                  🚀 Push to Buyer Network Now
+                  Push to Buyer Network Now
                 </button>
                 <div style={{ marginTop: 6, fontSize: 9, color: G.muted, textAlign: "center" }}>DealBank charges 1.5% of assignment fee at close. No upfront cost.</div>
               </div>
             ) : (
               <div>
                 <div style={{ textAlign: "center", marginBottom: 18 }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>🚀</div>
+                  <div style={{ fontSize: 11, color: G.gold, letterSpacing: 2, marginBottom: 8 }}>LIVE</div>
                   <div style={{ fontFamily: G.serif, fontSize: 18, color: G.gold, fontWeight: "bold", marginBottom: 4 }}>Live on Buyer Network</div>
                   <div style={{ fontSize: 10, color: G.muted }}>Your deal is live. 30 buyers have been notified. You'll hear back fast.</div>
                 </div>
@@ -255,7 +258,7 @@ export default function PipelineTab({ ctx }) {
                       </div>
                       <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.6, marginBottom: 8 }}>{buyer.msg}</div>
                       <button
-                        onClick={() => window.alert(`Reply composer opened for ${buyer.name}`)}
+                        onClick={() => pushToast?.(`Reply composer opened for ${buyer.name}.`, "info")}
                         style={{ ...btnG, fontSize: 8, padding: "5px 12px", background: buyer.status === "Hot" ? G.green : G.surface, color: buyer.status === "Hot" ? "#000" : G.muted, border: buyer.status === "Hot" ? "none" : `1px solid ${G.border}` }}
                       >
                         Reply
@@ -273,13 +276,28 @@ export default function PipelineTab({ ctx }) {
                     }}
                     style={{ ...btnG, flex: 2, fontSize: 9, background: "#ff6b6b22", color: "#ff6b6b", border: "1px solid #ff6b6b44" }}
                   >
-                    Mark as Assigned ✓
+                    Mark as Assigned
                   </button>
                 </div>
               </div>
             )}
           </div>
         )}
+
+        <AppActionModal
+          G={G}
+          open={deleteConfirmOpen}
+          tone="danger"
+          title="Delete This Deal?"
+          message={`This will remove ${activeDeal.address} from your pipeline.`}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          onConfirm={() => {
+            deleteDeal(activeDeal.id);
+            setDeleteConfirmOpen(false);
+          }}
+          onClose={() => setDeleteConfirmOpen(false)}
+        />
       </div>
     );
   }
@@ -307,7 +325,7 @@ export default function PipelineTab({ ctx }) {
       )}
       {pipeline.length === 0 ? (
         <div style={{ ...card, textAlign: "center", padding: isMobile ? "24px 14px" : "40px" }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
+          <div style={{ width: 48, height: 48, margin: "0 auto 10px", borderRadius: "50%", border: `1px solid ${G.border}`, background: G.surface, display: "grid", placeItems: "center", fontSize: 12, letterSpacing: 1.5, color: G.green, fontWeight: "bold" }}>PL</div>
           <div style={{ fontFamily: G.serif, fontSize: 15, color: G.text, marginBottom: 6 }}>No deals yet</div>
           <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Analyze a property and save it to start your pipeline</div>
           <button onClick={() => setFlipTab("analyze")} style={{ ...btnG, fontSize: 10 }}>Analyze a Property</button>
@@ -348,7 +366,7 @@ export default function PipelineTab({ ctx }) {
                   {deal.stage === "Under Contract" && (
                       <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${G.faint}`, display: "flex", gap: 6, flexDirection: isMobile ? "column" : "row" }}>
                       <button onClick={() => { setActiveDeal(deal); setWLive(false); }} style={{ ...btnG, flex: 1, fontSize: 8, padding: "6px", background: G.gold, color: "#000", letterSpacing: 2 }}>
-                        🚀 Wholesale This Deal
+                        Wholesale This Deal
                       </button>
                       <div style={{ fontSize: 9, color: G.gold, display: "flex", alignItems: "center", paddingLeft: 4 }}>Push to 30 buyers instantly</div>
                     </div>

@@ -1,4 +1,4 @@
-import DealBankApp from "./dealbank";
+import DealBankApp from "./dealbank.jsx";
 
 export default function App() {
   return <DealBankApp />;

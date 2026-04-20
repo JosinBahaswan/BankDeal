@@ -501,9 +501,9 @@ export default function CrmSequencesToolTab({ ctx }) {
             <div key={step.id} style={{ background: G.surface, border: `1px solid ${selectedStepId === step.id ? G.green : G.border}`, borderRadius: 7, padding: 10 }} onClick={() => setSelectedStepId(step.id)}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                 <div style={{ fontSize: 8, color: G.green }}>STEP {idx + 1}</div>
-                <input value={step.delay} onChange={(e) => updateStep(step.id, "delay", e.target.value.replace(/[^0-9]/g, ""))} style={{ width: 62, background: "#111", border: `1px solid ${G.border}`, borderRadius: 4, color: G.text, padding: "3px 6px", fontSize: 9, fontFamily: G.mono }} />
+                <input value={step.delay} onChange={(e) => updateStep(step.id, "delay", e.target.value.replace(/[^0-9]/g, ""))} style={{ width: 62, background: G.surface, border: `1px solid ${G.border}`, borderRadius: 4, color: G.text, padding: "3px 6px", fontSize: 9, fontFamily: G.mono }} />
                 <div style={{ fontSize: 8, color: G.muted, display: "flex", alignItems: "center" }}>days later</div>
-                <select value={step.channel} onChange={(e) => updateStep(step.id, "channel", e.target.value)} style={{ background: "#111", border: `1px solid ${G.border}`, borderRadius: 4, color: G.text, padding: "3px 6px", fontSize: 9, fontFamily: G.mono }}>
+                <select value={step.channel} onChange={(e) => updateStep(step.id, "channel", e.target.value)} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 4, color: G.text, padding: "3px 6px", fontSize: 9, fontFamily: G.mono }}>
                   {["SMS", "Email", "Call Task"].map((channel) => <option key={channel} value={channel}>{channel}</option>)}
                 </select>
                 {builderSteps.length > 1 && (
@@ -512,7 +512,7 @@ export default function CrmSequencesToolTab({ ctx }) {
                   </button>
                 )}
               </div>
-              <textarea value={step.message} onChange={(e) => updateStep(step.id, "message", e.target.value)} rows={2} style={{ width: "100%", boxSizing: "border-box", resize: "vertical", background: "#111", border: `1px solid ${G.border}`, borderRadius: 4, color: G.text, fontFamily: G.mono, fontSize: 10, padding: "7px 8px" }} />
+              <textarea value={step.message} onChange={(e) => updateStep(step.id, "message", e.target.value)} rows={2} style={{ width: "100%", boxSizing: "border-box", resize: "vertical", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 4, color: G.text, fontFamily: G.mono, fontSize: 10, padding: "7px 8px" }} />
             </div>
           ))}
         </div>

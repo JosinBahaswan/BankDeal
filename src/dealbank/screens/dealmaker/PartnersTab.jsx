@@ -45,7 +45,7 @@ export default function PartnersTab({ ctx }) {
       ))}
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        {[["software", "💻 Software Reviews"], ["insurance", "🛡 Insurance"], ["mortgage", "🏦 Hard Money & Loans"]].map(([id, label]) => (
+        {[["software", "Software Reviews"], ["insurance", "Insurance"], ["mortgage", "Hard Money & Loans"]].map(([id, label]) => (
           <div
             key={id}
             onClick={() => setPartnerTab(id)}
@@ -85,7 +85,7 @@ export default function PartnersTab({ ctx }) {
                     <div style={{ fontSize: 8, color: activeSoftware.verdictColor, background: `${activeSoftware.verdictColor}22`, border: `1px solid ${activeSoftware.verdictColor}44`, borderRadius: 4, padding: "3px 10px", marginBottom: 4, letterSpacing: 2 }}>
                       {activeSoftware.verdict}
                     </div>
-                    <div style={{ fontFamily: G.serif, fontSize: 16, color: G.gold }}>{"★".repeat(Math.floor(activeSoftware.rating))} {activeSoftware.rating}</div>
+                    <div style={{ fontFamily: G.serif, fontSize: 16, color: G.gold }}>Rating {activeSoftware.rating}/5</div>
                     <div style={{ fontSize: 9, color: G.muted }}>{activeSoftware.reviews.toLocaleString()} reviews</div>
                   </div>
                 </div>
@@ -160,7 +160,7 @@ export default function PartnersTab({ ctx }) {
                     </div>
                     <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.6, marginBottom: 8 }}>{review.tagline}</div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ fontFamily: G.serif, fontSize: 12, color: G.gold }}>{"★".repeat(Math.floor(review.rating))} {review.rating} <span style={{ fontSize: 9, color: G.muted }}>({review.reviews.toLocaleString()})</span></div>
+                      <div style={{ fontFamily: G.serif, fontSize: 12, color: G.gold }}>Rating {review.rating}/5 <span style={{ fontSize: 9, color: G.muted }}>({review.reviews.toLocaleString()})</span></div>
                       <div style={{ fontSize: 10, color: G.green, fontWeight: "bold" }}>{review.price}</div>
                     </div>
                     <div style={{ marginTop: 8, fontSize: 9, color: review.logoColor, letterSpacing: 1 }}>Read Full Review →</div>
@@ -177,7 +177,7 @@ export default function PartnersTab({ ctx }) {
           <div style={{ fontFamily: G.serif, fontSize: 16, color: G.text, marginBottom: 4 }}>Insurance for Deal Makers</div>
           <div style={{ fontSize: 10, color: G.muted, marginBottom: 6, lineHeight: 1.6 }}>Standard homeowner's insurance won't cover a flip. You need investor-specific policies. DealBank earns a referral fee on policies - it doesn't affect our recommendations.</div>
           <div style={{ background: "#1a0800", border: "1px solid #f9731644", borderRadius: 6, padding: "10px 14px", marginBottom: 14, fontSize: 10, color: "#fdba74", lineHeight: 1.6 }}>
-            ⚠ <strong>Don't close without the right coverage.</strong> Vacant properties and active rehabs are excluded from most standard policies. Get a quote before you buy.
+            <strong>Important:</strong> do not close without the right coverage. Vacant properties and active rehabs are excluded from most standard policies. Get a quote before you buy.
           </div>
           {INSURANCE_PARTNERS.map((ins) => (
             <div key={ins.id} style={{ ...card, marginBottom: 10, borderColor: `${ins.logoColor}33` }}>
@@ -187,7 +187,7 @@ export default function PartnersTab({ ctx }) {
                   <div>
                     <div style={{ fontFamily: G.serif, fontSize: 14, color: G.text, fontWeight: "bold" }}>{ins.name}</div>
                     <div style={{ fontSize: 9, color: ins.logoColor }}>{ins.type}</div>
-                    <div style={{ fontFamily: G.serif, fontSize: 12, color: G.gold }}>{"★".repeat(Math.floor(ins.rating))} {ins.rating}</div>
+                      <div style={{ fontFamily: G.serif, fontSize: 12, color: G.gold }}>Rating {ins.rating}/5</div>
                   </div>
                 </div>
                 <div style={{ fontSize: 7, color: ins.logoColor, background: `${ins.logoColor}22`, border: `1px solid ${ins.logoColor}44`, borderRadius: 3, padding: "3px 8px", letterSpacing: 2 }}>{ins.badge}</div>
@@ -195,7 +195,7 @@ export default function PartnersTab({ ctx }) {
               <div style={{ fontSize: 11, color: G.muted, lineHeight: 1.7, marginBottom: 10 }}>{ins.tagline}</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 10 }}>
                 {ins.coverage.map((coverage, index) => (
-                  <div key={index} style={{ fontSize: 9, color: G.text, display: "flex", gap: 5 }}><span style={{ color: G.green }}>✓</span>{coverage}</div>
+                  <div key={index} style={{ fontSize: 9, color: G.text, display: "flex", gap: 5 }}><span style={{ color: G.green, fontWeight: "bold" }}>+</span>{coverage}</div>
                 ))}
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -269,11 +269,11 @@ export default function PartnersTab({ ctx }) {
                 <div style={{ fontSize: 11, color: G.muted, lineHeight: 1.7, marginBottom: 8 }}>{lender.tagline}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 10 }}>
                   {lender.features.map((feature, index) => (
-                    <div key={index} style={{ fontSize: 9, color: G.text, display: "flex", gap: 5 }}><span style={{ color: G.green }}>✓</span>{feature}</div>
+                    <div key={index} style={{ fontSize: 9, color: G.text, display: "flex", gap: 5 }}><span style={{ color: G.green, fontWeight: "bold" }}>+</span>{feature}</div>
                   ))}
                 </div>
                 <div style={{ background: G.greenGlow, border: `1px solid ${G.green}33`, borderRadius: 5, padding: "8px 10px", marginBottom: 10, fontSize: 10, color: G.text, lineHeight: 1.6 }}>
-                  💬 {lender.flipperNote}
+                  Note: {lender.flipperNote}
                 </div>
                 <TrackedPartnerLink
                   user={user}

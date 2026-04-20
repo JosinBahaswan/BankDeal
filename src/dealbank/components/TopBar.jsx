@@ -1,15 +1,23 @@
-import { useState } from "react";
-import useIsMobile from "../core/useIsMobile";
-
-const MOBILE_BREAKPOINT = 820;
+import { useMemo, useState } from "react";
+import useViewport from "../core/useViewport";
 
 export default function TopBar({ title, tabs, active, onTab, userName, onSignOut, G, btnO }) {
-  const isMobile = useIsMobile(MOBILE_BREAKPOINT);
+  const { isMobile, isTablet } = useViewport();
   const [menuOpen, setMenuOpen] = useState(false);
-  const isMenuOpen = isMobile && menuOpen;
 
-  function handleTabChange(tabId) {
-    onTab(tabId);
+  const currentTab = useMemo(() => tabs.find((tab) => tab.id === active), [tabs, active]);
+  const initials = useMemo(
+    () => String(userName || "User")
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "U",
+    [userName],
+  );
+
+  function handleTab(nextTab) {
+    onTab(nextTab);
     if (isMobile) setMenuOpen(false);
   }
 
@@ -19,103 +27,197 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
   }
 
   return (
-    <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: isMobile ? "0 14px" : "0 24px", position: "sticky", top: 0, zIndex: 200 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: isMobile ? 74 : 64, gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          <div style={{ position: "relative", width: isMobile ? 26 : 30, height: isMobile ? 26 : 30 }}>
-            <div style={{ position: "absolute", inset: 0, background: "#22c55e", borderRadius: 5, transform: "rotate(45deg) scale(0.7)" }} />
-            <div style={{ position: "absolute", inset: 4, background: "#050a05", borderRadius: 3, transform: "rotate(45deg) scale(0.7)" }} />
-            <div style={{ position: "absolute", inset: 9, background: "#22c55e", borderRadius: 2, transform: "rotate(45deg) scale(0.7)" }} />
+    <div
+      style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 240,
+        background: "rgba(255,255,255,0.92)",
+        backdropFilter: "saturate(180%) blur(16px)",
+        WebkitBackdropFilter: "saturate(180%) blur(16px)",
+        borderBottom: `1px solid ${G.border}`,
+        boxShadow: "none",
+        padding: isMobile ? "8px 12px" : isTablet ? "10px 16px" : "12px 20px",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: isMobile ? 52 : 58, gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <img
+            src="/image.png"
+            alt="DealBank"
+            style={{
+              display: "block",
+              width: "auto",
+              height: isMobile ? 28 : 34,
+              flexShrink: 0,
+            }}
+          />
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              borderRadius: 6,
+              background: `${G.green}16`,
+              color: G.green,
+              fontSize: isMobile ? 9 : 10,
+              fontWeight: 700,
+              padding: isMobile ? "3px 7px" : "3px 8px",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {title}
           </div>
-          <span style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: isMobile ? 18 : 20, fontWeight: 900, letterSpacing: -0.5, lineHeight: 1 }}>
-            Deal<span style={{ color: "#22c55e" }}>Bank</span>
-          </span>
-          <span style={{ fontSize: isMobile ? 9 : 8, color: G.muted, letterSpacing: isMobile ? 1 : 3, marginLeft: isMobile ? 0 : 4 }}>- {title}</span>
         </div>
+
         {!isMobile && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ fontSize: 10, color: G.muted }}>{userName}</div>
-            <button onClick={handleSignOut} style={{ ...btnO, padding: "5px 12px", fontSize: 9 }}>
-              Sign Out
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                background: G.green,
+                color: "#fff",
+                display: "grid",
+                placeItems: "center",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              {initials}
+            </div>
+            <div style={{ maxWidth: 170, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: G.muted, fontSize: 13, fontWeight: 600 }}>
+              {userName || "User"}
+            </div>
+            <button onClick={handleSignOut} style={{ ...btnO, padding: "8px 12px", fontSize: 13, borderRadius: 8 }}>
+              Log out
             </button>
           </div>
         )}
 
         {isMobile && (
-          <button
-            className="hamburger"
-            type="button"
-            onClick={() => setMenuOpen((prev) => !prev)}
-            style={{ display: "flex", flexDirection: "column", gap: 5, background: "transparent", border: "none", cursor: "pointer", padding: 8 }}
-          >
-            <span style={{ display: "block", width: 24, height: 2, background: isMenuOpen ? "#22c55e" : G.muted, transition: "all .2s", transform: isMenuOpen ? "rotate(45deg) translate(5px,5px)" : "none" }} />
-            <span style={{ display: "block", width: 24, height: 2, background: isMenuOpen ? "transparent" : G.muted, transition: "all .2s" }} />
-            <span style={{ display: "block", width: 24, height: 2, background: isMenuOpen ? "#22c55e" : G.muted, transition: "all .2s", transform: isMenuOpen ? "rotate(-45deg) translate(5px,-5px)" : "none" }} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ maxWidth: 130, fontSize: 12, color: G.muted, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {currentTab?.label || "Menu"}
+            </div>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              aria-label="Open dashboard menu"
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                border: `1px solid ${G.border}`,
+                background: G.surface,
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ width: 18, height: 2, borderRadius: 2, background: G.text, transform: menuOpen ? "rotate(45deg) translate(4px,4px)" : "none", transition: "all .2s" }} />
+                <span style={{ width: 18, height: 2, borderRadius: 2, background: G.text, opacity: menuOpen ? 0 : 1, transition: "all .2s" }} />
+                <span style={{ width: 18, height: 2, borderRadius: 2, background: G.text, transform: menuOpen ? "rotate(-45deg) translate(4px,-4px)" : "none", transition: "all .2s" }} />
+              </div>
+            </button>
+          </div>
         )}
       </div>
 
       {!isMobile && (
-        <div style={{ display: "flex", gap: 0, marginTop: 10, paddingBottom: 2, flexWrap: "wrap" }}>
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              type="button"
-              style={{
-                padding: "8px 14px",
-                fontSize: 9,
-                letterSpacing: 2,
-                cursor: "pointer",
-                textTransform: "uppercase",
-                fontFamily: G.mono,
-                color: active === tab.id ? G.green : G.muted,
-                borderBottom: `2px solid ${active === tab.id ? G.green : "transparent"}`,
-                borderTop: "none",
-                borderLeft: "none",
-                borderRight: "none",
-                background: "transparent",
-                whiteSpace: "nowrap",
-                transition: "all .15s",
-              }}
-            >
-              {tab.icon} {tab.label}
-            </button>
-          ))}
+        <div style={{ display: "flex", gap: 2, overflowX: "auto", paddingTop: isTablet ? 6 : 7, paddingBottom: 1 }}>
+          {tabs.map((tab) => {
+            const isActive = active === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => handleTab(tab.id)}
+                style={{
+                  border: "none",
+                  borderBottom: `2px solid ${isActive ? G.green : "transparent"}`,
+                  borderRadius: 0,
+                  background: "transparent",
+                  color: isActive ? G.green : G.muted,
+                  padding: isTablet ? "10px 12px" : "11px 14px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  transition: "all .15s",
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {isMenuOpen && (
-        <div style={{ position: "fixed", top: 74, left: 0, right: 0, zIndex: 190, background: "#0a1a0a", borderBottom: `1px solid ${G.border}`, padding: "16px 14px" }}>
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleTabChange(tab.id)}
+      {isMobile && menuOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 68,
+            left: 12,
+            right: 12,
+            zIndex: 245,
+            border: `1px solid ${G.border}`,
+            borderRadius: 12,
+            background: G.card,
+            boxShadow: G.shadowMd,
+            padding: 10,
+          }}
+        >
+          <div style={{ display: "grid", gap: 6 }}>
+            {tabs.map((tab) => {
+              const isActive = active === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => handleTab(tab.id)}
+                  style={{
+                    textAlign: "left",
+                    border: `1px solid ${isActive ? `${G.green}44` : G.border}`,
+                    borderRadius: 8,
+                    background: isActive ? `${G.green}12` : G.surface,
+                    color: isActive ? G.green : G.text,
+                    padding: "10px 12px",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <div
               style={{
-                width: "100%",
-                textAlign: "left",
-                background: "transparent",
-                border: "none",
-                borderBottom: `1px solid ${G.border}`,
-                color: active === tab.id ? "#22c55e" : G.muted,
+                flex: 1,
+                borderRadius: 8,
+                border: `1px solid ${G.border}`,
+                background: G.surface,
+                color: G.muted,
+                padding: "10px 12px",
                 fontSize: 12,
-                letterSpacing: 2,
-                padding: "12px 0",
-                cursor: "pointer",
-                fontFamily: G.mono,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
-              {tab.icon} {tab.label.toUpperCase()}
-            </button>
-          ))}
-
-          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-            <div style={{ flex: 1, border: `1px solid ${G.border}`, color: G.muted, borderRadius: 6, padding: "12px", fontSize: 10, letterSpacing: 2, fontFamily: G.mono, textAlign: "center" }}>
-              {(userName || "User").toUpperCase()}
+              {userName || "User"}
             </div>
-            <button onClick={handleSignOut} style={{ ...btnO, flex: 2, borderRadius: 6, padding: "12px", fontSize: 10, letterSpacing: 2 }}>
-              SIGN OUT
+            <button onClick={handleSignOut} style={{ ...btnO, flex: 1, borderRadius: 8, padding: "10px 12px", fontSize: 13 }}>
+              Log out
             </button>
           </div>
         </div>

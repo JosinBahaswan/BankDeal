@@ -1,4 +1,5 @@
-import useIsMobile from "../../core/useIsMobile";
+import { pageContainerStyle, pageShellStyle } from "../../core/layout";
+import useViewport from "../../core/useViewport";
 
 export default function LegalShell({
   G,
@@ -11,21 +12,32 @@ export default function LegalShell({
   secondaryActionLabel,
   onSecondaryAction,
 }) {
-  const isMobile = useIsMobile(920);
+  const { isMobile, mode } = useViewport();
 
   return (
-    <div style={{ minHeight: "100vh", background: G.bg, color: G.text, fontFamily: G.mono }}>
+    <div style={pageShellStyle(G)}>
       <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: isMobile ? "12px" : "12px 22px", position: "sticky", top: 0, zIndex: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ position: "relative", width: 28, height: 28 }}>
-              <div style={{ position: "absolute", inset: 0, background: "#22c55e", borderRadius: 4, transform: "rotate(45deg) scale(0.7)" }} />
-              <div style={{ position: "absolute", inset: 4, background: "#050a05", borderRadius: 2, transform: "rotate(45deg) scale(0.7)" }} />
-              <div style={{ position: "absolute", inset: 8, background: "#22c55e", borderRadius: 1, transform: "rotate(45deg) scale(0.7)" }} />
+            <div
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 8,
+                background: G.green,
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 800,
+                fontSize: 16,
+              }}
+            >
+              D
             </div>
             <div>
-              <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: isMobile ? 18 : 20, fontWeight: 900, lineHeight: 1 }}>
-                Deal<span style={{ color: "#22c55e" }}>Bank</span>
+              <div style={{ fontSize: isMobile ? 20 : 21, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1 }}>
+                DealBank
               </div>
               <div style={{ fontSize: 9, color: G.muted, letterSpacing: 2, marginTop: 2 }}>LEGAL</div>
             </div>
@@ -44,7 +56,7 @@ export default function LegalShell({
         </div>
       </div>
 
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: isMobile ? "16px 12px 24px" : "24px 18px 36px" }}>
+      <div style={pageContainerStyle(mode, 1200)}>
         <div style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: 10, padding: isMobile ? "16px 14px" : "22px 20px", marginBottom: 12 }}>
           <div style={{ fontSize: 9, color: G.green, letterSpacing: 3, marginBottom: 6 }}>COMPLIANCE DOCUMENT</div>
           <h1 style={{ margin: 0, fontFamily: G.serif, fontSize: isMobile ? 28 : 34, lineHeight: 1.15, color: G.text }}>{title}</h1>

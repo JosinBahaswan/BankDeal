@@ -69,6 +69,7 @@ export default function AnalyzeTab({ ctx }) {
     loanPts,
     setLoanPts,
     compsData,
+    propertyIntel,
     mktNotes,
     saveDeal,
     runAnalysis,
@@ -179,6 +180,11 @@ export default function AnalyzeTab({ ctx }) {
         </button>
       </div>
       {lookErr && <div style={{ color: G.red, fontSize: 10, marginBottom: 10 }}>Warning: {lookErr}</div>}
+      {propertyIntel?.provider && (
+        <div style={{ fontSize: 10, color: G.muted, marginBottom: 10 }}>
+          Data source: {propertyIntel.provider}{propertyIntel?.endpoint ? ` · ${propertyIntel.endpoint}` : ""}
+        </div>
+      )}
 
       {arvNum > 0 && (
         <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>

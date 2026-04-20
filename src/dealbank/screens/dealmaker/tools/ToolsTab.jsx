@@ -50,7 +50,7 @@ export default function ToolsTab({ ctx }) {
         ))}
       </div>
 
-      <div style={{ background: "linear-gradient(145deg,#061109,#09140c)", border: `1px solid ${G.border}`, borderRadius: 10, padding: 12 }}>
+      <div style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: 10, padding: 12, boxShadow: G.shadowSm }}>
         {activeTool === "leads" && <LeadsToolTab ctx={ctx} />}
         {activeTool === "dialer" && <PowerDialerToolTab ctx={ctx} />}
         {activeTool === "crm" && <CrmSequencesToolTab ctx={ctx} />}

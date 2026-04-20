@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { BREAKPOINTS } from "./breakpoints";
 
-export default function useIsMobile(breakpoint = 820) {
+export default function useIsMobile(breakpoint = BREAKPOINTS.mobileMax) {
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.innerWidth <= breakpoint;

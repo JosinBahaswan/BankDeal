@@ -114,7 +114,7 @@ export default function CrmPipelineBoard({
                       setHoverStage("");
                     }}
                     style={{
-                      background: "#0d0d0d",
+                      background: G.card,
                       border: `1px solid ${G.border}`,
                       borderRadius: 6,
                       padding: "7px 8px",
@@ -126,7 +126,7 @@ export default function CrmPipelineBoard({
                     <select
                       onChange={(event) => onMove(stage, event.target.value, cardItem.id)}
                       value={stage}
-                      style={{ width: "100%", background: "#111", border: `1px solid ${G.border}`, borderRadius: 4, color: G.text, padding: "3px 5px", fontSize: 8, fontFamily: G.mono }}
+                      style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 4, color: G.text, padding: "3px 5px", fontSize: 8, fontFamily: G.mono }}
                     >
                       {pipelineStages.map((target) => <option key={target} value={target}>{target}</option>)}
                     </select>

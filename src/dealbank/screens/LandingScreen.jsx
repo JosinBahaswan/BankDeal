@@ -1,11 +1,124 @@
 import { useEffect, useState } from "react";
 
-const USER_TYPE_BY_TAB = {
-  wholesaler: "dealmaker",
-  flipper: "dealmaker",
-  contractor: "contractor",
-  realtor: "realtor",
+const T = {
+  font: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  bg: "#ffffff",
+  surface: "#f6f8f6",
+  border: "#e5eae5",
+  borderLight: "#eef2ee",
+  text: "#0f1a0f",
+  textSecondary: "#5a6b5a",
+  textMuted: "#8a978a",
+  brand: "#0c7a3d",
+  brandHover: "#0a6833",
+  brandLight: "#e6f4ec",
+  shadow: "0 1px 2px rgba(0,0,0,0.03)",
+  shadowHover: "0 4px 16px rgba(0,0,0,0.06)",
+  shadowLg: "0 12px 40px rgba(0,0,0,0.10)",
 };
+
+const PERSONAS = {
+  dealmaker: { label: "Deal Maker", desc: "Source, analyze, flip, or wholesale." },
+  contractor: { label: "Contractor", desc: "Get job leads from real flippers." },
+  realtor: { label: "Realtor", desc: "Get listing referrals from flippers." },
+};
+
+function GlobalStyles() {
+  return (
+    <style>{`
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; }
+      body { letter-spacing: -0.01em; }
+      button { font-family: inherit; letter-spacing: inherit; }
+      input, textarea, select { font-family: inherit; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-thumb { background: #c9d0c9; border-radius: 4px; }
+
+      @keyframes db-fade-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes db-fade { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes db-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+
+      .db-fu-1 { animation: db-fade-up .45s .04s ease both; }
+      .db-fu-2 { animation: db-fade-up .45s .12s ease both; }
+      .db-fu-3 { animation: db-fade-up .45s .20s ease both; }
+
+      .db-btn-primary:hover { background: ${T.brandHover} !important; }
+      .db-btn-ghost:hover { background: ${T.surface} !important; }
+      .db-card-hover { transition: all .18s; }
+      .db-card-hover:hover { box-shadow: ${T.shadowHover}; transform: translateY(-2px); }
+      .db-input-focus:focus { border-color: ${T.brand} !important; background: #ffffff !important; }
+
+      @media (max-width: 767px) {
+        .db-nav-menu { display: none !important; }
+        .db-hamburger { display: flex !important; }
+        .db-hero-grid { grid-template-columns: 1fr !important; gap: 32px !important; }
+        .db-roles-grid { grid-template-columns: 1fr !important; }
+        .db-section-pad { padding: 48px 20px !important; }
+        .db-hero-pad { padding: 88px 20px 40px !important; }
+        .db-h1 { font-size: 38px !important; }
+        .db-h2 { font-size: 26px !important; }
+      }
+    `}</style>
+  );
+}
+
+function DealScoreBadge({ score, size = "md" }) {
+  const color = score >= 85 ? T.brand : score >= 70 ? "#ca8a04" : T.textMuted;
+  const bg = score >= 85 ? T.brandLight : score >= 70 ? "#fef6e0" : T.surface;
+  const label = score >= 85 ? "Excellent" : score >= 70 ? "Good" : "OK";
+  const sizes = {
+    sm: { font: 10, pad: "3px 8px" },
+    md: { font: 11, pad: "4px 10px" },
+  };
+  const s = sizes[size] || sizes.md;
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        background: bg,
+        border: `1px solid ${color}44`,
+        borderRadius: 100,
+        padding: s.pad,
+        color,
+        fontWeight: 700,
+        fontSize: s.font,
+        letterSpacing: "0.01em",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span>●</span>
+      <span style={{ fontWeight: 800 }}>{score}</span>
+      <span style={{ opacity: 0.9 }}>{label}</span>
+    </div>
+  );
+}
+
+function VerifiedBadge({ size = 11 }) {
+  return (
+    <span
+      title="Verified Pro"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: size + 4,
+        height: size + 4,
+        borderRadius: "50%",
+        background: "#2563eb",
+        color: "#fff",
+        fontSize: Math.round(size * 0.7),
+        fontWeight: 800,
+        lineHeight: 1,
+        flexShrink: 0,
+      }}
+    >
+      ✓
+    </span>
+  );
+}
 
 export default function LandingScreen({
   setAuthMode,
@@ -14,193 +127,54 @@ export default function LandingScreen({
   setAuthForm,
   onOpenLegal,
 }) {
-  const [activeTab, setActiveTab] = useState("wholesaler");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [dealCount, setDealCount] = useState(0);
-  const [memberCount, setMemberCount] = useState(0);
-  const [isMobile, setIsMobile] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40);
+    const onScroll = () => setScrolled(window.scrollY > 8);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  useEffect(() => {
-    let deals = 0;
-    let members = 0;
-    const iv = setInterval(() => {
-      if (deals < 2847) {
-        deals = Math.min(deals + 43, 2847);
-        setDealCount(deals);
-      }
-      if (members < 14200) {
-        members = Math.min(members + 214, 14200);
-        setMemberCount(members);
-      }
-      if (deals >= 2847 && members >= 14200) clearInterval(iv);
-    }, 16);
-    return () => clearInterval(iv);
-  }, []);
+  function routeToAuth(mode, role, prefill = {}) {
+    const safeRole = role || "dealmaker";
+    const nextMode = mode === "signin" ? "login" : mode;
 
-  function goAuth(mode, tabOrType = "", options = {}) {
-    const type = USER_TYPE_BY_TAB[tabOrType] || tabOrType || "";
-    if (type) setUserType(type);
-    setAuthMode(mode);
+    setUserType?.(safeRole);
+    setAuthMode?.(nextMode);
+    setAuthForm?.((prev) => ({
+      ...prev,
+      name: prefill.name || "",
+      email: prefill.email || "",
+      password: prefill.password || "",
+    }));
 
-    if (options.prefill && setAuthForm) {
-      setAuthForm((prev) => ({ ...prev, ...options.prefill }));
-    }
-
-    setMenuOpen(false);
-    setScreen("auth");
+    setScreen?.("auth");
   }
 
-  const personas = {
-    wholesaler: {
-      label: "Wholesaler",
-      color: "#22c55e",
-      headline: "List your deals.\nGet paid fast.",
-      body: "You found the deal. DealBank puts it in front of hundreds of active flippers in your market. No cold calls, no chasing. Post your contract, set your fee, and let the network work.",
-      features: [
-        "Post deals to verified flippers instantly",
-        "Set your assignment fee upfront",
-        "eSign contracts in-platform",
-        "1.5% fee only when you close",
-        "Built-in buyer network of active investors",
-      ],
-      cta: "List Your First Deal Free",
-      stat: "Avg. 8 buyer inquiries within 24hrs",
-    },
-    flipper: {
-      label: "Flipper",
-      color: "#eab308",
-      headline: "Find deals.\nBuild your crew.\nSell fast.",
-      body: "DealBank is your full operating system. Browse off-market wholesale deals, analyze with AI, hire vetted contractors, and connect with realtors who specialize in flips.",
-      features: [
-        "AI deal analyzer with full P&L",
-        "Off-market wholesale deal feed",
-        "Vetted contractor network",
-        "Realtor matching at sell time",
-        "Power dialer + CRM for your own leads",
-        "eSign purchase contracts in-platform",
-      ],
-      cta: "Start Flipping Smarter",
-      stat: "Avg. flipper saves 11hrs/deal on admin",
-    },
-    contractor: {
-      label: "Contractor",
-      color: "#f97316",
-      headline: "Stop chasing work.\nLet flips come to you.",
-      body: "Verified contractors on DealBank get job leads from active flippers in their market. No bidding wars on generic platforms. Real investors with real budgets, ready to move.",
-      features: [
-        "Job leads from vetted flippers only",
-        "Quote directly in-platform",
-        "Get paid on completion",
-        "Build your ratings and reputation",
-        "Priority placement with Pro subscription",
-      ],
-      cta: "Join the Contractor Network",
-      stat: "Avg. Pro contractor wins 4 jobs/month",
-    },
-    realtor: {
-      label: "Realtor",
-      color: "#3b82f6",
-      headline: "Get listing referrals.\nClose more deals.",
-      body: "When a flipper is done rehabbing, DealBank matches them with local realtors who know how to sell investment properties fast. Free account — 25% split only when the deal closes.",
-      features: [
-        "Referrals from active flippers in your market",
-        "Free account — no monthly fee ever",
-        "75% of your commission, always",
-        "Manage listings inside DealBank",
-        "Direct Deal Maker messaging",
-      ],
-      cta: "Get Referrals Free",
-      stat: "Avg. realtor closes 3 extra deals/month",
-    },
-  };
+  function openAuth(mode, role) {
+    routeToAuth(mode, role);
+    setMenuOpen(false);
+  }
 
-  const deals = [
-    { addr: "3421 Poplar Ave", city: "Sacramento, CA", arv: "$385K", ask: "$195K", reno: "$62K", roi: "28%", type: "Wholesale", badge: "#eab308", days: 2 },
-    { addr: "789 Oak Grove Blvd", city: "Sacramento, CA", arv: "$420K", ask: "$228K", reno: "$38K", roi: "31%", type: "Fix & Flip", badge: "#22c55e", days: 0 },
-    { addr: "1145 Desert Rose Ln", city: "Fresno, CA", arv: "$275K", ask: "$138K", reno: "$44K", roi: "21%", type: "Wholesale", badge: "#eab308", days: 1 },
-    { addr: "4402 Elmwood Ct", city: "Modesto, CA", arv: "$340K", ask: "$172K", reno: "$58K", roi: "26%", type: "Fix & Flip", badge: "#22c55e", days: 3 },
-  ];
-
-  const active = personas[activeTab];
-  const px = isMobile ? "20px" : "60px";
+  function scrollToSection(sectionId) {
+    if (typeof document !== "undefined") {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    setMenuOpen(false);
+  }
 
   return (
-    <div style={{ fontFamily: "'Courier New', monospace", background: "#050a05", color: "#e8f0e8", minHeight: "100vh", overflowX: "hidden" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&display=swap');
-        * { box-sizing:border-box; margin:0; padding:0; }
-        html { scroll-behavior:smooth; }
-        ::-webkit-scrollbar { width:3px; }
-        ::-webkit-scrollbar-thumb { background:#22c55e44; border-radius:2px; }
-
-        @keyframes fadeUp  { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:.4} }
-        @keyframes ticker  { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
-        @keyframes glow    { 0%,100%{box-shadow:0 0 20px #22c55e22} 50%{box-shadow:0 0 40px #22c55e55} }
-        @keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
-
-        .fu  { animation:fadeUp .6s ease both; }
-        .fu1 { animation:fadeUp .6s .1s ease both; }
-        .fu2 { animation:fadeUp .6s .2s ease both; }
-        .fu3 { animation:fadeUp .6s .3s ease both; }
-        .fu4 { animation:fadeUp .6s .4s ease both; }
-
-        .btn-g  { transition:all .15s; }
-        .btn-g:hover  { background:#16a34a!important; transform:translateY(-1px); }
-        .btn-o  { transition:all .15s; }
-        .btn-o:hover  { background:#22c55e22!important; border-color:#22c55e!important; color:#22c55e!important; }
-        .ptab   { transition:all .15s; cursor:pointer; }
-        .ptab:hover { opacity:.85; }
-        .dcard  { transition:all .2s; cursor:pointer; }
-        .dcard:hover { transform:translateY(-3px); border-color:#22c55e66!important; }
-        .frow   { transition:background .15s; }
-        .frow:hover { background:#0d1a0d!important; }
-        .nlink  { transition:color .15s; cursor:pointer; }
-        .nlink:hover { color:#22c55e!important; }
-
-        .mob-menu { animation:slideDown .2s ease; }
-
-        .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
-        .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:40px; }
-        .grid-stats { display:flex; gap:40px; flex-wrap:wrap; }
-        .steps { display:grid; grid-template-columns:repeat(4,1fr); gap:0; position:relative; }
-        .pricing-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
-
-        @media (max-width:900px) {
-          .grid-4      { grid-template-columns:1fr 1fr!important; }
-          .pricing-grid{ grid-template-columns:1fr 1fr!important; }
-          .steps       { grid-template-columns:1fr 1fr!important; gap:32px!important; }
-          .step-line   { display:none!important; }
-        }
-        @media (max-width:767px) {
-          .nav-links   { display:none!important; }
-          .nav-btns    { display:none!important; }
-          .hamburger   { display:flex!important; }
-          .grid-4      { grid-template-columns:1fr!important; }
-          .grid-2      { grid-template-columns:1fr!important; gap:24px!important; }
-          .pricing-grid{ grid-template-columns:1fr!important; }
-          .steps       { grid-template-columns:1fr!important; gap:28px!important; }
-          .step-line   { display:none!important; }
-          .grid-stats  { gap:24px!important; }
-          .footer-inner{ flex-direction:column!important; align-items:flex-start!important; gap:20px!important; }
-          .hero-btns   { flex-direction:column!important; }
-          .hero-btns button { width:100%!important; }
-        }
-      `}</style>
+    <div
+      style={{
+        fontFamily: T.font,
+        background: T.bg,
+        color: T.text,
+        minHeight: "100vh",
+        WebkitFontSmoothing: "antialiased",
+      }}
+    >
+      <GlobalStyles />
 
       <nav
         style={{
@@ -208,346 +182,399 @@ export default function LandingScreen({
           top: 0,
           left: 0,
           right: 0,
-          zIndex: 200,
-          background: scrolled ? "#050a05f0" : "transparent",
-          borderBottom: scrolled ? "1px solid #1a2e1a" : "1px solid transparent",
-          backdropFilter: scrolled ? "blur(16px)" : "none",
-          transition: "all .3s",
-          padding: `0 ${px}`,
-          height: isMobile ? 74 : 64,
+          zIndex: 100,
+          background: scrolled ? "rgba(255,255,255,0.88)" : T.bg,
+          backdropFilter: scrolled ? "saturate(180%) blur(18px)" : "none",
+          WebkitBackdropFilter: scrolled ? "saturate(180%) blur(18px)" : "none",
+          borderBottom: `1px solid ${scrolled ? T.border : "transparent"}`,
+          transition: "all .2s",
+          padding: "0 24px",
+          height: 60,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          <div style={{ position: "relative", width: 30, height: 30 }}>
-            <div style={{ position: "absolute", inset: 0, background: "#22c55e", borderRadius: 5, transform: "rotate(45deg) scale(0.7)" }} />
-            <div style={{ position: "absolute", inset: 4, background: "#050a05", borderRadius: 3, transform: "rotate(45deg) scale(0.7)" }} />
-            <div style={{ position: "absolute", inset: 9, background: "#22c55e", borderRadius: 2, transform: "rotate(45deg) scale(0.7)" }} />
-          </div>
-          <span style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 20, fontWeight: 900, letterSpacing: -0.5 }}>
-            Deal<span style={{ color: "#22c55e" }}>Bank</span>
-          </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <img
+            src="/image.png"
+            alt="DealBank"
+            style={{
+              height: 34,
+              width: "auto",
+              display: "block",
+            }}
+          />
         </div>
 
-        <div className="nav-links" style={{ display: "flex", gap: 28, fontSize: 11, letterSpacing: 2, color: "#6b8f6b" }}>
-          {["HOW IT WORKS", "MARKETPLACE", "PRICING", "ABOUT"].map((label) => (
-            <span key={label} className="nlink">{label}</span>
-          ))}
+        <div className="db-nav-menu" style={{ display: "flex", gap: 28, fontSize: 14, fontWeight: 500, color: T.textSecondary }}>
+          <span style={{ cursor: "pointer" }} onClick={() => scrollToSection("how-it-works")}>How it works</span>
+          <span style={{ cursor: "pointer" }} onClick={() => scrollToSection("pricing")}>Pricing</span>
+          <span style={{ cursor: "pointer" }} onClick={() => scrollToSection("platform-modules")}>Modules</span>
         </div>
 
-        <div className="nav-btns" style={{ display: "flex", gap: 8 }}>
+        <div className="db-nav-menu" style={{ display: "flex", gap: 8 }}>
           <button
-            className="btn-o"
-            onClick={() => goAuth("login")}
-            style={{ background: "transparent", border: "1px solid #1a2e1a", color: "#6b8f6b", borderRadius: 6, padding: "8px 16px", fontSize: 10, letterSpacing: 2, cursor: "pointer", fontFamily: "'Courier New',monospace" }}
+            onClick={() => openAuth("signin")}
+            className="db-btn-ghost"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: T.text,
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
           >
-            SIGN IN
+            Log in
           </button>
           <button
-            className="btn-g"
-            onClick={() => goAuth("signup", "dealmaker")}
-            style={{ background: "#22c55e", border: "none", color: "#000", borderRadius: 6, padding: "8px 18px", fontSize: 10, letterSpacing: 2, fontWeight: "bold", cursor: "pointer", fontFamily: "'Courier New',monospace" }}
+            onClick={() => openAuth("signup", "dealmaker")}
+            className="db-btn-primary"
+            style={{
+              background: T.brand,
+              border: "none",
+              color: "#fff",
+              padding: "8px 18px",
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
           >
-            JOIN FREE →
+            Sign up free
           </button>
         </div>
 
         <button
-          className="hamburger"
+          className="db-hamburger"
           onClick={() => setMenuOpen((prev) => !prev)}
-          style={{ display: "none", flexDirection: "column", gap: 5, background: "transparent", border: "none", cursor: "pointer", padding: 8 }}
+          style={{
+            display: "none",
+            flexDirection: "column",
+            gap: 5,
+            background: "transparent",
+            border: "none",
+            padding: 8,
+            cursor: "pointer",
+          }}
         >
-          <span style={{ display: "block", width: 24, height: 2, background: menuOpen ? "#22c55e" : "#6b8f6b", transition: "all .2s", transform: menuOpen ? "rotate(45deg) translate(5px,5px)" : "none" }} />
-          <span style={{ display: "block", width: 24, height: 2, background: menuOpen ? "transparent" : "#6b8f6b", transition: "all .2s" }} />
-          <span style={{ display: "block", width: 24, height: 2, background: menuOpen ? "#22c55e" : "#6b8f6b", transition: "all .2s", transform: menuOpen ? "rotate(-45deg) translate(5px,-5px)" : "none" }} />
+          <span
+            style={{
+              width: 22,
+              height: 2,
+              background: T.text,
+              borderRadius: 2,
+              transition: "all .2s",
+              transform: menuOpen ? "rotate(45deg) translate(5px,5px)" : "none",
+            }}
+          />
+          <span
+            style={{
+              width: 22,
+              height: 2,
+              background: T.text,
+              borderRadius: 2,
+              transition: "all .2s",
+              opacity: menuOpen ? 0 : 1,
+            }}
+          />
+          <span
+            style={{
+              width: 22,
+              height: 2,
+              background: T.text,
+              borderRadius: 2,
+              transition: "all .2s",
+              transform: menuOpen ? "rotate(-45deg) translate(5px,-5px)" : "none",
+            }}
+          />
         </button>
       </nav>
 
       {menuOpen && (
-        <div className="mob-menu" style={{ position: "fixed", top: isMobile ? 74 : 64, left: 0, right: 0, zIndex: 190, background: "#0a1a0a", borderBottom: "1px solid #1a2e1a", padding: "20px" }}>
-          {["HOW IT WORKS", "MARKETPLACE", "PRICING", "ABOUT"].map((label) => (
-            <div key={label} onClick={() => setMenuOpen(false)} style={{ padding: "14px 0", fontSize: 12, letterSpacing: 3, color: "#6b8f6b", borderBottom: "1px solid #1a2e1a", cursor: "pointer" }}>
-              {label}
-            </div>
-          ))}
-          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-            <button onClick={() => goAuth("login")} style={{ flex: 1, background: "transparent", border: "1px solid #1a2e1a", color: "#6b8f6b", borderRadius: 6, padding: "12px", fontSize: 10, letterSpacing: 2, cursor: "pointer", fontFamily: "'Courier New',monospace" }}>SIGN IN</button>
-            <button onClick={() => goAuth("signup", "dealmaker")} style={{ flex: 2, background: "#22c55e", border: "none", color: "#000", borderRadius: 6, padding: "12px", fontSize: 10, letterSpacing: 2, fontWeight: "bold", cursor: "pointer", fontFamily: "'Courier New',monospace" }}>JOIN FREE →</button>
+        <div
+          style={{
+            position: "fixed",
+            top: 60,
+            left: 0,
+            right: 0,
+            zIndex: 90,
+            background: T.bg,
+            borderBottom: `1px solid ${T.border}`,
+            padding: "16px 20px",
+            animation: "db-fade .15s ease",
+          }}
+        >
+          <div onClick={() => scrollToSection("how-it-works")} style={{ padding: "13px 0", fontSize: 15, fontWeight: 500, borderBottom: `1px solid ${T.borderLight}`, cursor: "pointer" }}>How it works</div>
+          <div onClick={() => scrollToSection("pricing")} style={{ padding: "13px 0", fontSize: 15, fontWeight: 500, borderBottom: `1px solid ${T.borderLight}`, cursor: "pointer" }}>Pricing</div>
+          <div onClick={() => scrollToSection("platform-modules")} style={{ padding: "13px 0", fontSize: 15, fontWeight: 500, borderBottom: `1px solid ${T.borderLight}`, cursor: "pointer" }}>Modules</div>
+          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            <button
+              onClick={() => openAuth("signin")}
+              style={{ flex: 1, background: T.surface, border: `1px solid ${T.border}`, color: T.text, padding: "11px", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
+            >
+              Log in
+            </button>
+            <button
+              onClick={() => openAuth("signup", "dealmaker")}
+              style={{ flex: 2, background: T.brand, border: "none", color: "#fff", padding: "11px", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
+            >
+              Sign up free
+            </button>
           </div>
         </div>
       )}
 
-      <section style={{ paddingTop: isMobile ? 110 : 140, paddingBottom: isMobile ? 60 : 100, paddingLeft: px, paddingRight: px, maxWidth: 1200, margin: "0 auto", position: "relative" }}>
-        <div style={{ position: "absolute", inset: 0, opacity: 0.03, backgroundImage: "linear-gradient(#22c55e 1px,transparent 1px),linear-gradient(90deg,#22c55e 1px,transparent 1px)", backgroundSize: "60px 60px", pointerEvents: "none" }} />
-
-        <div className="fu" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#0d1a0d", border: "1px solid #1a3a1a", borderRadius: 100, padding: "6px 14px 6px 10px", marginBottom: 24 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", animation: "pulse 2s infinite", flexShrink: 0 }} />
-          <span style={{ fontSize: isMobile ? 9 : 10, color: "#22c55e", letterSpacing: isMobile ? 1 : 3, whiteSpace: "nowrap" }}>LIVE — {dealCount.toLocaleString()} ACTIVE DEALS</span>
-        </div>
-
-        <h1 className="fu1" style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: "clamp(44px,8vw,88px)", fontWeight: 900, lineHeight: 1.0, letterSpacing: -2, marginBottom: 24, maxWidth: 760 }}>
-          Where Deals
-          <br />
-          <span style={{ color: "#22c55e", position: "relative" }}>
-            Get Done.
-            <div style={{ position: "absolute", bottom: -4, left: 0, right: 0, height: 4, background: "#22c55e", borderRadius: 2, opacity: 0.35 }} />
-          </span>
-        </h1>
-
-        <p className="fu2" style={{ fontSize: isMobile ? 14 : 16, color: "#6b8f6b", lineHeight: 1.8, maxWidth: 500, marginBottom: 36 }}>
-          DealBank is the network connecting wholesalers, flippers, contractors, and realtors — all around one deal. List it. Analyze it. Build it. Sell it.
-        </p>
-
-        <div className="fu3 hero-btns" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: isMobile ? 40 : 56 }}>
-          <button className="btn-g" onClick={() => goAuth("signup", activeTab)} style={{ background: "#22c55e", border: "none", color: "#000", borderRadius: 8, padding: "14px 28px", fontSize: 11, letterSpacing: 3, fontWeight: "bold", cursor: "pointer", fontFamily: "'Courier New',monospace", animation: "glow 3s infinite" }}>
-            JOIN THE NETWORK →
-          </button>
-          <button className="btn-o" onClick={() => goAuth("signup", "dealmaker")} style={{ background: "transparent", border: "1px solid #1a2e1a", color: "#6b8f6b", borderRadius: 8, padding: "14px 22px", fontSize: 11, letterSpacing: 3, cursor: "pointer", fontFamily: "'Courier New',monospace" }}>
-            VIEW LIVE DEALS
-          </button>
-        </div>
-
-        <div className="fu4 grid-stats" style={{ display: "flex", gap: 40, flexWrap: "wrap" }}>
-          {[
-            { n: `${memberCount.toLocaleString()}+`, l: "Members" },
-            { n: "2,847", l: "Deals Closed" },
-            { n: "$1.2B+", l: "Deal Volume" },
-            { n: "48hrs", l: "Avg Time to Buyer" },
-          ].map(({ n, l }) => (
-            <div key={l}>
-              <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: isMobile ? 26 : 32, fontWeight: 900, color: "#e8f0e8", lineHeight: 1 }}>{n}</div>
-              <div style={{ fontSize: 9, color: "#6b8f6b", letterSpacing: 3, marginTop: 4 }}>{l.toUpperCase()}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <div style={{ borderTop: "1px solid #1a2e1a", borderBottom: "1px solid #1a2e1a", background: "#080d08", overflow: "hidden", padding: "11px 0" }}>
-        <div style={{ display: "flex", animation: "ticker 22s linear infinite", whiteSpace: "nowrap" }}>
-          {[...deals, ...deals, ...deals].map((d, i) => (
-            <div key={`${d.addr}-${i}`} style={{ display: "inline-flex", alignItems: "center", gap: 10, padding: "0 28px", borderRight: "1px solid #1a2e1a" }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: d.days === 0 ? "#ef4444" : "#22c55e", flexShrink: 0 }} />
-              <span style={{ fontSize: 10, color: "#e8f0e8", letterSpacing: 1 }}>{d.addr}, {d.city}</span>
-              <span style={{ fontSize: 10, color: "#22c55e", fontWeight: "bold" }}>ARV {d.arv}</span>
-              <span style={{ fontSize: 9, color: d.badge, background: `${d.badge}22`, border: `1px solid ${d.badge}44`, borderRadius: 3, padding: "1px 6px", letterSpacing: 1 }}>{d.type.toUpperCase()}</span>
-              {d.days === 0 && <span style={{ fontSize: 9, color: "#ef4444", letterSpacing: 1 }}>NEW TODAY</span>}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <section style={{ padding: `${isMobile ? "60px" : "100px"} ${px}`, maxWidth: 1200, margin: "0 auto" }}>
-        <div style={{ fontSize: 10, color: "#22c55e", letterSpacing: 5, marginBottom: 14 }}>WHO IT'S FOR</div>
-        <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: "clamp(32px,5vw,48px)", fontWeight: 900, letterSpacing: -1, marginBottom: 36, lineHeight: 1.1 }}>
-          One platform.
-          <br />
-          Every player in the deal.
-        </h2>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 36, flexWrap: "wrap" }}>
-          {Object.entries(personas).map(([key, p]) => (
-            <div
-              key={key}
-              className="ptab"
-              onClick={() => setActiveTab(key)}
-              style={{
-                padding: isMobile ? "10px 16px" : "10px 22px",
-                borderRadius: 6,
-                fontSize: 10,
-                letterSpacing: 2,
-                border: activeTab === key ? `1px solid ${p.color}` : "1px solid #1a2e1a",
-                background: activeTab === key ? `${p.color}18` : "transparent",
-                color: activeTab === key ? p.color : "#6b8f6b",
-                fontFamily: "'Courier New',monospace",
-              }}
-            >
-              {p.label.toUpperCase()}
-            </div>
-          ))}
-        </div>
-
-        <div key={activeTab} className="grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, alignItems: "start", animation: "fadeUp .4s ease both" }}>
+      <section className="db-hero-pad" style={{ padding: "120px 24px 64px", maxWidth: 1100, margin: "0 auto" }}>
+        <div className="db-hero-grid" style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 60, alignItems: "center" }}>
           <div>
-            <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: "clamp(26px,4vw,40px)", fontWeight: 900, letterSpacing: -1, marginBottom: 18, lineHeight: 1.15, color: active.color, whiteSpace: "pre-line" }}>
-              {active.headline}
-            </h3>
-            <p style={{ fontSize: isMobile ? 13 : 14, color: "#6b8f6b", lineHeight: 1.9, marginBottom: 24 }}>{active.body}</p>
-            <div style={{ fontSize: 9, color: active.color, letterSpacing: 2, marginBottom: 16 }}>{active.stat.toUpperCase()}</div>
-            <button className="btn-g" onClick={() => goAuth("signup", activeTab)} style={{ background: active.color, border: "none", color: "#000", borderRadius: 7, padding: "13px 26px", fontSize: 10, letterSpacing: 3, fontWeight: "bold", cursor: "pointer", fontFamily: "'Courier New',monospace", width: isMobile ? "100%" : "auto" }}>
-              {active.cta.toUpperCase()} →
-            </button>
-          </div>
-          <div style={{ background: "#0a1a0a", border: `1px solid ${active.color}22`, borderRadius: 12, overflow: "hidden" }}>
-            {active.features.map((f, i) => (
-              <div key={f} className="frow" style={{ display: "flex", alignItems: "center", gap: 14, padding: "15px 18px", borderBottom: i < active.features.length - 1 ? "1px solid #1a2e1a" : "none" }}>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", background: `${active.color}22`, border: `1px solid ${active.color}44`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: active.color }} />
-                </div>
-                <span style={{ fontSize: isMobile ? 12 : 13, color: "#e8f0e8", lineHeight: 1.5 }}>{f}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section style={{ padding: `${isMobile ? "60px" : "80px"} ${px}`, borderTop: "1px solid #1a2e1a", background: "#080d08" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 32, flexWrap: "wrap", gap: 16 }}>
-            <div>
-              <div style={{ fontSize: 10, color: "#22c55e", letterSpacing: 5, marginBottom: 10 }}>LIVE DEAL FEED</div>
-              <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: "clamp(28px,4vw,40px)", fontWeight: 900, letterSpacing: -1, lineHeight: 1.1 }}>
-                Off-market deals.
-                <br />
-                Updated daily.
-              </h2>
+            <div className="db-fu-1" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: T.brandLight, borderRadius: 100, padding: "6px 14px", marginBottom: 22 }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.brand, animation: "db-pulse 2s infinite" }} />
+              <span style={{ fontSize: 13, color: T.brand, fontWeight: 600 }}>14,284 members · 3 closed today</span>
             </div>
-            <button className="btn-o" onClick={() => goAuth("signup", "dealmaker")} style={{ background: "transparent", border: "1px solid #1a2e1a", color: "#6b8f6b", borderRadius: 7, padding: "11px 20px", fontSize: 10, letterSpacing: 2, cursor: "pointer", fontFamily: "'Courier New',monospace", whiteSpace: "nowrap" }}>
-              VIEW ALL DEALS →
-            </button>
+
+            <h1 className="db-h1 db-fu-2" style={{ fontSize: 52, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, marginBottom: 16 }}>
+              Your next deal
+              <br />
+              is on DealBank.
+            </h1>
+
+            <p className="db-fu-3" style={{ fontSize: 17, color: T.textSecondary, lineHeight: 1.5, marginBottom: 28, maxWidth: 440 }}>
+              The network where wholesalers, flippers, contractors, and realtors meet around one deal. <strong style={{ color: T.text }}>Free to join · $125/mo unlocks the Dialer.</strong>
+            </p>
+
+            <div className="db-fu-3" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                onClick={() => openAuth("signup", "dealmaker")}
+                className="db-btn-primary"
+                style={{ background: T.brand, border: "none", color: "#fff", padding: "14px 24px", borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
+              >
+                Get started free →
+              </button>
+              <button
+                onClick={() => openAuth("signin")}
+                className="db-btn-ghost"
+                style={{ background: T.surface, border: `1px solid ${T.border}`, color: T.text, padding: "14px 24px", borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
+              >
+                Log in
+              </button>
+            </div>
+
+            <div style={{ marginTop: 14, fontSize: 13, color: T.textMuted }}>No credit card · Free to browse · Pro = $125/mo</div>
           </div>
 
-          <div className="grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
-            {deals.map((d) => (
-              <div key={d.addr} className="dcard" style={{ background: "#0d1a0d", border: "1px solid #1a2e1a", borderRadius: 10, overflow: "hidden" }}>
-                <div style={{ background: "#0a1408", padding: "14px 16px", borderBottom: "1px solid #1a2e1a" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                    <span style={{ fontSize: 8, color: d.badge, background: `${d.badge}22`, border: `1px solid ${d.badge}44`, borderRadius: 3, padding: "2px 7px", letterSpacing: 2 }}>{d.type.toUpperCase()}</span>
-                    {d.days === 0
-                      ? <span style={{ fontSize: 8, color: "#ef4444", letterSpacing: 1 }}>NEW</span>
-                      : <span style={{ fontSize: 9, color: "#6b8f6b" }}>{d.days}d ago</span>}
+          <div className="db-fu-2" style={{ position: "relative" }}>
+            <div style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 16, padding: 20, boxShadow: T.shadowLg }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: T.brand, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14 }}>TW</div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                      T. Williams <VerifiedBadge size={10} />
+                    </div>
+                    <div style={{ fontSize: 12, color: T.textMuted }}>Just posted · Wholesale</div>
                   </div>
-                  <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, fontWeight: 700, color: "#e8f0e8", marginBottom: 3, lineHeight: 1.2 }}>{d.addr}</div>
-                  <div style={{ fontSize: 10, color: "#6b8f6b" }}>{d.city}</div>
                 </div>
-                <div style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 12 }}>
-                    {[["ARV", d.arv, "#22c55e"], ["ASK", d.ask, "#e8f0e8"], ["RENO", d.reno, "#eab308"], ["ROI", d.roi, "#22c55e"]].map(([l, v, c]) => (
-                      <div key={l} style={{ background: "#080d08", borderRadius: 5, padding: "7px 9px" }}>
-                        <div style={{ fontSize: 7, color: "#6b8f6b", letterSpacing: 2, marginBottom: 2 }}>{l}</div>
-                        <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 14, color: c, fontWeight: 700 }}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={() => goAuth("signup", "dealmaker")} style={{ width: "100%", background: "#22c55e", border: "none", color: "#000", borderRadius: 5, padding: "10px", fontSize: 9, letterSpacing: 2, fontWeight: "bold", cursor: "pointer", fontFamily: "'Courier New',monospace" }}>VIEW DEAL →</button>
+                <DealScoreBadge score={91} size="sm" />
+              </div>
+
+              <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 3 }}>789 Oak Grove Blvd</div>
+              <div style={{ fontSize: 13, color: T.textSecondary, marginBottom: 14 }}>Sacramento, CA · 3bd/2ba</div>
+
+              <div style={{ background: T.surface, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+                  {[["ARV", "$420K"], ["Asking", "$228K"], ["ROI", "31%"]].map(([k, v]) => (
+                    <div key={k}>
+                      <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 3, fontWeight: 500 }}>{k}</div>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: T.brand, letterSpacing: "-0.02em" }}>{v}</div>
+                    </div>
+                  ))}
                 </div>
+              </div>
+
+              <button
+                onClick={() => openAuth("signup", "dealmaker")}
+                className="db-btn-primary"
+                style={{ width: "100%", background: T.brand, border: "none", color: "#fff", padding: "12px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+              >
+                View deal
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="how-it-works" className="db-section-pad" style={{ padding: "68px 24px", borderTop: `1px solid ${T.border}` }}>
+        <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 30 }}>
+            <h2 className="db-h2" style={{ fontSize: 34, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 10 }}>How Deals Move on DealBank</h2>
+            <p style={{ fontSize: 16, color: T.textSecondary, maxWidth: 760, margin: "0 auto" }}>
+              The workflow is built to keep dealmakers, contractors, and realtors in one operating lane from analysis to close.
+            </p>
+          </div>
+
+          <div className="db-roles-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14, marginBottom: 16 }}>
+            {[
+              { step: "01", title: "Analyze & qualify", body: "Run offer math, hold/sell cost modeling, and save high-quality opportunities into pipeline." },
+              { step: "02", title: "Execute the project", body: "Coordinate contractors, progress jobs, and keep deal notes and contract milestones aligned." },
+              { step: "03", title: "Exit with speed", body: "Push referral-ready listings to realtors and track commission splits with full visibility." },
+            ].map((item) => (
+              <div key={item.step} style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 14, padding: "18px 18px 16px" }}>
+                <div style={{ fontSize: 11, color: T.brand, letterSpacing: 2, marginBottom: 8 }}>{item.step}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 8 }}>{item.title}</div>
+                <div style={{ fontSize: 14, color: T.textSecondary, lineHeight: 1.65 }}>{item.body}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
+            {[
+              ["Avg time to first quote", "22h"],
+              ["Referral conversion", "31%"],
+              ["Deals tracked monthly", "5,400+"],
+              ["Multi-role active members", "14,284"],
+            ].map(([label, value]) => (
+              <div key={label} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 12, padding: "14px 12px", textAlign: "center" }}>
+                <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 24, color: T.brand, fontWeight: 800, letterSpacing: "-0.03em" }}>{value}</div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section style={{ padding: `${isMobile ? "60px" : "100px"} ${px}`, maxWidth: 1200, margin: "0 auto" }}>
-        <div style={{ fontSize: 10, color: "#22c55e", letterSpacing: 5, marginBottom: 14 }}>HOW IT WORKS</div>
-        <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: "clamp(28px,4vw,48px)", fontWeight: 900, letterSpacing: -1, marginBottom: 56, lineHeight: 1.1 }}>
-          A deal moves through
-          <br />
-          the whole network.
-        </h2>
-        <div className="steps" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 0, position: "relative" }}>
-          <div className="step-line" style={{ position: "absolute", top: 28, left: "12.5%", right: "12.5%", height: 1, background: "linear-gradient(90deg,#22c55e44,#eab30844,#22c55e44,#3b82f644)", zIndex: 0 }} />
-          {[
-            { n: "01", role: "Wholesaler", color: "#22c55e", desc: "Finds an off-market deal and lists it on DealBank with the assignment fee." },
-            { n: "02", role: "Flipper", color: "#eab308", desc: "Discovers the deal, analyzes it with AI, and closes the contract." },
-            { n: "03", role: "Contractor", color: "#f97316", desc: "Gets hired directly through DealBank to rehab the property." },
-            { n: "04", role: "Realtor", color: "#3b82f6", desc: "Gets matched when the flip is ready to sell. Closes it fast." },
-          ].map((s) => (
-            <div key={s.n} style={{ padding: isMobile ? "0" : "0 24px", position: "relative", zIndex: 1 }}>
-              <div style={{ width: 56, height: 56, borderRadius: "50%", background: s.color, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, flexShrink: 0 }}>
-                <span style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 18, fontWeight: 900, color: "#050a05" }}>{s.n}</span>
+      <section id="pricing" className="db-section-pad" style={{ padding: "72px 24px", background: T.surface, borderTop: `1px solid ${T.border}` }}>
+        <div style={{ maxWidth: 1000, margin: "0 auto", textAlign: "center" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: T.brandLight, borderRadius: 100, padding: "6px 14px", marginBottom: 18 }}>
+            <span style={{ fontSize: 13, color: T.brand, fontWeight: 700 }}>ONE CLOSED DEAL CAN PAY FOR YEARS</span>
+          </div>
+          <h2 className="db-h2" style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 12 }}>Start free. Go Pro when ready.</h2>
+          <p style={{ fontSize: 16, color: T.textSecondary, maxWidth: 560, margin: "0 auto 36px" }}>
+            Browse the marketplace and analyze up to 25 deals per month for free. Pro unlocks the Dialer + unlimited analyses.
+          </p>
+
+          <div className="db-roles-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, maxWidth: 820, margin: "0 auto" }}>
+            <div style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 16, padding: 24, textAlign: "left", position: "relative" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.textSecondary, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Free</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 14 }}>
+                <span style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.03em" }}>$0</span>
+                <span style={{ fontSize: 14, color: T.textSecondary }}>/month</span>
               </div>
-              <div style={{ fontSize: 10, color: s.color, letterSpacing: 3, marginBottom: 8 }}>{s.role.toUpperCase()}</div>
-              <p style={{ fontSize: 12, color: "#6b8f6b", lineHeight: 1.8, maxWidth: 220 }}>{s.desc}</p>
+              {[
+                "Browse marketplace",
+                "Post deals to wholesale",
+                "25 free Analyzer runs/mo",
+                "CRM + Pipeline",
+                "Deal alerts (first-to-claim)",
+              ].map((item) => (
+                <div key={item} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+                  <div style={{ width: 16, height: 16, borderRadius: "50%", background: T.surface, color: T.textSecondary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800 }}>✓</div>
+                  <span style={{ fontSize: 14 }}>{item}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: `linear-gradient(135deg, ${T.brandLight} 0%, ${T.bg} 100%)`, border: `2px solid ${T.brand}`, borderRadius: 16, padding: 24, textAlign: "left", position: "relative", boxShadow: T.shadowHover }}>
+              <div style={{ position: "absolute", top: -11, left: "50%", transform: "translateX(-50%)", background: T.brand, color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 100, letterSpacing: "0.05em" }}>FOR CLOSERS</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.brand, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Pro</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 14 }}>
+                <span style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.03em" }}>$125</span>
+                <span style={{ fontSize: 14, color: T.textSecondary }}>/month</span>
+              </div>
+              {[
+                "Everything in Free",
+                "Unlimited Power Dialer",
+                "Unlimited Analyzer",
+                "Targeted list builder",
+                "Full deal flow + eSign",
+                "Priority marketplace placement",
+              ].map((item) => (
+                <div key={item} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+                  <div style={{ width: 16, height: 16, borderRadius: "50%", background: T.brand, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800 }}>✓</div>
+                  <span style={{ fontSize: 14 }}>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="platform-modules" className="db-section-pad" style={{ padding: "70px 24px", borderTop: `1px solid ${T.border}` }}>
+        <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 26 }}>
+            <h2 className="db-h2" style={{ fontSize: 34, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 10 }}>Everything in One Deal Operating System</h2>
+            <p style={{ fontSize: 16, color: T.textSecondary, maxWidth: 760, margin: "0 auto" }}>
+              We added back the detailed capabilities so visitors understand the full platform, not just pricing.
+            </p>
+          </div>
+
+          <div className="db-roles-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14 }}>
+            {[
+              { title: "Analyzer", points: ["Offer and ROI calculation", "Holding and selling costs", "Scenario-safe underwriting"] },
+              { title: "Pipeline", points: ["Stage-based deal tracking", "Contract workflow visibility", "Action history and updates"] },
+              { title: "Marketplace", points: ["Wholesale deal distribution", "Buyer-ready listing data", "Faster offer circulation"] },
+              { title: "Contractor Hub", points: ["Trade-specific lead matching", "Quote and progress controls", "Performance and reviews"] },
+              { title: "Realtor Hub", points: ["Referral-ready listing queue", "Active listing execution", "Split and compliance tracking"] },
+              { title: "Tools Suite", points: ["Lead tools and dialer", "CRM sequence support", "Partner resources"] },
+            ].map((module) => (
+              <div key={module.title} style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 14, padding: "18px 18px 16px" }}>
+                <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 8 }}>{module.title}</div>
+                {module.points.map((point) => (
+                  <div key={point} style={{ fontSize: 14, color: T.textSecondary, lineHeight: 1.65, marginBottom: 4 }}>
+                    • {point}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="db-section-pad" style={{ padding: "72px 24px", maxWidth: 1000, margin: "0 auto" }}>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <h2 className="db-h2" style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 10 }}>Which one are you?</h2>
+        </div>
+        <div className="db-roles-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+          {Object.entries(PERSONAS).map(([key, p]) => (
+            <div key={key} onClick={() => openAuth("signup", key)} className="db-card-hover" style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 16, padding: 24, cursor: "pointer" }}>
+              <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.01em", marginBottom: 6 }}>{p.label}</div>
+              <div style={{ fontSize: 14, color: T.textSecondary, marginBottom: 18 }}>{p.desc}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.brand }}>Join as {p.label} →</div>
             </div>
           ))}
         </div>
       </section>
 
-      <section style={{ padding: `${isMobile ? "60px" : "80px"} ${px}`, background: "#080d08", borderTop: "1px solid #1a2e1a" }}>
-        <div style={{ maxWidth: 1000, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <div style={{ fontSize: 10, color: "#22c55e", letterSpacing: 5, marginBottom: 14 }}>PRICING</div>
-            <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: "clamp(28px,5vw,48px)", fontWeight: 900, letterSpacing: -1, lineHeight: 1.1 }}>Simple. One price.</h2>
-          </div>
-          <div className="pricing-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
-            {[
-              { role: "Wholesaler", price: "Free to list", sub: "1.5% fee at close only", color: "#22c55e", note: "No upfront cost, ever", featured: false, tab: "wholesaler" },
-              { role: "Flipper", price: "$149/mo", sub: "All tools included", color: "#eab308", note: "AI, dialer, CRM, contracts", featured: true, tab: "flipper" },
-              { role: "Contractor", price: "$79/mo", sub: "Pro — verified + leads", color: "#f97316", note: "$39/mo basic available", featured: false, tab: "contractor" },
-              { role: "Realtor", price: "Free", sub: "25% split at close", color: "#3b82f6", note: "Free forever, no monthly fee", featured: false, tab: "realtor" },
-            ].map((p) => (
-              <div key={p.role} style={{ background: p.featured ? "#0f2e0f" : "#0a1a0a", border: `1px solid ${p.featured ? `${p.color}66` : "#1a2e1a"}`, borderRadius: 12, padding: "24px 20px", position: "relative" }}>
-                {p.featured && <div style={{ position: "absolute", top: -1, left: "50%", transform: "translateX(-50%)", background: "#22c55e", color: "#000", fontSize: 8, letterSpacing: 2, padding: "3px 10px", borderRadius: "0 0 6px 6px", fontWeight: "bold", fontFamily: "'Courier New',monospace", whiteSpace: "nowrap" }}>MOST POPULAR</div>}
-                <div style={{ fontSize: 9, color: p.color, letterSpacing: 3, marginBottom: 10, marginTop: p.featured ? 8 : 0 }}>{p.role.toUpperCase()}</div>
-                <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: isMobile ? 22 : 28, fontWeight: 900, color: "#e8f0e8", marginBottom: 6, lineHeight: 1 }}>{p.price}</div>
-                <div style={{ fontSize: 10, color: "#6b8f6b", marginBottom: 8 }}>{p.sub}</div>
-                <div style={{ fontSize: 9, color: p.color, opacity: 0.8, lineHeight: 1.5 }}>{p.note}</div>
-                <button className={p.featured ? "btn-g" : "btn-o"} onClick={() => goAuth("signup", p.tab)} style={{ marginTop: 20, width: "100%", background: p.featured ? "#22c55e" : "transparent", border: `1px solid ${p.featured ? "transparent" : "#1a2e1a"}`, color: p.featured ? "#000" : "#6b8f6b", borderRadius: 6, padding: "11px", fontSize: 9, letterSpacing: 2, cursor: "pointer", fontFamily: "'Courier New',monospace", fontWeight: p.featured ? "bold" : "normal" }}>
-                  GET STARTED →
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+      <section className="db-section-pad" style={{ padding: "80px 24px", textAlign: "center", background: `linear-gradient(135deg, ${T.brandLight}, ${T.bg})` }}>
+        <h2 className="db-h2" style={{ fontSize: 40, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1, marginBottom: 14 }}>Ready to close more deals?</h2>
+        <p style={{ fontSize: 16, color: T.textSecondary, marginBottom: 28 }}>25 free credits every month. No card required.</p>
+        <button
+          onClick={() => openAuth("signup", "dealmaker")}
+          className="db-btn-primary"
+          style={{ background: T.brand, border: "none", color: "#fff", padding: "15px 30px", borderRadius: 12, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
+        >
+          Create your free account
+        </button>
       </section>
 
-      <section style={{ padding: `${isMobile ? "80px" : "120px"} ${px}`, textAlign: "center", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, #0f2e0f 0%, #050a05 70%)", pointerEvents: "none" }} />
-        <div style={{ position: "relative", zIndex: 1 }}>
-          <div style={{ fontSize: 10, color: "#22c55e", letterSpacing: 5, marginBottom: 18 }}>JOIN THE NETWORK</div>
-          <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: "clamp(32px,6vw,72px)", fontWeight: 900, letterSpacing: -2, lineHeight: 1.05, marginBottom: 24 }}>
-            Your next deal is
-            <br />
-            already on DealBank.
-          </h2>
-          <p style={{ fontSize: isMobile ? 13 : 14, color: "#6b8f6b", marginBottom: 36, lineHeight: 1.8 }}>14,200+ wholesalers, flippers, contractors, and realtors — and growing every day.</p>
-          <button className="btn-g" onClick={() => goAuth("signup", activeTab)} style={{ background: "#22c55e", border: "none", color: "#000", borderRadius: 8, padding: `${isMobile ? "14px 24px" : "16px 40px"}`, fontSize: isMobile ? 11 : 12, letterSpacing: 3, fontWeight: "bold", cursor: "pointer", fontFamily: "'Courier New',monospace", width: isMobile ? "100%" : "auto", maxWidth: 400 }}>
-            CREATE YOUR FREE ACCOUNT →
-          </button>
-          <div style={{ marginTop: 16, fontSize: 10, color: "#4a7a4a", letterSpacing: 2 }}>NO CREDIT CARD REQUIRED</div>
-        </div>
-      </section>
-
-      <footer style={{ borderTop: "1px solid #1a2e1a", padding: `28px ${px}` }}>
-        <div className="footer-inner" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+      <footer style={{ padding: "28px 24px", borderTop: `1px solid ${T.border}`, background: T.bg }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ position: "relative", width: 22, height: 22 }}>
-              <div style={{ position: "absolute", inset: 0, background: "#22c55e", borderRadius: 3, transform: "rotate(45deg) scale(0.68)" }} />
-              <div style={{ position: "absolute", inset: 4, background: "#050a05", borderRadius: 2, transform: "rotate(45deg) scale(0.68)" }} />
-              <div style={{ position: "absolute", inset: 7, background: "#22c55e", borderRadius: 1, transform: "rotate(45deg) scale(0.68)" }} />
-            </div>
-            <span style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 14, fontWeight: 900 }}>Deal<span style={{ color: "#22c55e" }}>Bank</span></span>
-            <span style={{ fontSize: 8, color: "#4a7a4a", letterSpacing: 3, marginLeft: 6 }}>THE DEAL NETWORK</span>
+            <div style={{ width: 24, height: 24, borderRadius: 7, background: T.brand, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>D</div>
+            <span style={{ fontSize: 15, fontWeight: 700 }}>DealBank</span>
+            <span style={{ fontSize: 13, color: T.textMuted, marginLeft: 6 }}>© 2026</span>
           </div>
-          <div style={{ fontSize: 9, color: "#4a7a4a", letterSpacing: 2 }}>© 2026 DEALBANK · DEALBANK.IO</div>
-          <div style={{ display: "flex", gap: 20, fontSize: 9, color: "#4a7a4a", letterSpacing: 2 }}>
-            <button
-              type="button"
-              className="nlink"
-              onClick={() => onOpenLegal?.("terms")}
-              style={{ background: "transparent", border: "none", color: "inherit", letterSpacing: "inherit", fontFamily: "inherit", fontSize: "inherit", padding: 0, cursor: "pointer" }}
-            >
-              TERMS
-            </button>
-            <button
-              type="button"
-              className="nlink"
-              onClick={() => onOpenLegal?.("privacy")}
-              style={{ background: "transparent", border: "none", color: "inherit", letterSpacing: "inherit", fontFamily: "inherit", fontSize: "inherit", padding: 0, cursor: "pointer" }}
-            >
-              PRIVACY
-            </button>
-            <a
-              className="nlink"
-              href="mailto:support@dealbank.io"
-              style={{ color: "inherit", textDecoration: "none" }}
-            >
-              CONTACT
-            </a>
+          <div style={{ display: "flex", gap: 22, fontSize: 13, color: T.textSecondary, fontWeight: 500 }}>
+            <span style={{ cursor: "pointer" }} onClick={() => onOpenLegal?.("terms")}>Terms</span>
+            <span style={{ cursor: "pointer" }} onClick={() => onOpenLegal?.("privacy")}>Privacy</span>
+            <span style={{ cursor: "pointer" }} onClick={() => openAuth("signin")}>Help</span>
           </div>
         </div>
       </footer>
+
     </div>
   );
 }

@@ -11,8 +11,35 @@ The frontend never calls Anthropic directly.
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `ANTHROPIC_API_KEY` (server-side only, set in Vercel project settings)
 - `ANTHROPIC_MODEL` (optional, defaults to `claude-sonnet-4-20250514`)
+
+### Optional Claude Variables
+
+- `ANTHROPIC_API_KEY` (server-side only): required for live Anthropic responses.
+- `CLAUDE_DEMO_MODE=true`: forces local mock Claude responses (no Anthropic billing).
+
+If `ANTHROPIC_API_KEY` is missing, the proxy now falls back to demo responses automatically so AI flows can still be demonstrated.
+
+## Property Intelligence Proxy (Realty Base via RapidAPI)
+
+Deal analysis now supports external property grounding data through:
+
+- `POST /api/property-intelligence`
+
+The frontend calls this endpoint first for property details, AVM hints, and comps snapshots, then feeds that context into Claude analysis.
+
+### Required Server Environment Variables
+
+- `RAPIDAPI_KEY_REALTY_BASE` (or fallback `RAPIDAPI_KEY`)
+
+### Optional Server Environment Variables
+
+- `RAPIDAPI_REALTY_BASE_HOST` (default: `realty-base-us.p.rapidapi.com`)
+- `RAPIDAPI_REALTY_BASE_QUERY_KEY` (default: `query`)
+- `RAPIDAPI_REALTY_BASE_DETAIL_PATHS` (comma-separated failover paths)
+	- default: `/property/v2/detail,/property/detail,/detail`
+- `RATE_LIMIT_PROPERTY_INTELLIGENCE_MAX`
+- `RATE_LIMIT_PROPERTY_INTELLIGENCE_WINDOW_MS`
 
 ### Optional Frontend Variable
 

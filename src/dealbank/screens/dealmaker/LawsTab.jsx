@@ -8,7 +8,7 @@ export default function LawsTab({ ctx }) {
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
         {Object.keys(STATE_LAWS).map((state) => (
-          <div key={state} onClick={() => setSelectedState(state)} style={{ padding: "5px 12px", borderRadius: 4, cursor: "pointer", fontSize: 9, letterSpacing: 1, fontFamily: G.mono, border: `1px solid ${selectedState === state ? G.green : G.border}`, background: selectedState === state ? G.greenGlow : "transparent", color: selectedState === state ? G.green : G.muted }}>
+          <div key={state} onClick={() => setSelectedState(state)} style={{ padding: "5px 12px", borderRadius: 4, cursor: "pointer", fontSize: 9, letterSpacing: 1, fontFamily: G.mono, border: `1px solid ${selectedState === state ? G.green : G.border}`, background: selectedState === state ? G.greenGlow : G.surface, color: selectedState === state ? G.greenDim : G.text }}>
             {state}
           </div>
         ))}
@@ -20,7 +20,7 @@ export default function LawsTab({ ctx }) {
 
           <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap" }}>
             {[["transfer", "Transfer Tax"], ["disclosure", "Disclosure"], ["foreclosure", "Foreclosure"], ["contractor", "Contractors"], ["tax", "Tax"]].map(([key, title]) => (
-              <div key={key} onClick={() => setLawSection(key)} style={{ padding: "5px 12px", borderRadius: 4, cursor: "pointer", fontSize: 8, letterSpacing: 2, textTransform: "uppercase", fontFamily: G.mono, border: `1px solid ${lawSection === key ? G.gold : G.border}`, background: lawSection === key ? "#1a1200" : "transparent", color: lawSection === key ? G.gold : G.muted }}>
+              <div key={key} onClick={() => setLawSection(key)} style={{ padding: "5px 12px", borderRadius: 4, cursor: "pointer", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: G.mono, border: `1px solid ${lawSection === key ? G.gold : G.border}`, background: lawSection === key ? "#fef3c7" : G.surface, color: lawSection === key ? "#92400e" : G.muted }}>
                 {title}
               </div>
             ))}
@@ -35,7 +35,7 @@ export default function LawsTab({ ctx }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
               {STATE_LAWS[selectedState].keyDocs.map((doc, index) => (
                 <div key={index} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 4, padding: "8px 10px", display: "flex", gap: 6, alignItems: "center" }}>
-                  <span style={{ color: G.green, fontSize: 10 }}>✓</span>
+                  <span style={{ color: G.green, fontSize: 10, fontWeight: "bold" }}>+</span>
                   <span style={{ fontSize: 10, color: G.text }}>{doc}</span>
                 </div>
               ))}
@@ -47,13 +47,13 @@ export default function LawsTab({ ctx }) {
             {STATE_LAWS[selectedState].resources.map((resource, index) => (
               <a key={index} href={resource.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: index < STATE_LAWS[selectedState].resources.length - 1 ? `1px solid ${G.faint}` : "none", textDecoration: "none" }}>
                 <span style={{ fontSize: 11, color: G.text }}>{resource.title}</span>
-                <span style={{ fontSize: 9, color: G.blue, letterSpacing: 1 }}>OPEN →</span>
+                <span style={{ fontSize: 10, color: G.blue, letterSpacing: 1, fontWeight: 700 }}>OPEN →</span>
               </a>
             ))}
           </div>
 
-          <div style={{ marginTop: 10, fontSize: 9, color: G.muted, lineHeight: 1.7, fontStyle: "italic" }}>
-            ⚠ This information is for general guidance only. Laws change frequently. Always consult a licensed real estate attorney in {selectedState} before executing deals.
+          <div style={{ marginTop: 10, fontSize: 10, color: G.muted, lineHeight: 1.7, fontStyle: "italic" }}>
+            Important: this information is for general guidance only. Laws change frequently. Always consult a licensed real estate attorney in {selectedState} before executing deals.
           </div>
         </div>
       )}
