@@ -1,4 +1,6 @@
+import { useMemo, useState } from "react";
 import TopBar from "../components/TopBar";
+import DataSearchBar from "../components/DataSearchBar";
 import DashboardWorkspace from "../components/DashboardWorkspace";
 import { formatMoney } from "../core/adminDashboardFormat";
 import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
@@ -13,6 +15,7 @@ import AdminUsersPanel from "./admin/AdminUsersPanel";
 
 export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACTORS, adminTab, setAdminTab, userName, user, onSignOut }) {
   const { isMobile, mode } = useViewport();
+  const [contractorSearch, setContractorSearch] = useState("");
   const { metrics, loading: metricsLoading, error: metricsError, reload } = useAdminMetrics(user);
   const {
     users: adminUsers,
@@ -39,6 +42,22 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
   const creditsSharePct = totalCashRevenue > 0 ? Math.round((creditsRevenue / totalCashRevenue) * 100) : 0;
   const platformFeeSharePct = totalCashRevenue > 0 ? Math.round((platformFeesRevenue / totalCashRevenue) * 100) : 0;
   const launchIntegrations = getLaunchIntegrationStatus();
+  const filteredMockContractors = useMemo(() => {
+    const query = contractorSearch.trim().toLowerCase();
+    if (!query) return MOCK_CONTRACTORS;
+
+    return MOCK_CONTRACTORS.filter((contractor) => {
+      const searchable = [
+        contractor.name,
+        contractor.trade,
+        contractor.location,
+        contractor.rate,
+        String(contractor.rating || ""),
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [MOCK_CONTRACTORS, contractorSearch]);
 
   const ATABS = [
     { id: "overview", icon: "OV", label: "Overview" },
@@ -305,8 +324,24 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
         {adminTab === "contractors" && (
           <div>
             <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, marginBottom: 12 }}>Contractor Network</div>
+
+            <DataSearchBar
+              G={G}
+              value={contractorSearch}
+              onChange={setContractorSearch}
+              placeholder="Search by contractor, trade, location, rate, or rating"
+              resultCount={filteredMockContractors.length}
+              totalCount={MOCK_CONTRACTORS.length}
+            />
+
+            {MOCK_CONTRACTORS.length > 0 && filteredMockContractors.length === 0 && (
+              <div style={{ ...card, marginBottom: 10, fontSize: 9, color: G.muted }}>
+                No contractors match your search.
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 10 }}>
-              {MOCK_CONTRACTORS.map((contractor) => (
+              {filteredMockContractors.map((contractor) => (
                 <div key={contractor.id} style={{ ...card }}>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
                     <div

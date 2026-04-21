@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useViewport from "../core/useViewport";
 
 export default function TopBar({ title, tabs, active, onTab, userName, onSignOut, G, btnO }) {
@@ -26,6 +26,17 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
     onSignOut();
   }
 
+  useEffect(() => {
+    if (!isMobile || !menuOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobile, menuOpen]);
+
   return (
     <div
       style={{
@@ -37,7 +48,11 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
         WebkitBackdropFilter: "saturate(180%) blur(16px)",
         borderBottom: `1px solid ${G.border}`,
         boxShadow: "none",
-        padding: isMobile ? "8px 12px" : isTablet ? "10px 16px" : "12px 20px",
+        padding: isMobile
+          ? "calc(8px + env(safe-area-inset-top, 0px)) 12px 8px"
+          : isTablet
+            ? "10px 16px"
+            : "12px 20px",
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: isMobile ? 52 : 58, gap: 10 }}>
@@ -106,9 +121,10 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
               type="button"
               onClick={() => setMenuOpen((prev) => !prev)}
               aria-label="Open dashboard menu"
+              aria-expanded={menuOpen}
               style={{
-                width: 38,
-                height: 38,
+                width: 40,
+                height: 40,
                 borderRadius: 10,
                 border: `1px solid ${G.border}`,
                 background: G.surface,
@@ -158,69 +174,93 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
       )}
 
       {isMobile && menuOpen && (
-        <div
-          style={{
-            position: "fixed",
-            top: 68,
-            left: 12,
-            right: 12,
-            zIndex: 245,
-            border: `1px solid ${G.border}`,
-            borderRadius: 12,
-            background: G.card,
-            boxShadow: G.shadowMd,
-            padding: 10,
-          }}
-        >
-          <div style={{ display: "grid", gap: 6 }}>
-            {tabs.map((tab) => {
-              const isActive = active === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => handleTab(tab.id)}
-                  style={{
-                    textAlign: "left",
-                    border: `1px solid ${isActive ? `${G.green}44` : G.border}`,
-                    borderRadius: 8,
-                    background: isActive ? `${G.green}12` : G.surface,
-                    color: isActive ? G.green : G.text,
-                    padding: "10px 12px",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+        <>
+          <button
+            type="button"
+            aria-label="Close dashboard menu"
+            onClick={() => setMenuOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 243,
+              border: "none",
+              background: "rgba(4, 10, 6, 0.32)",
+            }}
+          />
 
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <div
-              style={{
-                flex: 1,
-                borderRadius: 8,
-                border: `1px solid ${G.border}`,
-                background: G.surface,
-                color: G.muted,
-                padding: "10px 12px",
-                fontSize: 12,
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {userName || "User"}
+          <div
+            style={{
+              position: "fixed",
+              top: "calc(70px + env(safe-area-inset-top, 0px))",
+              left: 12,
+              right: 12,
+              bottom: "calc(12px + env(safe-area-inset-bottom, 0px))",
+              zIndex: 245,
+              border: `1px solid ${G.border}`,
+              borderRadius: 12,
+              background: G.card,
+              boxShadow: G.shadowMd,
+              padding: 10,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ fontSize: 10, color: G.muted, letterSpacing: 1, fontWeight: 700 }}>
+              Quick Switch
             </div>
-            <button onClick={handleSignOut} style={{ ...btnO, flex: 1, borderRadius: 8, padding: "10px 12px", fontSize: 13 }}>
-              Log out
-            </button>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, overflowY: "auto", minHeight: 0 }}>
+              {tabs.map((tab) => {
+                const isActive = active === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => handleTab(tab.id)}
+                    style={{
+                      textAlign: "left",
+                      border: `1px solid ${isActive ? `${G.green}44` : G.border}`,
+                      borderRadius: 8,
+                      background: isActive ? `${G.green}12` : G.surface,
+                      color: isActive ? G.green : G.text,
+                      padding: "11px 10px",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <div
+                style={{
+                  flex: 1,
+                  borderRadius: 8,
+                  border: `1px solid ${G.border}`,
+                  background: G.surface,
+                  color: G.muted,
+                  padding: "10px 12px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {userName || "User"}
+              </div>
+              <button onClick={handleSignOut} style={{ ...btnO, flex: 1, borderRadius: 8, padding: "10px 12px", fontSize: 13 }}>
+                Log out
+              </button>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

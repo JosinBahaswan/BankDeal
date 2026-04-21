@@ -1,11 +1,15 @@
 export function pagePaddingByMode(mode) {
-  if (mode === "mobile") return "14px 14px 24px";
+  if (mode === "mobile") {
+    return "calc(10px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px)) calc(22px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px))";
+  }
   if (mode === "tablet") return "20px 22px 30px";
   return "24px 32px 36px";
 }
 
 export function dashboardPaddingByMode(mode) {
-  if (mode === "mobile") return "14px 12px 24px";
+  if (mode === "mobile") {
+    return "12px calc(12px + env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px))";
+  }
   if (mode === "tablet") return "16px 20px 26px";
   return "16px 20px 30px";
 }

@@ -1,3 +1,5 @@
+import { useMemo, useState } from "react";
+import DataSearchBar from "../../components/DataSearchBar";
 import { formatRelativeTime, formatShortDate, userStatusColor, userTypeColor } from "../../core/adminDashboardFormat";
 
 export default function AdminUsersPanel({
@@ -11,6 +13,26 @@ export default function AdminUsersPanel({
   error,
   onReload,
 }) {
+  const [userSearch, setUserSearch] = useState("");
+
+  const filteredUsers = useMemo(() => {
+    const query = userSearch.trim().toLowerCase();
+    if (!query) return users;
+
+    return users.filter((row) => {
+      const searchable = [
+        row.name,
+        row.email,
+        row.type,
+        row.isActive ? "active" : "inactive",
+        row.joinedAt,
+        row.lastLogin,
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [users, userSearch]);
+
   return (
     <div>
       <div
@@ -26,6 +48,15 @@ export default function AdminUsersPanel({
         <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text }}>User Management</div>
         <div style={{ fontSize: 10, color: G.muted }}>{totalUsers} total users</div>
       </div>
+
+      <DataSearchBar
+        G={G}
+        value={userSearch}
+        onChange={setUserSearch}
+        placeholder="Search by name, email, type, or status"
+        resultCount={filteredUsers.length}
+        totalCount={users.length}
+      />
 
       <div style={{ ...card }}>
         {error && (
@@ -45,7 +76,11 @@ export default function AdminUsersPanel({
           <div style={{ fontSize: 9, color: G.muted }}>No users found in public.users.</div>
         )}
 
-        {!isMobile && users.length > 0 && (
+        {!error && !loading && users.length > 0 && filteredUsers.length === 0 && (
+          <div style={{ fontSize: 9, color: G.muted }}>No users match your search.</div>
+        )}
+
+        {!isMobile && filteredUsers.length > 0 && (
           <>
             <div
               style={{
@@ -65,7 +100,7 @@ export default function AdminUsersPanel({
               ))}
             </div>
 
-            {users.map((row) => (
+            {filteredUsers.map((row) => (
               <div
                 key={row.id}
                 style={{
@@ -89,9 +124,9 @@ export default function AdminUsersPanel({
           </>
         )}
 
-        {isMobile && users.length > 0 && (
+        {isMobile && filteredUsers.length > 0 && (
           <div>
-            {users.map((row) => (
+            {filteredUsers.map((row) => (
               <div
                 key={row.id}
                 style={{

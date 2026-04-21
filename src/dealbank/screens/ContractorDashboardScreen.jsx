@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { capturePhotoBlob } from "../core/mobileRuntime";
+import DataSearchBar from "../components/DataSearchBar";
 import TopBar from "../components/TopBar";
 import AppActionModal from "../components/AppActionModal";
 import DashboardWorkspace from "../components/DashboardWorkspace";
@@ -22,6 +23,12 @@ const TRADE_OPTIONS = [
   "Windows",
   "Foundation",
   "Handyman",
+];
+
+const REVIEW_ROWS = [
+  { id: "r1", flipper: "T. Williams", title: "Kitchen + bath remodel", date: "Apr 2026", stars: 5, text: "Communicated every day, hit timeline, and gave us clear change-order options." },
+  { id: "r2", flipper: "M. Johnson", title: "HVAC replacement", date: "Mar 2026", stars: 5, text: "Fast response and clean workmanship. Great for investor projects." },
+  { id: "r3", flipper: "D. Patel", title: "Electrical rewire", date: "Feb 2026", stars: 4, text: "Solid execution and passed city inspection first try." },
 ];
 
 function postedLabel(createdAt) {
@@ -138,6 +145,10 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
   const [jobsRefreshTick, setJobsRefreshTick] = useState(0);
   const [openQuoteLeadId, setOpenQuoteLeadId] = useState("");
   const [quoteDraft, setQuoteDraft] = useState({ amount: "", notes: "" });
+  const [leadSearch, setLeadSearch] = useState("");
+  const [activeJobsSearch, setActiveJobsSearch] = useState("");
+  const [jobHistorySearch, setJobHistorySearch] = useState("");
+  const [reviewSearch, setReviewSearch] = useState("");
   const [actionModal, setActionModal] = useState({ open: false, title: "", message: "", tone: "info" });
 
   function showActionModal(title, message, tone = "info") {
@@ -445,12 +456,6 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
     event.target.value = "";
   }
 
-  const reviewRows = [
-    { id: "r1", flipper: "T. Williams", title: "Kitchen + bath remodel", date: "Apr 2026", stars: 5, text: "Communicated every day, hit timeline, and gave us clear change-order options." },
-    { id: "r2", flipper: "M. Johnson", title: "HVAC replacement", date: "Mar 2026", stars: 5, text: "Fast response and clean workmanship. Great for investor projects." },
-    { id: "r3", flipper: "D. Patel", title: "Electrical rewire", date: "Feb 2026", stars: 4, text: "Solid execution and passed city inspection first try." },
-  ];
-
   const stats = useMemo(() => {
     const totalValue = activeJobs.reduce((sum, job) => sum + job.value, 0);
     const avgProgress = activeJobs.length ? Math.round(activeJobs.reduce((sum, job) => sum + job.progress, 0) / activeJobs.length) : 0;
@@ -479,6 +484,46 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
       totalPotential,
     };
   }, [leadRows]);
+
+  const filteredLeadRows = useMemo(() => {
+    const query = leadSearch.trim().toLowerCase();
+    if (!query) return leadRows;
+
+    return leadRows.filter((lead) => {
+      const searchable = [lead.addr, lead.trade, lead.budget, lead.flipper, lead.posted].join(" ").toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [leadRows, leadSearch]);
+
+  const filteredActiveJobs = useMemo(() => {
+    const query = activeJobsSearch.trim().toLowerCase();
+    if (!query) return activeJobs;
+
+    return activeJobs.filter((job) => {
+      const searchable = [job.address, job.flipper, job.statusLabel, job.statusNote, String(job.value || "")].join(" ").toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [activeJobs, activeJobsSearch]);
+
+  const filteredJobHistoryRows = useMemo(() => {
+    const query = jobHistorySearch.trim().toLowerCase();
+    if (!query) return jobHistoryRows;
+
+    return jobHistoryRows.filter((row) => {
+      const searchable = [row.address, row.trade, row.status, row.date, row.flipper, row.amount].join(" ").toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [jobHistoryRows, jobHistorySearch]);
+
+  const filteredReviewRows = useMemo(() => {
+    const query = reviewSearch.trim().toLowerCase();
+    if (!query) return REVIEW_ROWS;
+
+    return REVIEW_ROWS.filter((review) => {
+      const searchable = [review.title, review.flipper, review.date, review.text, String(review.stars || "")].join(" ").toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [reviewSearch]);
 
   const earningsSummary = useMemo(() => {
     const now = new Date();
@@ -672,6 +717,14 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 22, color: G.text, marginBottom: 4 }}>Job Leads</div>
             <div style={{ fontSize: 13, color: G.muted, marginBottom: 14 }}>Deal makers nearby are requesting bids in your selected trades.</div>
+            <DataSearchBar
+              G={G}
+              value={leadSearch}
+              onChange={setLeadSearch}
+              placeholder="Search leads by address, trade, budget, or deal maker"
+              resultCount={filteredLeadRows.length}
+              totalCount={leadRows.length}
+            />
             {leadsError && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{leadsError}</div>}
             {leadsLoading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading fresh job leads...</div>}
             {!leadsLoading && leadRows.length === 0 && (
@@ -679,10 +732,15 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
                 No leads are available yet for your trade profile.
               </div>
             )}
+            {!leadsLoading && leadRows.length > 0 && filteredLeadRows.length === 0 && (
+              <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>
+                No job leads match your search.
+              </div>
+            )}
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,0.65fr)", gap: 12 }}>
               <div>
-                {leadRows.map((lead) => (
+                {filteredLeadRows.map((lead) => (
                   <div key={lead.id} style={{ ...card, marginBottom: 10, borderColor: lead.urgent ? `${G.gold}66` : G.border }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 8, flexWrap: "wrap" }}>
                       <div style={{ fontFamily: G.serif, fontSize: 16, color: G.text, fontWeight: "bold" }}>{lead.addr}</div>
@@ -787,6 +845,14 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
         {contractorTab === "jobs" && (
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 12 }}>Active Jobs</div>
+            <DataSearchBar
+              G={G}
+              value={activeJobsSearch}
+              onChange={setActiveJobsSearch}
+              placeholder="Search jobs by address, deal maker, status, or value"
+              resultCount={filteredActiveJobs.length}
+              totalCount={activeJobs.length}
+            />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
                 { l: "Active Jobs", v: stats.activeCount, c: G.green },
@@ -806,8 +872,13 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
                 No active jobs yet. Send quotes from Job Leads to move opportunities into this pipeline.
               </div>
             )}
+            {!leadsLoading && activeJobs.length > 0 && filteredActiveJobs.length === 0 && (
+              <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>
+                No active jobs match your search.
+              </div>
+            )}
 
-            {activeJobs.map((job) => (
+            {filteredActiveJobs.map((job) => (
               <div key={job.id} style={{ ...card, marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, gap: 8, flexWrap: "wrap" }}>
                   <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold" }}>{job.address}</div>
@@ -955,6 +1026,14 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
         {contractorTab === "earnings" && (
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 12 }}>Earnings</div>
+            <DataSearchBar
+              G={G}
+              value={jobHistorySearch}
+              onChange={setJobHistorySearch}
+              placeholder="Search job history by address, trade, status, date, or deal maker"
+              resultCount={filteredJobHistoryRows.length}
+              totalCount={jobHistoryRows.length}
+            />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
                 { l: "This Month", v: `$${Math.round(earningsSummary.thisMonth).toLocaleString()}`, c: G.green },
@@ -973,6 +1052,8 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
               <div style={{ ...lbl, marginBottom: 8 }}>Job History</div>
               {jobHistoryRows.length === 0 ? (
                 <div style={{ fontSize: 10, color: G.muted }}>No completed or paid jobs yet.</div>
+              ) : filteredJobHistoryRows.length === 0 ? (
+                <div style={{ fontSize: 10, color: G.muted }}>No job history rows match your search.</div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680 }}>
@@ -984,7 +1065,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
                       </tr>
                     </thead>
                     <tbody>
-                      {jobHistoryRows.map((row) => (
+                      {filteredJobHistoryRows.map((row) => (
                         <tr key={row.id} style={{ borderBottom: `1px solid ${G.faint}` }}>
                           <td style={{ fontSize: 10, color: G.text, padding: "8px 6px" }}>{row.address}</td>
                           <td style={{ fontSize: 9, color: G.muted, padding: "8px 6px" }}>{row.trade}</td>
@@ -1007,6 +1088,14 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
         {contractorTab === "reviews" && (
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 12 }}>Reviews</div>
+            <DataSearchBar
+              G={G}
+              value={reviewSearch}
+              onChange={setReviewSearch}
+              placeholder="Search reviews by project, reviewer, date, rating, or text"
+              resultCount={filteredReviewRows.length}
+              totalCount={REVIEW_ROWS.length}
+            />
 
             <div style={{ ...card, marginBottom: 10 }}>
               <div style={{ display: "flex", gap: 20, alignItems: isMobile ? "flex-start" : "center", flexDirection: isMobile ? "column" : "row" }}>
@@ -1033,7 +1122,13 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
               </div>
             </div>
 
-            {reviewRows.map((review) => (
+            {filteredReviewRows.length === 0 && (
+              <div style={{ ...card, marginBottom: 8, fontSize: 10, color: G.muted }}>
+                No reviews match your search.
+              </div>
+            )}
+
+            {filteredReviewRows.map((review) => (
               <div key={review.id} style={{ ...card, marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                   <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text }}>{review.title}</div>

@@ -8,6 +8,9 @@ import {
 
 const PROVIDER = "realty-base-us";
 const DEFAULT_HOST = "realty-base-us.p.rapidapi.com";
+const DEFAULT_QUERY_KEYS = ["query", "address", "propertyAddress", "property_address", "location", "q"];
+const DEFAULT_AUTOCOMPLETE_PATHS = ["/property/auto-complete", "/property/autocomplete"];
+const DEFAULT_AUTOCOMPLETE_QUERY_KEYS = ["query", "q", "address"];
 const DEFAULT_DETAIL_PATHS = ["/property/v2/detail", "/property/detail", "/detail"];
 
 const KNOWN_COMP_PATHS = [
@@ -53,6 +56,152 @@ function parsePathList(value, fallback) {
     .map((item) => (item.startsWith("/") ? item : `/${item}`));
 
   return parsed.length > 0 ? parsed : fallback;
+}
+
+function parseKeyList(value, fallback) {
+  const raw = asText(value);
+  if (!raw) return fallback;
+
+  const parsed = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return parsed.length > 0 ? parsed : fallback;
+}
+
+function dedupeTextList(values, max = 12) {
+  const seen = new Set();
+  const output = [];
+
+  for (const value of values || []) {
+    const text = asText(value);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(text);
+    if (output.length >= max) break;
+  }
+
+  return output;
+}
+
+function isLikelyPropertyId(value) {
+  return /^\d{6,}$/.test(asText(value));
+}
+
+function buildInitialLookupCandidates(lookupAddress) {
+  const input = asText(lookupAddress);
+  if (!input) return [];
+
+  if (/^https?:\/\//i.test(input)) {
+    return [input];
+  }
+
+  if (/^address:\d{6,}$/i.test(input)) {
+    const propertyId = input.replace(/^address:/i, "");
+    return dedupeTextList([input, propertyId]);
+  }
+
+  if (isLikelyPropertyId(input)) {
+    return dedupeTextList([`address:${input}`, input]);
+  }
+
+  return [input];
+}
+
+function discoverObjectArrays(node, found, seen, depth = 0) {
+  if (!node || typeof node !== "object" || depth > 4) return;
+  if (seen.has(node)) return;
+  seen.add(node);
+
+  if (Array.isArray(node)) {
+    if (node.length > 0 && node.every((entry) => entry && typeof entry === "object" && !Array.isArray(entry))) {
+      found.push(node);
+    }
+
+    node.forEach((entry) => discoverObjectArrays(entry, found, seen, depth + 1));
+    return;
+  }
+
+  Object.values(node).forEach((entry) => discoverObjectArrays(entry, found, seen, depth + 1));
+}
+
+function extractAutocompleteEntries(payload) {
+  const directCandidates = [
+    getByPath(payload, "data"),
+    getByPath(payload, "result"),
+    getByPath(payload, "results"),
+    getByPath(payload, "payload.data"),
+    getByPath(payload, "properties"),
+  ];
+
+  for (const candidate of directCandidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) {
+      return candidate;
+    }
+  }
+
+  const discovered = [];
+  discoverObjectArrays(payload, discovered, new Set());
+
+  for (const entryArray of discovered) {
+    const sample = asObject(entryArray[0]);
+    if (!sample) continue;
+
+    const sampleKeys = Object.keys(sample).join(" ").toLowerCase();
+    const looksLikeAutocomplete =
+      /(propertyid|property_id|full_address|area_type|url|address|id)/.test(sampleKeys);
+
+    if (looksLikeAutocomplete) return entryArray;
+  }
+
+  return [];
+}
+
+function extractLookupCandidatesFromAutocomplete(payload, fallbackAddress) {
+  const entries = extractAutocompleteEntries(payload);
+  if (!entries.length) return [];
+
+  const rankedEntries = entries
+    .filter((row) => {
+      const areaType = asText(row?.area_type || row?.areaType).toLowerCase();
+      if (!areaType) return true;
+      return areaType.includes("address") || areaType.includes("property");
+    })
+    .slice(0, 6);
+
+  const candidates = [asText(fallbackAddress)];
+
+  rankedEntries.forEach((row) => {
+    const propertyId = firstString([
+      row?.propertyId,
+      row?.property_id,
+      row?.property?.propertyId,
+      row?.property?.property_id,
+    ]);
+
+    const fullAddress = firstString([
+      row?.full_address,
+      row?.address,
+      row?.formattedAddress,
+      row?.formatted_address,
+      row?.name,
+    ]);
+
+    const url = firstString([row?.url, row?.href, row?.permalink]);
+
+    if (isLikelyPropertyId(propertyId)) {
+      candidates.push(`address:${propertyId}`);
+      candidates.push(propertyId);
+    }
+
+    if (fullAddress) candidates.push(fullAddress);
+    if (/^https?:\/\//i.test(url)) candidates.push(url);
+  });
+
+  return dedupeTextList(candidates);
 }
 
 function getByPath(source, path) {
@@ -350,6 +499,24 @@ function normalizePropertyPayload(payload, lookupAddress) {
   return { property, avm, comps, marketNotes };
 }
 
+function hasCoreNormalizedData(normalized) {
+  const property = normalized?.property || {};
+  const avm = normalized?.avm || {};
+  const comps = Array.isArray(normalized?.comps) ? normalized.comps : [];
+
+  const propertyHasCoreFields =
+    Number(property.squareFootage || 0) > 0 ||
+    Number(property.bedrooms || 0) > 0 ||
+    Number(property.bathrooms || 0) > 0 ||
+    Number(property.yearBuilt || 0) > 0;
+
+  const avmHasCoreFields =
+    Number(avm.price || 0) > 0 ||
+    Number(avm.priceRangeHigh || 0) > 0;
+
+  return propertyHasCoreFields || avmHasCoreFields || comps.length > 0;
+}
+
 function buildFallbackIntelligence(lookupAddress, warning, attempts = []) {
   const normalized = {
     property: {
@@ -431,65 +598,189 @@ async function fetchWithTimeout(url, options, timeoutMs = 15000) {
   }
 }
 
-async function fetchDetailPayload({ host, apiKey, queryKey, address, pathCandidates }) {
+async function fetchAutocompleteLookupCandidates({
+  host,
+  apiKey,
+  lookupAddress,
+  pathCandidates,
+  queryKeys,
+}) {
   const attempts = [];
 
   for (const path of pathCandidates) {
     const cleanPath = path.startsWith("/") ? path : `/${path}`;
-    const url = new URL(`https://${host}${cleanPath}`);
-    url.searchParams.set(queryKey, address);
 
-    try {
-      const response = await fetchWithTimeout(url.toString(), {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "x-rapidapi-key": apiKey,
-          "x-rapidapi-host": host,
-        },
-      });
+    for (const queryKey of queryKeys) {
+      const cleanQueryKey = asText(queryKey);
+      if (!cleanQueryKey) continue;
 
-      const rawText = await response.text();
-      let payload = null;
+      const url = new URL(`https://${host}${cleanPath}`);
+      url.searchParams.set(cleanQueryKey, lookupAddress);
+
       try {
-        payload = rawText ? JSON.parse(rawText) : null;
-      } catch {
-        payload = null;
-      }
-
-      if (!response.ok) {
-        attempts.push({
-          path: cleanPath,
-          status: response.status,
-          message: asText(payload?.message || payload?.error || rawText || response.statusText, "Upstream request failed"),
+        const response = await fetchWithTimeout(url.toString(), {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "x-rapidapi-key": apiKey,
+            "x-rapidapi-host": host,
+          },
         });
-        continue;
-      }
 
-      if (!payload || typeof payload !== "object") {
+        const rawText = await response.text();
+        let payload = null;
+        try {
+          payload = rawText ? JSON.parse(rawText) : null;
+        } catch {
+          payload = null;
+        }
+
+        if (!response.ok) {
+          attempts.push({
+            stage: "autocomplete",
+            path: cleanPath,
+            queryKey: cleanQueryKey,
+            status: response.status,
+            message: asText(payload?.message || payload?.error || rawText || response.statusText, "Auto-complete request failed"),
+          });
+          continue;
+        }
+
+        if (!payload || typeof payload !== "object") {
+          attempts.push({
+            stage: "autocomplete",
+            path: cleanPath,
+            queryKey: cleanQueryKey,
+            status: 502,
+            message: "Auto-complete response was not valid JSON",
+          });
+          continue;
+        }
+
+        const candidates = extractLookupCandidatesFromAutocomplete(payload, lookupAddress);
+        if (candidates.length > 0) {
+          return {
+            candidates,
+            attempts,
+          };
+        }
+
         attempts.push({
+          stage: "autocomplete",
           path: cleanPath,
-          status: 502,
-          message: "Upstream response was not valid JSON",
+          queryKey: cleanQueryKey,
+          status: 200,
+          message: "Auto-complete returned no address candidates",
         });
-        continue;
+      } catch (error) {
+        attempts.push({
+          stage: "autocomplete",
+          path: cleanPath,
+          queryKey: cleanQueryKey,
+          status: 0,
+          message: asText(error?.message, "Auto-complete request failed"),
+        });
       }
-
-      return {
-        path: cleanPath,
-        payload,
-        attempts,
-      };
-    } catch (error) {
-      attempts.push({
-        path: cleanPath,
-        status: 0,
-        message: asText(error?.message, "Network request failed"),
-      });
     }
   }
 
-  const err = new Error("Realty Base request failed for all configured detail paths.");
+  return {
+    candidates: dedupeTextList([lookupAddress]),
+    attempts,
+  };
+}
+
+async function fetchDetailPayload({ host, apiKey, queryKeys, lookupAddress, queryValues, pathCandidates }) {
+  const attempts = [];
+
+  for (const path of pathCandidates) {
+    const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
+    for (const queryValue of queryValues) {
+      const cleanQueryValue = asText(queryValue);
+      if (!cleanQueryValue) continue;
+
+      for (const queryKey of queryKeys) {
+      const cleanQueryKey = asText(queryKey);
+      if (!cleanQueryKey) continue;
+
+      const url = new URL(`https://${host}${cleanPath}`);
+      url.searchParams.set(cleanQueryKey, cleanQueryValue);
+
+      try {
+        const response = await fetchWithTimeout(url.toString(), {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "x-rapidapi-key": apiKey,
+            "x-rapidapi-host": host,
+          },
+        });
+
+        const rawText = await response.text();
+        let payload = null;
+        try {
+          payload = rawText ? JSON.parse(rawText) : null;
+        } catch {
+          payload = null;
+        }
+
+        if (!response.ok) {
+          attempts.push({
+            path: cleanPath,
+            queryKey: cleanQueryKey,
+            queryValue: cleanQueryValue.slice(0, 120),
+            status: response.status,
+            message: asText(payload?.message || payload?.error || rawText || response.statusText, "Upstream request failed"),
+          });
+          continue;
+        }
+
+        if (!payload || typeof payload !== "object") {
+          attempts.push({
+            path: cleanPath,
+            queryKey: cleanQueryKey,
+            queryValue: cleanQueryValue.slice(0, 120),
+            status: 502,
+            message: "Upstream response was not valid JSON",
+          });
+          continue;
+        }
+
+        const normalized = normalizePropertyPayload(payload, lookupAddress);
+        if (!hasCoreNormalizedData(normalized)) {
+          attempts.push({
+            path: cleanPath,
+            queryKey: cleanQueryKey,
+            queryValue: cleanQueryValue.slice(0, 120),
+            status: 200,
+            message: "Response returned limited structured fields",
+          });
+          continue;
+        }
+
+        return {
+          path: cleanPath,
+          queryKey: cleanQueryKey,
+          queryValue: cleanQueryValue,
+          payload,
+          normalized,
+          attempts,
+        };
+      } catch (error) {
+        attempts.push({
+          path: cleanPath,
+          queryKey: cleanQueryKey,
+          queryValue: cleanQueryValue.slice(0, 120),
+          status: 0,
+          message: asText(error?.message, "Network request failed"),
+        });
+      }
+      }
+    }
+  }
+
+  const err = new Error("Realty Base request failed for all configured detail query combinations.");
   err.attempts = attempts;
   throw err;
 }
@@ -549,49 +840,79 @@ export default async function handler(req, res) {
   }
 
   const host = asText(process.env.RAPIDAPI_REALTY_BASE_HOST || process.env.REALTY_BASE_RAPIDAPI_HOST, DEFAULT_HOST);
-  const queryKey = asText(process.env.RAPIDAPI_REALTY_BASE_QUERY_KEY || process.env.REALTY_BASE_QUERY_KEY, "query");
+  const queryKeys = parseKeyList(
+    process.env.RAPIDAPI_REALTY_BASE_QUERY_KEYS || process.env.REALTY_BASE_QUERY_KEYS,
+    [asText(process.env.RAPIDAPI_REALTY_BASE_QUERY_KEY || process.env.REALTY_BASE_QUERY_KEY, "query"), ...DEFAULT_QUERY_KEYS],
+  );
+  const autoCompletePaths = parsePathList(
+    process.env.RAPIDAPI_REALTY_BASE_AUTOCOMPLETE_PATHS || process.env.REALTY_BASE_AUTOCOMPLETE_PATHS,
+    DEFAULT_AUTOCOMPLETE_PATHS,
+  );
+  const autoCompleteQueryKeys = parseKeyList(
+    process.env.RAPIDAPI_REALTY_BASE_AUTOCOMPLETE_QUERY_KEYS || process.env.REALTY_BASE_AUTOCOMPLETE_QUERY_KEYS,
+    DEFAULT_AUTOCOMPLETE_QUERY_KEYS,
+  );
   const detailPaths = parsePathList(
     process.env.RAPIDAPI_REALTY_BASE_DETAIL_PATHS || process.env.REALTY_BASE_DETAIL_PATHS,
     DEFAULT_DETAIL_PATHS,
   );
 
+  const preflightAttempts = [];
+  let queryValues = buildInitialLookupCandidates(address);
+
+  if (!/^https?:\/\//i.test(address) && autoCompletePaths.length > 0) {
+    const autoComplete = await fetchAutocompleteLookupCandidates({
+      host,
+      apiKey: rapidApiKey,
+      lookupAddress: address,
+      pathCandidates: autoCompletePaths,
+      queryKeys: autoCompleteQueryKeys,
+    });
+
+    queryValues = dedupeTextList([...(queryValues || []), ...(autoComplete?.candidates || [])]);
+    if (Array.isArray(autoComplete?.attempts) && autoComplete.attempts.length > 0) {
+      preflightAttempts.push(...autoComplete.attempts);
+    }
+  }
+
   try {
     const detailResult = await fetchDetailPayload({
       host,
       apiKey: rapidApiKey,
-      queryKey,
-      address,
+      queryKeys,
+      lookupAddress: address,
+      queryValues,
       pathCandidates: detailPaths,
     });
 
-    const normalized = normalizePropertyPayload(detailResult.payload, address);
+    const normalized = detailResult.normalized || normalizePropertyPayload(detailResult.payload, address);
     const promptContext = {
       provider: PROVIDER,
       endpoint: detailResult.path,
+      queryKey: detailResult.queryKey,
+      queryValue: detailResult.queryValue,
       lookupAddress: address,
       normalized,
       payloadPreview: pruneForPrompt(detailResult.payload),
     };
 
-    const hasCoreData =
-      normalized.avm.price > 0 ||
-      normalized.property.squareFootage > 0 ||
-      normalized.comps.length > 0;
-
     return res.status(200).json({
       provider: PROVIDER,
       endpoint: detailResult.path,
+      queryKey: detailResult.queryKey,
+      queryValue: detailResult.queryValue,
       lookupAddress: address,
       normalized,
       promptContext,
-      warning: hasCoreData
-        ? ""
-        : "Realty Base response returned limited structured fields. Fallback logic may still be required.",
-      attempts: detailResult.attempts,
+      warning: "",
+      attempts: [...preflightAttempts, ...detailResult.attempts],
     });
   } catch (error) {
     const fallbackWarning = asText(error?.message, "Failed to fetch property intelligence");
-    const attempts = Array.isArray(error?.attempts) ? error.attempts : [];
+    const attempts = [
+      ...preflightAttempts,
+      ...(Array.isArray(error?.attempts) ? error.attempts : []),
+    ];
 
     return res.status(200).json(
       buildFallbackIntelligence(

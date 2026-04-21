@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 import { supabase } from "../../../../lib/supabaseClient";
+import DataSearchBar from "../../../components/DataSearchBar";
 import { DIALER_OUTCOMES, DIALER_QUEUE_SEED } from "./toolData";
 
 const TWILIO_TOKEN_ENDPOINT = String(import.meta.env.VITE_TWILIO_ACCESS_TOKEN_ENDPOINT || "/api/twilio-access-token").trim();
@@ -148,7 +149,7 @@ function parseCsvRows(text) {
 }
 
 export default function PowerDialerToolTab({ ctx }) {
-  const { G, card, btnG, btnO, user } = ctx;
+  const { G, card, btnG, btnO, user, isMobile } = ctx;
   const isLocalHost = typeof window !== "undefined"
     && ["localhost", "127.0.0.1"].includes(String(window.location?.hostname || "").toLowerCase());
   const simulationAllowed = DIALER_SIMULATION_ALLOWED || isLocalHost;
@@ -168,6 +169,7 @@ export default function PowerDialerToolTab({ ctx }) {
   const [csvName, setCsvName] = useState("");
   const [stats, setStats] = useState({ calls: 0, connects: 0, voicemails: 0, callbacks: 0, interested: 0 });
   const [callLog, setCallLog] = useState([]);
+  const [dialerSearch, setDialerSearch] = useState("");
   const [toast, setToast] = useState("");
   const [waveSeed, setWaveSeed] = useState(0);
   const fileRef = useRef(null);
@@ -186,6 +188,26 @@ export default function PowerDialerToolTab({ ctx }) {
   }, [elapsedSec, waveSeed]);
 
   const sessionMins = useMemo(() => fmtClock(sessionElapsedSec), [sessionElapsedSec]);
+  const normalizedDialerSearch = dialerSearch.trim().toLowerCase();
+
+  const filteredRemainingQueue = useMemo(() => {
+    const remaining = queue.slice(activeIndex);
+    if (!normalizedDialerSearch) return remaining;
+
+    return remaining.filter((lead) => {
+      const searchable = [lead.name, lead.phone, lead.address, (lead.tags || []).join(" ")].join(" ").toLowerCase();
+      return searchable.includes(normalizedDialerSearch);
+    });
+  }, [queue, activeIndex, normalizedDialerSearch]);
+
+  const filteredCallLog = useMemo(() => {
+    if (!normalizedDialerSearch) return callLog;
+
+    return callLog.filter((item) => {
+      const searchable = [item.lead, item.phone, item.outcome, item.notes, item.duration].join(" ").toLowerCase();
+      return searchable.includes(normalizedDialerSearch);
+    });
+  }, [callLog, normalizedDialerSearch]);
 
   useEffect(() => {
     if (!sessionActive) return undefined;
@@ -561,8 +583,8 @@ export default function PowerDialerToolTab({ ctx }) {
 
   return (
     <div>
-      <div style={{ fontFamily: G.serif, fontSize: 18, marginBottom: 4 }}>Power Dialer</div>
-      <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Run focused call waves, log outcomes, and keep momentum high.</div>
+      <div style={{ fontFamily: G.serif, fontSize: isMobile ? 16 : 18, marginBottom: 4 }}>Power Dialer</div>
+      <div style={{ fontSize: isMobile ? 9 : 10, color: G.muted, marginBottom: 12 }}>Run focused call waves, log outcomes, and keep momentum high.</div>
 
       {dialerMode === "blocked" ? (
         <div style={{ ...card, borderColor: `${G.red}66`, background: `${G.red}12`, marginBottom: 12, padding: "10px 12px" }}>
@@ -593,7 +615,7 @@ export default function PowerDialerToolTab({ ctx }) {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8, marginBottom: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(auto-fit,minmax(130px,1fr))", gap: 8, marginBottom: 12 }}>
         {[{ l: "Session Time", v: sessionMins, c: G.green }, { l: "Calls", v: stats.calls, c: G.text }, { l: "Connects", v: stats.connects, c: G.gold }, { l: "Callbacks", v: stats.callbacks, c: "#60a5fa" }, { l: "Interested", v: stats.interested, c: "#22c55e" }, { l: "Queue Left", v: Math.max(0, queue.length - activeIndex), c: G.text }].map((item) => (
           <div key={item.l} style={{ ...card, textAlign: "center", padding: 10 }}>
             <div style={{ fontSize: 8, color: G.muted, letterSpacing: 1, marginBottom: 4 }}>{item.l}</div>
@@ -602,15 +624,24 @@ export default function PowerDialerToolTab({ ctx }) {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr)", gap: 10, alignItems: "start" }}>
+      <DataSearchBar
+        G={G}
+        value={dialerSearch}
+        onChange={setDialerSearch}
+        placeholder="Search queue and call log by name, phone, address, or outcome"
+        resultCount={filteredRemainingQueue.length + filteredCallLog.length}
+        totalCount={Math.max(0, queue.length - activeIndex) + callLog.length}
+      />
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,2fr) minmax(0,1fr)", gap: 10, alignItems: "start" }}>
         <div style={{ ...card }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: 8, color: G.muted, letterSpacing: 2, marginBottom: 3 }}>NOW DIALING</div>
               <div style={{ fontFamily: G.serif, fontSize: 16, color: G.text }}>{currentLead ? currentLead.name : "Queue complete"}</div>
               <div style={{ fontSize: 10, color: G.muted }}>{currentLead ? `${currentLead.phone} · ${currentLead.address}` : "Reset session or upload a new list."}</div>
             </div>
-            <div style={{ textAlign: "right" }}>
+            <div style={{ textAlign: isMobile ? "left" : "right" }}>
               <div style={{ fontSize: 8, color: G.muted, letterSpacing: 2, marginBottom: 3 }}>STATE</div>
               <div style={{ fontSize: 9, color: callState === "live" ? G.green : callState === "ringing" ? G.gold : G.muted, border: `1px solid ${callState === "live" ? G.green : callState === "ringing" ? G.gold : G.border}`, borderRadius: 4, padding: "3px 8px", background: callState === "live" ? `${G.green}22` : "transparent", textTransform: "uppercase" }}>{callState}</div>
               <div style={{ fontFamily: G.serif, fontSize: 22, color: G.text, marginTop: 6 }}>{fmtClock(elapsedSec)}</div>
@@ -626,12 +657,12 @@ export default function PowerDialerToolTab({ ctx }) {
           </div>
 
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-            <button onClick={startCall} style={{ ...btnG, fontSize: 9, padding: "7px 11px" }} disabled={!currentLead || callState !== "idle" || dialerMode === "checking" || dialerMode === "blocked"}>
+            <button onClick={startCall} style={{ ...btnG, flex: isMobile ? 1 : "unset", fontSize: 9, padding: "7px 11px" }} disabled={!currentLead || callState !== "idle" || dialerMode === "checking" || dialerMode === "blocked"}>
               {dialerDemoMode ? "Start Simulated Call" : "Start Live Call"}
             </button>
-            <button onClick={skipLead} style={{ ...btnO, fontSize: 9, padding: "7px 11px" }} disabled={!currentLead}>Skip Lead</button>
-            <button onClick={resetSession} style={{ ...btnO, fontSize: 9, padding: "7px 11px" }}>Reset Queue</button>
-            <button onClick={() => fileRef.current?.click()} style={{ ...btnO, fontSize: 9, padding: "7px 11px" }}>Upload CSV Queue</button>
+            <button onClick={skipLead} style={{ ...btnO, flex: isMobile ? 1 : "unset", fontSize: 9, padding: "7px 11px" }} disabled={!currentLead}>Skip Lead</button>
+            <button onClick={resetSession} style={{ ...btnO, flex: isMobile ? 1 : "unset", fontSize: 9, padding: "7px 11px" }}>Reset Queue</button>
+            <button onClick={() => fileRef.current?.click()} style={{ ...btnO, flex: isMobile ? 1 : "unset", fontSize: 9, padding: "7px 11px" }}>Upload CSV Queue</button>
             <input ref={fileRef} type="file" accept=".csv" onChange={onUploadCsv} style={{ display: "none" }} />
           </div>
 
@@ -642,7 +673,7 @@ export default function PowerDialerToolTab({ ctx }) {
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Objections, pain points, and callback context..." style={{ width: "100%", boxSizing: "border-box", resize: "vertical", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: "8px 10px" }} />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(auto-fit,minmax(120px,1fr))", gap: 6 }}>
             {DIALER_OUTCOMES.map((outcome) => (
               <button
                 key={outcome.id}
@@ -653,7 +684,7 @@ export default function PowerDialerToolTab({ ctx }) {
                   borderColor: `${outcome.color}66`,
                   color: outcome.color,
                   background: `${outcome.color}11`,
-                  fontSize: 8,
+                  fontSize: isMobile ? 9 : 8,
                   padding: "7px 8px",
                 }}
               >
@@ -666,22 +697,24 @@ export default function PowerDialerToolTab({ ctx }) {
         <div style={{ ...card }}>
           <div style={{ fontFamily: G.serif, fontSize: 14, marginBottom: 8 }}>Queue Preview</div>
           <div style={{ display: "grid", gap: 7, marginBottom: 12 }}>
-            {queue.slice(activeIndex, activeIndex + 5).map((lead, index) => (
+            {filteredRemainingQueue.slice(0, isMobile ? 4 : 5).map((lead, index) => (
               <div key={lead.id} style={{ background: G.surface, border: `1px solid ${index === 0 ? G.green : G.border}`, borderRadius: 6, padding: "8px 9px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3, gap: 8 }}>
                   <div style={{ fontSize: 10, color: G.text }}>{lead.name}</div>
-                  <div style={{ fontSize: 8, color: index === 0 ? G.green : G.muted }}>#{activeIndex + index + 1}</div>
+                  <div style={{ fontSize: 8, color: index === 0 ? G.green : G.muted }}>#{index + 1}</div>
                 </div>
                 <div style={{ fontSize: 9, color: G.muted, marginBottom: 3 }}>{lead.phone}</div>
                 <div style={{ fontSize: 8, color: G.muted }}>{lead.address}</div>
               </div>
             ))}
+            {filteredRemainingQueue.length === 0 && <div style={{ fontSize: 9, color: G.muted }}>No queue entries match your search.</div>}
           </div>
 
           <div style={{ fontFamily: G.serif, fontSize: 14, marginBottom: 8 }}>Recent Call Log</div>
           {callLog.length === 0 && <div style={{ fontSize: 9, color: G.muted }}>No outcomes logged yet.</div>}
+          {callLog.length > 0 && filteredCallLog.length === 0 && <div style={{ fontSize: 9, color: G.muted }}>No call log entries match your search.</div>}
           <div style={{ display: "grid", gap: 7 }}>
-            {callLog.map((item) => (
+            {filteredCallLog.map((item) => (
               <div key={item.id} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "8px 9px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                   <div style={{ fontSize: 10, color: G.text }}>{item.lead}</div>
@@ -695,7 +728,7 @@ export default function PowerDialerToolTab({ ctx }) {
         </div>
       </div>
 
-      {toast && <div style={{ position: "fixed", right: 14, bottom: 14, background: G.surface, border: `1px solid ${G.green}44`, borderRadius: 8, padding: "8px 12px", color: G.green, fontSize: 10 }}>{toast}</div>}
+      {toast && <div style={{ position: "fixed", right: isMobile ? 10 : 14, left: isMobile ? 10 : "auto", bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 10px)" : 14, background: G.surface, border: `1px solid ${G.green}44`, borderRadius: 8, padding: "8px 12px", color: G.green, fontSize: 10 }}>{toast}</div>}
     </div>
   );
 }

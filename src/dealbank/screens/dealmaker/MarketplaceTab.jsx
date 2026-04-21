@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import DataSearchBar from "../../components/DataSearchBar";
 import BuyerNetworkView from "./marketplace/BuyerNetworkView";
 import {
   incrementListingView,
@@ -135,6 +136,7 @@ export default function MarketplaceTab({ ctx }) {
     setWSubmitted,
     wForm,
     setWForm,
+    isMobile,
   } = ctx;
 
   const [listings, setListings] = useState([]);
@@ -150,6 +152,7 @@ export default function MarketplaceTab({ ctx }) {
   const [listingMatchesLoading, setListingMatchesLoading] = useState(false);
   const [listingMatchesError, setListingMatchesError] = useState("");
   const [listingMatches, setListingMatches] = useState([]);
+  const [marketSearch, setMarketSearch] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -347,7 +350,24 @@ export default function MarketplaceTab({ ctx }) {
   }, [listings]);
 
   const filtered = useMemo(() => listings.filter((deal) => {
+    const normalizedMarketSearch = marketSearch.trim().toLowerCase();
+
     if (mktFilter !== "All" && deal.city !== mktFilter && deal.type !== mktFilter) return false;
+    if (normalizedMarketSearch) {
+      const searchable = [
+        deal.addr,
+        deal.city,
+        deal.state,
+        deal.type,
+        deal.condition,
+        deal.status,
+        String(deal.ask || ""),
+        String(deal.arv || ""),
+      ].join(" ").toLowerCase();
+
+      if (!searchable.includes(normalizedMarketSearch)) return false;
+    }
+
     return true;
   }).sort((a, b) => {
     if (mktSort === "newest") return a.days - b.days;
@@ -355,7 +375,7 @@ export default function MarketplaceTab({ ctx }) {
     if (mktSort === "equity") return b.equity - a.equity;
     if (mktSort === "price") return a.ask - b.ask;
     return 0;
-  }), [listings, mktFilter, mktSort]);
+  }), [listings, marketSearch, mktFilter, mktSort]);
 
   const buyerStats = useMemo(() => summarizeBuyerNetwork(buyers), [buyers]);
   const activeBuyerCount = Math.max(0, Number(buyerStats.activeBuyers || 0));
@@ -478,27 +498,27 @@ export default function MarketplaceTab({ ctx }) {
   if (activeListing) {
     return (
       <div>
-        <button onClick={() => setActiveListing(null)} style={{ ...btnO, marginBottom: 14, padding: "5px 12px", fontSize: 9 }}>← Back to Deals</button>
+        <button onClick={() => setActiveListing(null)} style={{ ...btnO, marginBottom: 12, padding: isMobile ? "7px 11px" : "5px 12px", fontSize: isMobile ? 10 : 9 }}>← Back to Deals</button>
 
-        <div style={{ background: "linear-gradient(135deg,#edf8f1,#f8fcfa)", border: `1px solid ${G.green}44`, borderRadius: 10, padding: "20px 22px", marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+        <div style={{ background: "linear-gradient(135deg,#edf8f1,#f8fcfa)", border: `1px solid ${G.green}44`, borderRadius: 10, padding: isMobile ? "12px 12px" : "20px 22px", marginBottom: 12 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: "flex-start", gap: isMobile ? 10 : 0, marginBottom: 14 }}>
             <div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
                 <div style={{ fontSize: 8, color: activeListing.type === "Wholesale" ? G.gold : G.green, background: activeListing.type === "Wholesale" ? `${G.gold}22` : G.greenGlow, border: `1px solid ${activeListing.type === "Wholesale" ? G.gold : G.green}44`, borderRadius: 3, padding: "2px 8px", letterSpacing: 2 }}>{activeListing.type.toUpperCase()}</div>
                 {activeListing.days === 0 && <div style={{ fontSize: 8, color: "#ff6b6b", background: "#ff6b6b22", border: "1px solid #ff6b6b44", borderRadius: 3, padding: "2px 8px", letterSpacing: 2 }}>NEW TODAY</div>}
                 <div style={{ fontSize: 9, color: G.muted }}>{activeListing.days === 0 ? "Posted today" : `Posted ${activeListing.days}d ago`} · {activeListing.views} views · {activeListing.saved} saved</div>
               </div>
-              <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text, fontWeight: "bold", marginBottom: 2 }}>{activeListing.addr}</div>
+              <div style={{ fontFamily: G.serif, fontSize: isMobile ? 16 : 20, color: G.text, fontWeight: "bold", marginBottom: 2 }}>{activeListing.addr}</div>
               <div style={{ fontSize: 11, color: G.muted }}>{activeListing.city}, {activeListing.state} {activeListing.zip} · {activeListing.beds}bd/{activeListing.baths}ba · {activeListing.sqft?.toLocaleString()} sqft · Built {activeListing.yr}</div>
             </div>
-            <div style={{ textAlign: "right" }}>
+            <div style={{ textAlign: isMobile ? "left" : "right" }}>
               <div style={{ fontSize: 8, color: G.muted, letterSpacing: 3, marginBottom: 2 }}>ASKING PRICE</div>
-              <div style={{ fontFamily: G.serif, fontSize: 32, color: G.text, fontWeight: "bold" }}>{fmt(activeListing.ask)}</div>
+              <div style={{ fontFamily: G.serif, fontSize: isMobile ? 24 : 32, color: G.text, fontWeight: "bold" }}>{fmt(activeListing.ask)}</div>
               <div style={{ fontSize: 9, color: G.muted, marginTop: 2 }}>+ {fmt(activeListing.fee)} assignment fee</div>
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,1fr)", gap: 8 }}>
             {[
               { l: "ARV", v: fmt(activeListing.arv), c: G.green },
               { l: "Est. Reno", v: fmt(activeListing.reno), c: G.gold },
@@ -513,7 +533,7 @@ export default function MarketplaceTab({ ctx }) {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 12 }}>
           <div style={{ ...card }}>
             <div style={{ ...lbl, color: G.green, marginBottom: 8 }}>Deal Overview</div>
             <div style={{ fontSize: 11, color: G.text, lineHeight: 1.8, marginBottom: 12 }}>{activeListing.desc}</div>
@@ -609,7 +629,7 @@ export default function MarketplaceTab({ ctx }) {
   if (mktView === "submit") {
     return (
       <div>
-        <button onClick={() => { setMktView("feed"); setSubmitStep(1); setWSubmitted(false); }} style={{ ...btnO, marginBottom: 14, padding: "5px 12px", fontSize: 9 }}>← Back to Feed</button>
+        <button onClick={() => { setMktView("feed"); setSubmitStep(1); setWSubmitted(false); }} style={{ ...btnO, marginBottom: 12, padding: isMobile ? "7px 11px" : "5px 12px", fontSize: isMobile ? 10 : 9 }}>← Back to Feed</button>
 
         {wSubmitted ? (
           <div style={{ ...card, textAlign: "center", padding: "40px 20px", borderColor: `${G.green}44` }}>
@@ -650,7 +670,7 @@ export default function MarketplaceTab({ ctx }) {
                   <div style={{ ...lbl }}>Full Address</div>
                   <input value={wForm.address} onChange={(e) => wUpdate("address", e.target.value)} placeholder="123 Main St" style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 5, color: G.text, fontSize: 13, fontFamily: G.mono, padding: "9px 11px", outline: "none", boxSizing: "border-box" }} />
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
                   {[["City", "city", "Sacramento"], ["State", "state", "CA"], ["ZIP", "zip", "95814"]].map(([l, f, ph]) => (
                     <div key={f}>
                       <div style={{ ...lbl }}>{l}</div>
@@ -658,7 +678,7 @@ export default function MarketplaceTab({ ctx }) {
                     </div>
                   ))}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
                   {[["Beds", "beds", "3"], ["Baths", "baths", "2"], ["Sq Ft", "sqft", "1,400"], ["Year Built", "yearBuilt", "1975"]].map(([l, f, ph]) => (
                     <div key={f}>
                       <div style={{ ...lbl }}>{l}</div>
@@ -683,7 +703,7 @@ export default function MarketplaceTab({ ctx }) {
             {submitStep === 2 && (
               <div style={{ ...card }}>
                 <div style={{ fontFamily: G.serif, fontSize: 15, color: G.text, fontWeight: "bold", marginBottom: 14 }}>Deal Numbers</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
                   {[["ARV (After Repair Value)", "arv", "385,000"], ["Your Asking Price", "askPrice", "195,000"], ["Estimated Renovation", "renoEst", "62,000"], ["Assignment Fee", "assignFee", "12,000"], ["Earnest Money", "earnest", "2,500"], ["Close-By Date", "closeDate", "May 15, 2026"]].map(([l, f, ph]) => (
                     <div key={f}>
                       <div style={{ ...lbl }}>{l}</div>
@@ -737,7 +757,7 @@ export default function MarketplaceTab({ ctx }) {
             {submitStep === 4 && (
               <div style={{ ...card }}>
                 <div style={{ fontFamily: G.serif, fontSize: 15, color: G.text, fontWeight: "bold", marginBottom: 14 }}>Your Contact Info</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 14 }}>
                   {[["Your Name", "contactName", "Ray Torres"], ["Company (optional)", "contactCompany", "DealBank Ventures"], ["Phone", "contactPhone", "(916) 555-0100"], ["Email", "contactEmail", "ray@deals.com"]].map(([l, f, ph]) => (
                     <div key={l}>
                       <div style={{ ...lbl }}>{l}</div>
@@ -783,37 +803,46 @@ export default function MarketplaceTab({ ctx }) {
   return (
     <div>
       {listingsError && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{listingsError}</div>}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-start", gap: isMobile ? 10 : 0, marginBottom: 12 }}>
         <div>
-          <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text, fontWeight: "bold" }}>Wholesale Deal Feed</div>
+          <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 20, color: G.text, fontWeight: "bold" }}>Wholesale Deal Feed</div>
           <div style={{ fontSize: 10, color: G.muted, marginTop: 2 }}>{listingsLoading ? "Loading listings..." : `${filtered.length} deals available · Live from Supabase`}</div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setMktView("buyers")} style={{ ...btnO, fontSize: 9, padding: "7px 12px", borderColor: G.blue, color: G.blue }}>Buyer Network ({activeBuyerCount})</button>
-          <button onClick={() => setMktView("submit")} style={{ ...btnG, fontSize: 9, padding: "7px 12px" }}>+ Submit a Deal</button>
+        <div style={{ display: "flex", gap: 8, width: isMobile ? "100%" : "auto" }}>
+          <button onClick={() => setMktView("buyers")} style={{ ...btnO, flex: isMobile ? 1 : "unset", fontSize: 9, padding: isMobile ? "8px 10px" : "7px 12px", borderColor: G.blue, color: G.blue }}>Buyer Network ({activeBuyerCount})</button>
+          <button onClick={() => setMktView("submit")} style={{ ...btnG, flex: isMobile ? 1 : "unset", fontSize: 9, padding: isMobile ? "8px 10px" : "7px 12px" }}>+ Submit a Deal</button>
         </div>
       </div>
 
-      <div style={{ background: "linear-gradient(135deg,#eff6ff,#e6efff)", border: "1px solid #93c5fd88", borderRadius: 8, padding: "12px 16px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ background: "linear-gradient(135deg,#eff6ff,#e6efff)", border: "1px solid #93c5fd88", borderRadius: 8, padding: isMobile ? "10px 11px" : "12px 16px", marginBottom: 12, display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 8 : 0 }}>
         <div>
           <div style={{ fontSize: 7, color: G.blue, letterSpacing: 3, marginBottom: 2 }}>SPONSORED · KIAVI HARD MONEY</div>
           <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold" }}>Fund any deal in this feed in 5 days</div>
           <div style={{ fontSize: 9, color: G.muted }}>Pre-approval in 24 hours. Up to 90% of purchase. No income docs.</div>
         </div>
-        <div style={{ background: G.blue, color: "#fff", borderRadius: 5, padding: "8px 14px", fontSize: 9, fontFamily: G.mono, fontWeight: "bold", letterSpacing: 2, whiteSpace: "nowrap", marginLeft: 12 }}>GET FUNDED →</div>
+        <div style={{ background: G.blue, color: "#fff", borderRadius: 5, padding: "8px 12px", fontSize: 9, fontFamily: G.mono, fontWeight: "bold", letterSpacing: 2, whiteSpace: "nowrap", marginLeft: isMobile ? 0 : 12, textAlign: "center" }}>GET FUNDED →</div>
       </div>
+
+      <DataSearchBar
+        G={G}
+        value={marketSearch}
+        onChange={setMarketSearch}
+        placeholder="Search by address, city, state, deal type, or numbers"
+        resultCount={filtered.length}
+        totalCount={listings.length}
+      />
 
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ fontSize: 9, color: G.muted, letterSpacing: 2, marginRight: 4 }}>MARKET</div>
         {filterOptions.map((state) => (
-          <div key={state} onClick={() => setMktFilter(state)} style={{ padding: "4px 10px", borderRadius: 4, cursor: "pointer", fontSize: 9, fontFamily: G.mono, border: `1px solid ${mktFilter === state ? G.green : G.border}`, background: mktFilter === state ? G.greenGlow : "transparent", color: mktFilter === state ? G.green : G.muted }}>
+          <div key={state} onClick={() => setMktFilter(state)} style={{ padding: isMobile ? "5px 8px" : "4px 10px", borderRadius: 4, cursor: "pointer", fontSize: isMobile ? 8 : 9, fontFamily: G.mono, border: `1px solid ${mktFilter === state ? G.green : G.border}`, background: mktFilter === state ? G.greenGlow : "transparent", color: mktFilter === state ? G.green : G.muted }}>
             {state}
           </div>
         ))}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+        <div style={{ marginLeft: isMobile ? 0 : "auto", width: isMobile ? "100%" : "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ fontSize: 9, color: G.muted }}>SORT</div>
           {[ ["newest", "Newest"], ["roi", "Best ROI"], ["equity", "Most Equity"], ["price", "Lowest Price"] ].map(([v, l]) => (
-            <div key={v} onClick={() => setMktSort(v)} style={{ padding: "4px 10px", borderRadius: 4, cursor: "pointer", fontSize: 9, fontFamily: G.mono, border: `1px solid ${mktSort === v ? G.gold : G.border}`, background: mktSort === v ? "#fef3c7" : "transparent", color: mktSort === v ? "#92400e" : G.muted }}>
+            <div key={v} onClick={() => setMktSort(v)} style={{ padding: isMobile ? "5px 8px" : "4px 10px", borderRadius: 4, cursor: "pointer", fontSize: isMobile ? 8 : 9, fontFamily: G.mono, border: `1px solid ${mktSort === v ? G.gold : G.border}`, background: mktSort === v ? "#fef3c7" : "transparent", color: mktSort === v ? "#92400e" : G.muted }}>
               {l}
             </div>
           ))}
@@ -822,7 +851,7 @@ export default function MarketplaceTab({ ctx }) {
 
       {filtered.map((d) => (
         <div key={d.id} style={{ ...card, marginBottom: 10, borderColor: d.days === 0 ? `${G.green}44` : G.border, cursor: "pointer" }} onClick={() => setActiveListing(d)}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: "flex-start", gap: isMobile ? 8 : 0, marginBottom: 8 }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
                 <div style={{ fontSize: 8, color: d.type === "Wholesale" ? G.gold : G.green, background: d.type === "Wholesale" ? `${G.gold}22` : G.greenGlow, border: `1px solid ${d.type === "Wholesale" ? G.gold : G.green}44`, borderRadius: 3, padding: "2px 7px", letterSpacing: 1 }}>
@@ -831,17 +860,17 @@ export default function MarketplaceTab({ ctx }) {
                 {d.days === 0 && <div style={{ fontSize: 8, color: "#ff6b6b", background: "#ff6b6b22", border: "1px solid #ff6b6b44", borderRadius: 3, padding: "2px 7px", letterSpacing: 1 }}>NEW TODAY</div>}
                 <div style={{ fontSize: 9, color: G.muted }}>{d.days === 0 ? "Just posted" : `${d.days}d ago`} · {d.views} views</div>
               </div>
-              <div style={{ fontFamily: G.serif, fontSize: 14, color: G.text, fontWeight: "bold", marginBottom: 2 }}>{d.addr}, {d.city}, {d.state}</div>
+              <div style={{ fontFamily: G.serif, fontSize: isMobile ? 13 : 14, color: G.text, fontWeight: "bold", marginBottom: 2 }}>{d.addr}, {d.city}, {d.state}</div>
               <div style={{ fontSize: 9, color: G.muted }}>{d.beds}bd/{d.baths}ba · {d.sqft?.toLocaleString()} sqft · Built {d.yr} · {d.condition}</div>
             </div>
-            <div style={{ textAlign: "right", minWidth: 100 }}>
+            <div style={{ textAlign: isMobile ? "left" : "right", minWidth: isMobile ? 0 : 100 }}>
               <div style={{ fontSize: 8, color: G.muted, letterSpacing: 2, marginBottom: 1 }}>ASKING</div>
               <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, fontWeight: "bold" }}>{fmt(d.ask)}</div>
               <div style={{ fontSize: 9, color: G.muted }}>+ {fmt(d.fee)} fee</div>
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginBottom: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,1fr)", gap: 6, marginBottom: 10 }}>
             {[{ l: "ARV", v: fmt(d.arv), c: G.green }, { l: "Est. Reno", v: fmt(d.reno), c: G.gold }, { l: "Equity", v: fmt(d.equity), c: G.text }, { l: "ROI", v: `${d.roi}%`, c: roiColor(d.roi) }].map(({ l, v, c }) => (
               <div key={l} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 4, padding: "7px 9px", textAlign: "center" }}>
                 <div style={{ fontSize: 7, color: G.muted, letterSpacing: 2, marginBottom: 2 }}>{l}</div>
@@ -853,8 +882,8 @@ export default function MarketplaceTab({ ctx }) {
           <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.6, marginBottom: 10 }}>{d.desc.slice(0, 120)}...</div>
 
           <div style={{ display: "flex", gap: 7 }}>
-            <button onClick={(e) => { e.stopPropagation(); setActiveListing(d); }} style={{ ...btnG, flex: 2, fontSize: 9, padding: "8px" }}>View Full Deal →</button>
-            <button onClick={(e) => { e.stopPropagation(); toggleSave(d.id); }} disabled={saveBusyId === d.id} style={{ ...btnO, flex: 1, fontSize: 9, padding: "8px", borderColor: savedDeals.includes(d.id) ? G.green : G.border, color: savedDeals.includes(d.id) ? G.green : G.muted, opacity: saveBusyId === d.id ? 0.65 : 1 }}>
+            <button onClick={(e) => { e.stopPropagation(); setActiveListing(d); }} style={{ ...btnG, flex: 2, fontSize: isMobile ? 10 : 9, padding: isMobile ? "9px 8px" : "8px" }}>View Full Deal →</button>
+            <button onClick={(e) => { e.stopPropagation(); toggleSave(d.id); }} disabled={saveBusyId === d.id} style={{ ...btnO, flex: 1, fontSize: isMobile ? 10 : 9, padding: isMobile ? "9px 8px" : "8px", borderColor: savedDeals.includes(d.id) ? G.green : G.border, color: savedDeals.includes(d.id) ? G.green : G.muted, opacity: saveBusyId === d.id ? 0.65 : 1 }}>
               {savedDeals.includes(d.id) ? "Saved" : "Save"}
             </button>
           </div>

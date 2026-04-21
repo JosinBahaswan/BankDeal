@@ -1,3 +1,5 @@
+import { useState } from "react";
+import DataSearchBar from "../../components/DataSearchBar";
 import { reviewStatusColor, reviewStatusLabel } from "./realtorComplianceApi";
 
 function asNumber(value, fallback = 0) {
@@ -25,6 +27,7 @@ export default function CommissionCompliancePanel({
   submitBusyListingId,
   onSubmit,
 }) {
+  const [reviewSearch, setReviewSearch] = useState("");
   const deals = Array.isArray(closedDeals) ? closedDeals : [];
   const reviewMap = reviewsByListing instanceof Map ? reviewsByListing : new Map();
 
@@ -37,6 +40,25 @@ export default function CommissionCompliancePanel({
     const row = reviewMap.get(deal.id);
     return String(row?.status || "").toLowerCase() === "approved";
   }).length;
+
+  const reviewQuery = reviewSearch.trim().toLowerCase();
+  const filteredDeals = !reviewQuery
+    ? deals
+    : deals.filter((deal) => {
+      const review = reviewMap.get(deal.id) || null;
+      const searchable = [
+        deal.address,
+        deal.date,
+        deal.dealMaker,
+        String(deal.salePrice || ""),
+        String(deal.grossCommission || ""),
+        String(deal.yourNet || ""),
+        review?.status || "",
+        review?.compliance_note || "",
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(reviewQuery);
+    });
 
   return (
     <div style={{ ...card }}>
@@ -58,13 +80,28 @@ export default function CommissionCompliancePanel({
         ))}
       </div>
 
+      <DataSearchBar
+        G={G}
+        value={reviewSearch}
+        onChange={setReviewSearch}
+        placeholder="Search compliance by address, deal maker, status, note, or amount"
+        resultCount={filteredDeals.length}
+        totalCount={deals.length}
+      />
+
       {deals.length === 0 && (
         <div style={{ fontSize: 10, color: G.muted }}>
           Close your first referral transaction to submit compliance documentation.
         </div>
       )}
 
-      {deals.map((deal) => {
+      {deals.length > 0 && filteredDeals.length === 0 && (
+        <div style={{ fontSize: 10, color: G.muted }}>
+          No compliance rows match your search.
+        </div>
+      )}
+
+      {filteredDeals.map((deal) => {
         const review = reviewMap.get(deal.id) || null;
         const statusColor = reviewStatusColor(review?.status, G);
         const statusLabel = reviewStatusLabel(review?.status);

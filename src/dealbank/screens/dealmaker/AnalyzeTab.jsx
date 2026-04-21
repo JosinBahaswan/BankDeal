@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import DataSearchBar from "../../components/DataSearchBar";
 
 const OFFER_PRESETS = [55, 60, 65, 70];
 
@@ -86,6 +87,7 @@ export default function AnalyzeTab({ ctx }) {
 
   const [showHolding, setShowHolding] = useState(true);
   const [showSelling, setShowSelling] = useState(true);
+  const [compsSearch, setCompsSearch] = useState("");
 
   const offerPctNum = Math.min(100, Math.max(0, parseFloat(offerPct) || 60));
   const subTabs = [
@@ -106,6 +108,23 @@ export default function AnalyzeTab({ ctx }) {
   );
 
   const totalBarValue = costSegments.reduce((sum, item) => sum + item.value, 0);
+  const filteredComps = useMemo(() => {
+    const query = compsSearch.trim().toLowerCase();
+    if (!query) return compsData || [];
+
+    return (compsData || []).filter((comp) => {
+      const searchable = [
+        comp.address,
+        String(comp.price || ""),
+        String(comp.squareFootage || ""),
+        String(comp.bedrooms || ""),
+        String(comp.bathrooms || ""),
+        String(comp.daysOld || ""),
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [compsData, compsSearch]);
 
   const renderMd = (text) =>
     text
@@ -187,7 +206,11 @@ export default function AnalyzeTab({ ctx }) {
       )}
 
       {arvNum > 0 && (
-        <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
+        <div
+          style={isMobile
+            ? { display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, marginBottom: 8 }
+            : { display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}
+        >
           {subTabs.map((tab) => (
             <button
               key={tab.id}
@@ -195,11 +218,12 @@ export default function AnalyzeTab({ ctx }) {
               onClick={() => setAnlTab(tab.id)}
               style={{
                 ...btnO,
-                padding: "6px 12px",
-                fontSize: 8,
+                padding: isMobile ? "8px 10px" : "6px 12px",
+                fontSize: isMobile ? 9 : 8,
                 borderColor: anlTab === tab.id ? G.green : G.border,
                 color: anlTab === tab.id ? G.green : G.muted,
                 background: anlTab === tab.id ? G.greenGlow : "transparent",
+                gridColumn: isMobile && tab.id === "seller-pitch" ? "1 / -1" : "auto",
               }}
             >
               {tab.label}
@@ -281,7 +305,7 @@ export default function AnalyzeTab({ ctx }) {
             </div>
 
             <div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, marginBottom: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(auto-fit,minmax(120px,1fr))", gap: 8, marginBottom: 10 }}>
                 {[
                   { l: "All-In", v: fmt(Math.round(allIn)), c: G.text },
                   { l: "Profit", v: fmt(Math.round(projProfit)), c: projProfit > 0 ? G.green : G.red },
@@ -496,23 +520,57 @@ export default function AnalyzeTab({ ctx }) {
       {compsData?.length > 0 && (
         <div style={{ ...card, marginBottom: 12 }}>
           <div style={{ ...lbl, color: G.green, marginBottom: 8 }}>Comparable Sales - 2-Mile Radius</div>
+          <DataSearchBar
+            G={G}
+            value={compsSearch}
+            onChange={setCompsSearch}
+            placeholder="Search comps by address, price, sqft, beds/baths, or recency"
+            resultCount={filteredComps.length}
+            totalCount={(compsData || []).length}
+          />
           <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 5, overflow: "hidden" }}>
-            <div style={{ overflowX: "auto" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr 0.8fr 0.8fr 0.6fr", minWidth: 560, padding: "6px 12px", background: G.card, borderBottom: `1px solid ${G.border}` }}>
-                {["ADDRESS", "PRICE", "SQFT", "BED/BATH", "SOLD"].map((head) => (
-                  <div key={head} style={{ fontSize: 8, color: G.muted, letterSpacing: 2 }}>{head}</div>
+            {isMobile ? (
+              <div style={{ display: "grid", gap: 7, padding: "8px" }}>
+                {filteredComps.map((comp, index) => (
+                  <div key={`${comp.address}-${index}`} style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: 6, padding: "8px 9px" }}>
+                    <div style={{ fontSize: 10, color: G.text, fontWeight: 600, marginBottom: 4 }}>{comp.address}</div>
+                    <div style={{ fontFamily: G.serif, fontSize: 14, color: G.green, fontWeight: "bold", marginBottom: 6 }}>{fmt(comp.price)}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+                      <div style={{ fontSize: 9, color: G.muted }}>Sqft: <span style={{ color: G.text }}>{(comp.squareFootage || 0).toLocaleString()}</span></div>
+                      <div style={{ fontSize: 9, color: G.muted }}>Beds/Baths: <span style={{ color: G.text }}>{comp.bedrooms}/{comp.bathrooms}</span></div>
+                      <div style={{ fontSize: 9, color: G.muted }}>Sold: <span style={{ color: G.text }}>{comp.daysOld}d</span></div>
+                    </div>
+                  </div>
                 ))}
+                {filteredComps.length === 0 && (
+                  <div style={{ padding: "4px 2px", fontSize: 10, color: G.muted }}>
+                    No comparable sales match your search.
+                  </div>
+                )}
               </div>
-              {compsData.map((comp, index) => (
-                <div key={index} style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr 0.8fr 0.8fr 0.6fr", minWidth: 560, padding: "8px 12px", borderBottom: index < compsData.length - 1 ? `1px solid ${G.faint}` : "none", background: index % 2 === 0 ? "transparent" : G.surface }}>
-                  <div style={{ fontSize: 10, color: G.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{comp.address}</div>
-                  <div style={{ fontSize: 11, color: G.green, fontFamily: G.serif, fontWeight: "bold" }}>{fmt(comp.price)}</div>
-                  <div style={{ fontSize: 10, color: G.text }}>{(comp.squareFootage || 0).toLocaleString()}</div>
-                  <div style={{ fontSize: 10, color: G.text }}>{comp.bedrooms}bd/{comp.bathrooms}ba</div>
-                  <div style={{ fontSize: 10, color: G.muted }}>{comp.daysOld}d</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr 0.8fr 0.8fr 0.6fr", minWidth: 560, padding: "6px 12px", background: G.card, borderBottom: `1px solid ${G.border}` }}>
+                  {["ADDRESS", "PRICE", "SQFT", "BED/BATH", "SOLD"].map((head) => (
+                    <div key={head} style={{ fontSize: 8, color: G.muted, letterSpacing: 2 }}>{head}</div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                {filteredComps.map((comp, index) => (
+                  <div key={index} style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr 0.8fr 0.8fr 0.6fr", minWidth: 560, padding: "8px 12px", borderBottom: index < filteredComps.length - 1 ? `1px solid ${G.faint}` : "none", background: index % 2 === 0 ? "transparent" : G.surface }}>
+                    <div style={{ fontSize: 10, color: G.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{comp.address}</div>
+                    <div style={{ fontSize: 11, color: G.green, fontFamily: G.serif, fontWeight: "bold" }}>{fmt(comp.price)}</div>
+                    <div style={{ fontSize: 10, color: G.text }}>{(comp.squareFootage || 0).toLocaleString()}</div>
+                    <div style={{ fontSize: 10, color: G.text }}>{comp.bedrooms}bd/{comp.bathrooms}ba</div>
+                    <div style={{ fontSize: 10, color: G.muted }}>{comp.daysOld}d</div>
+                  </div>
+                ))}
+                {filteredComps.length === 0 && (
+                  <div style={{ padding: "10px 12px", fontSize: 10, color: G.muted }}>
+                    No comparable sales match your search.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           {mktNotes && <div style={{ marginTop: 8, fontSize: 10, color: G.muted, lineHeight: 1.7 }}>{mktNotes}</div>}
         </div>

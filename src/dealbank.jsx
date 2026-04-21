@@ -61,6 +61,20 @@ function normalizeUserType(type) {
   return USER_TYPES.has(value) ? value : "dealmaker";
 }
 
+function isLikelyPropertyLookupInput(value) {
+  const input = String(value || "").trim();
+  if (!input) return false;
+
+  if (/^https?:\/\/\S+/i.test(input)) return true;
+  if (/^address:\d{6,}$/i.test(input)) return true;
+  if (/^\d{6,}$/.test(input)) return true;
+
+  const hasLetters = /[a-zA-Z]/.test(input);
+  const words = input.replace(/\s+/g, " ").split(" ").filter(Boolean);
+
+  return hasLetters && words.length >= 2;
+}
+
 const ADMIN_EMAIL_ENV = String(import.meta.env.VITE_ADMIN_EMAIL || "").trim().toLowerCase();
 const ADMIN_PASSWORD_ENV = String(import.meta.env.VITE_ADMIN_PASSWORD || "").trim();
 const ADMIN_BYPASS_ENABLED = String(import.meta.env.VITE_ENABLE_ADMIN_BYPASS || "").toLowerCase() === "true";
@@ -1323,7 +1337,7 @@ export default function App() {
           }
 
           if (isUserExistsError(signUpError)) {
-            setAuthError("Email sudah terdaftar. Coba mode login atau reset password.");
+            setAuthError("This email is already registered. Try login mode or reset your password.");
             setAuthMode("login");
             return;
           }
@@ -1362,14 +1376,14 @@ export default function App() {
 
       if (loginError || !loginData?.user) {
         if (isInvalidCredentialError(loginError) && normalizedAuthEmail.endsWith("@dealbank.local")) {
-          setAuthError("Login akun gagal periksa email dan password. Untuk akun lokal, pastikan email diakhiri dengan @dealbank.local dan password sesuai alias admin.");
+          setAuthError("Login failed. Check your email and password. For local accounts, use an email ending with @dealbank.local and a valid admin alias password.");
           return;
         }
 
         if (isEmailNotConfirmedError(loginError)) {
           setAuthNeedsVerification(true);
           setAuthVerificationEmail(normalizedAuthEmail);
-          setAuthError("Email belum dikonfirmasi. Cek inbox/spam, lalu klik Resend verification email jika belum menerima link.");
+          setAuthError("Email is not confirmed yet. Check inbox/spam, then click Resend verification email if you have not received the link.");
           return;
         }
 
@@ -1748,8 +1762,15 @@ export default function App() {
   }, [user?.id, loadPipeline, pushToast]);
 
   async function lookupProperty() {
-    if (!address.trim()) {
+    const lookupInput = address.trim();
+
+    if (!lookupInput) {
       setLookErr("Enter an address first.");
+      return;
+    }
+
+    if (!isLikelyPropertyLookupInput(lookupInput)) {
+      setLookErr("Use a full address, propertyId, id format address:<propertyId>, or a property URL.");
       return;
     }
 
@@ -1766,7 +1787,7 @@ export default function App() {
     let hasStructuredData = false;
 
     try {
-      const intelligence = await fetchPropertyIntelligence(address);
+      const intelligence = await fetchPropertyIntelligence(lookupInput);
       if (intelligence) {
         setPropertyIntel(intelligence);
       }
@@ -1808,10 +1829,10 @@ export default function App() {
     if (!hasStructuredData) {
       try {
         const raw = await askClaude(
-          `Real estate analyst. Return property data for "${address}".
+          `Real estate analyst. Return property data for "${lookupInput}".
 Return ONLY raw JSON no markdown:
 {"property":{"bedrooms":3,"bathrooms":2,"squareFootage":1450,"yearBuilt":1985,"propertyType":"Single Family","lotSize":6500,"lastSalePrice":310000,"lastSaleDate":"2021-03-10"},"avm":{"price":420000,"priceRangeLow":395000,"priceRangeHigh":448000},"comps":[{"address":"nearby st","price":415000,"squareFootage":1380,"bedrooms":3,"bathrooms":2,"daysOld":42,"distance":0.4},{"address":"nearby ave","price":432000,"squareFootage":1510,"bedrooms":3,"bathrooms":2,"daysOld":28,"distance":0.7},{"address":"nearby blvd","price":408000,"squareFootage":1420,"bedrooms":3,"bathrooms":2,"daysOld":65,"distance":1.2}],"marketNotes":"2 sentences about this market."}
-Use real data for "${address}". avm.price = ARV after full renovation.`,
+Use real data for "${lookupInput}". avm.price = ARV after full renovation.`,
           1200,
         );
 

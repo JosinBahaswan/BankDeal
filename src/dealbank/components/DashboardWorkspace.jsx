@@ -42,6 +42,10 @@ export default function DashboardWorkspace({
   const isMobile = mode === "mobile";
   const isTablet = mode === "tablet";
   const showRail = !isMobile && railSections.length > 0;
+  const showMobileRail = isMobile && railSections.length > 0;
+  const metricGridColumns = isMobile
+    ? (metrics.length <= 1 ? "1fr" : "repeat(2,minmax(0,1fr))")
+    : "repeat(auto-fit,minmax(140px,1fr))";
 
   return (
     <div>
@@ -68,7 +72,7 @@ export default function DashboardWorkspace({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(140px,1fr))",
+                gridTemplateColumns: metricGridColumns,
                 gap: 8,
               }}
             >
@@ -79,11 +83,11 @@ export default function DashboardWorkspace({
                     border: `1px solid ${G.border}`,
                     borderRadius: 10,
                     background: G.surface,
-                    padding: "10px 12px",
+                    padding: isMobile ? "9px 10px" : "10px 12px",
                   }}
                 >
                   <div style={{ fontSize: 10, color: G.muted, marginBottom: 2 }}>{metric.label}</div>
-                  <div style={{ fontFamily: G.serif, fontSize: 24, color: metric.color || G.green, fontWeight: "bold", lineHeight: 1.06 }}>
+                  <div style={{ fontFamily: G.serif, fontSize: isMobile ? 20 : 24, color: metric.color || G.green, fontWeight: "bold", lineHeight: 1.06 }}>
                     {metric.value}
                   </div>
                 </div>
@@ -148,6 +152,50 @@ export default function DashboardWorkspace({
           </aside>
         )}
       </div>
+
+      {showMobileRail && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 10, color: G.muted, letterSpacing: 1, marginBottom: 6, fontWeight: 700 }}>
+            QUICK BRIEF
+          </div>
+
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
+            {railSections.map((section) => {
+              const palette = tonePalette(section.tone, G);
+
+              return (
+                <div
+                  key={section.title}
+                  style={{
+                    minWidth: "min(82vw,260px)",
+                    flexShrink: 0,
+                    border: `1px solid ${palette.border}`,
+                    borderRadius: 10,
+                    background: section.tone ? palette.background : G.card,
+                    padding: "10px 11px",
+                  }}
+                >
+                  <div style={{ fontSize: 10, color: section.tone ? palette.text : G.muted, letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>
+                    {section.title}
+                  </div>
+
+                  {(section.items || []).map((item) => (
+                    <div key={item} style={{ fontSize: 11, color: G.text, lineHeight: 1.55, marginBottom: 3 }}>
+                      {item}
+                    </div>
+                  ))}
+
+                  {section.note && (
+                    <div style={{ marginTop: 6, fontSize: 10, color: G.muted, lineHeight: 1.55 }}>
+                      {section.note}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

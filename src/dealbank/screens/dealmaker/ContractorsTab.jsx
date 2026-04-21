@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import DataSearchBar from "../../components/DataSearchBar";
 import useIsMobile from "../../core/useIsMobile";
 
 const CONTRACTOR_PHOTOS_BUCKET = String(import.meta.env.VITE_CONTRACTOR_PHOTOS_BUCKET || "contractor-photos").trim();
@@ -17,6 +18,24 @@ export default function ContractorsTab({ ctx }) {
   const [contractors, setContractors] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [contractorSearch, setContractorSearch] = useState("");
+
+  const filteredContractors = useMemo(() => {
+    const query = contractorSearch.trim().toLowerCase();
+    if (!query) return contractors;
+
+    return contractors.filter((contractor) => {
+      const searchable = [
+        contractor.name,
+        contractor.trade,
+        contractor.location,
+        contractor.bio,
+        contractor.rate,
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [contractors, contractorSearch]);
 
   useEffect(() => {
     let active = true;
@@ -134,6 +153,14 @@ export default function ContractorsTab({ ctx }) {
   return (
     <div>
       <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 14 }}>Local Contractor Network</div>
+      <DataSearchBar
+        G={G}
+        value={contractorSearch}
+        onChange={setContractorSearch}
+        placeholder="Search by name, trade, location, bio, or rate"
+        resultCount={filteredContractors.length}
+        totalCount={contractors.length}
+      />
       {error && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{error}</div>}
       {loading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading contractor profiles...</div>}
 
@@ -141,8 +168,12 @@ export default function ContractorsTab({ ctx }) {
         <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>No contractor profiles are available yet.</div>
       )}
 
+      {!loading && contractors.length > 0 && filteredContractors.length === 0 && !error && (
+        <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>No contractors match your search.</div>
+      )}
+
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
-        {contractors.map((contractor) => (
+        {filteredContractors.map((contractor) => (
           <div key={contractor.id} style={{ ...card }}>
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
               <div style={{ width: 40, height: 40, borderRadius: "50%", background: G.greenGlow, border: `1px solid ${G.green}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: G.green, fontWeight: "bold", flexShrink: 0, overflow: "hidden" }}>

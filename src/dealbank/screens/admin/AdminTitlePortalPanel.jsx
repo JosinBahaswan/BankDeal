@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import DataSearchBar from "../../components/DataSearchBar";
 
 const TITLE_PORTAL_ADMIN_ENDPOINT = String(import.meta.env.VITE_TITLE_PORTAL_ADMIN_ENDPOINT || "/api/title-portal-admin").trim();
 
@@ -63,6 +64,7 @@ export default function AdminTitlePortalPanel({ G, card, btnO, isMobile }) {
   const [submitError, setSubmitError] = useState("");
   const [generatedPortalUrl, setGeneratedPortalUrl] = useState("");
   const [copied, setCopied] = useState(false);
+  const [tokenSearch, setTokenSearch] = useState("");
 
   const loadTokens = useCallback(async () => {
     if (!TITLE_PORTAL_ADMIN_ENDPOINT) {
@@ -93,6 +95,24 @@ export default function AdminTitlePortalPanel({ G, card, btnO, isMobile }) {
     () => tokens.filter((row) => !asBool(row?.expired)).length,
     [tokens],
   );
+
+  const filteredTokens = useMemo(() => {
+    const query = tokenSearch.trim().toLowerCase();
+    if (!query) return tokens;
+
+    return tokens.filter((tokenRow) => {
+      const searchable = [
+        tokenRow?.contract?.title,
+        tokenRow?.contractId,
+        tokenRow?.titleCompanyEmail,
+        tokenRow?.expiresAt,
+        tokenRow?.createdAt,
+        asBool(tokenRow?.expired) ? "expired" : "active",
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [tokens, tokenSearch]);
 
   const handleCreatePortal = async (event) => {
     event.preventDefault();
@@ -291,6 +311,15 @@ export default function AdminTitlePortalPanel({ G, card, btnO, isMobile }) {
       <div style={{ ...card }}>
         <div style={{ fontSize: 10, color: G.text, marginBottom: 8 }}>Recent Title Portal Tokens</div>
 
+        <DataSearchBar
+          G={G}
+          value={tokenSearch}
+          onChange={setTokenSearch}
+          placeholder="Search by contract title, contract ID, email, or status"
+          resultCount={filteredTokens.length}
+          totalCount={tokens.length}
+        />
+
         {error && (
           <div style={{ fontSize: 9, color: G.red, marginBottom: 8 }}>{error}</div>
         )}
@@ -303,7 +332,11 @@ export default function AdminTitlePortalPanel({ G, card, btnO, isMobile }) {
           <div style={{ fontSize: 9, color: G.muted }}>No title portal tokens found.</div>
         )}
 
-        {tokens.map((tokenRow) => {
+        {!error && !loading && tokens.length > 0 && filteredTokens.length === 0 && (
+          <div style={{ fontSize: 9, color: G.muted }}>No tokens match your search.</div>
+        )}
+
+        {filteredTokens.map((tokenRow) => {
           const expired = asBool(tokenRow?.expired, false);
           const statusColor = expired ? G.red : G.green;
 

@@ -38,6 +38,10 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 const seedUsers = [
+  { email: "daniel@dealbank.local", name: "Daniel", type: "admin" },
+  { email: "nora.dealmaker@dealbank.local", name: "Nora Carter", type: "dealmaker" },
+  { email: "ryan.contractor@dealbank.local", name: "Ryan Brooks", type: "contractor" },
+  { email: "claire.realtor@dealbank.local", name: "Claire Morgan", type: "realtor" },
   { email: "admin@dealbank.local", name: "DealBank Admin", type: "admin" },
   { email: "admin@dealbank.io", name: "Admin", type: "admin" },
   { email: "aria@dealbank.local", name: "Aria Wilson", type: "dealmaker" },

@@ -1,3 +1,5 @@
+import { useMemo, useState } from "react";
+import DataSearchBar from "../../components/DataSearchBar";
 import TrackedPartnerLink from "./partners/TrackedPartnerLink";
 
 export default function PartnersTab({ ctx }) {
@@ -18,6 +20,60 @@ export default function PartnersTab({ ctx }) {
     MORTGAGE_PARTNERS,
     user,
   } = ctx;
+  const [partnerSearch, setPartnerSearch] = useState("");
+
+  const normalizedPartnerSearch = partnerSearch.trim().toLowerCase();
+
+  const visibleSoftwareReviews = useMemo(() => {
+    const filteredByCategory = SOFTWARE_REVIEWS.filter((review) => softwareFilter === "All" || review.category.includes(softwareFilter.split(" ")[0]));
+    if (!normalizedPartnerSearch) return filteredByCategory;
+
+    return filteredByCategory.filter((review) => {
+      const searchable = [
+        review.name,
+        review.category,
+        review.tagline,
+        review.verdict,
+        review.price,
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(normalizedPartnerSearch);
+    });
+  }, [SOFTWARE_REVIEWS, softwareFilter, normalizedPartnerSearch]);
+
+  const visibleInsurancePartners = useMemo(() => {
+    if (!normalizedPartnerSearch) return INSURANCE_PARTNERS;
+
+    return INSURANCE_PARTNERS.filter((partner) => {
+      const searchable = [
+        partner.name,
+        partner.type,
+        partner.tagline,
+        partner.avgPremium,
+        (partner.coverage || []).join(" "),
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(normalizedPartnerSearch);
+    });
+  }, [INSURANCE_PARTNERS, normalizedPartnerSearch]);
+
+  const visibleMortgagePartners = useMemo(() => {
+    if (!normalizedPartnerSearch) return MORTGAGE_PARTNERS;
+
+    return MORTGAGE_PARTNERS.filter((partner) => {
+      const searchable = [
+        partner.name,
+        partner.type,
+        partner.tagline,
+        partner.rates,
+        partner.points,
+        partner.ltv,
+        (partner.features || []).join(" "),
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(normalizedPartnerSearch);
+    });
+  }, [MORTGAGE_PARTNERS, normalizedPartnerSearch]);
 
   return (
     <div>
@@ -138,6 +194,14 @@ export default function PartnersTab({ ctx }) {
             <div>
               <div style={{ fontFamily: G.serif, fontSize: 16, color: G.text, marginBottom: 4 }}>Software Reviews</div>
               <div style={{ fontSize: 10, color: G.muted, marginBottom: 14, lineHeight: 1.6 }}>Ranked by real deal maker feedback and verified reviews. DealBank earns affiliate commissions - it never affects our ratings.</div>
+              <DataSearchBar
+                G={G}
+                value={partnerSearch}
+                onChange={setPartnerSearch}
+                placeholder="Search software by name, category, verdict, or pricing"
+                resultCount={visibleSoftwareReviews.length}
+                totalCount={SOFTWARE_REVIEWS.length}
+              />
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 14 }}>
                 {["All", "Comps & Leads", "CRM", "Lead Generation", "Project Management"].map((filter) => (
                   <div key={filter} onClick={() => setSoftwareFilter(filter)} style={{ padding: "4px 10px", borderRadius: 4, cursor: "pointer", fontSize: 8, letterSpacing: 2, fontFamily: G.mono, border: `1px solid ${softwareFilter === filter ? G.green : G.border}`, background: softwareFilter === filter ? G.greenGlow : "transparent", color: softwareFilter === filter ? G.green : G.muted }}>
@@ -145,8 +209,13 @@ export default function PartnersTab({ ctx }) {
                   </div>
                 ))}
               </div>
+              {visibleSoftwareReviews.length === 0 && (
+                <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>
+                  No software entries match your search.
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                {SOFTWARE_REVIEWS.filter((review) => softwareFilter === "All" || review.category.includes(softwareFilter.split(" ")[0])).map((review) => (
+                {visibleSoftwareReviews.map((review) => (
                   <div key={review.id} onClick={() => setActiveSoftware(review)} style={{ ...card, cursor: "pointer", borderColor: G.border, transition: "all .15s" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -176,10 +245,23 @@ export default function PartnersTab({ ctx }) {
         <div>
           <div style={{ fontFamily: G.serif, fontSize: 16, color: G.text, marginBottom: 4 }}>Insurance for Deal Makers</div>
           <div style={{ fontSize: 10, color: G.muted, marginBottom: 6, lineHeight: 1.6 }}>Standard homeowner's insurance won't cover a flip. You need investor-specific policies. DealBank earns a referral fee on policies - it doesn't affect our recommendations.</div>
+          <DataSearchBar
+            G={G}
+            value={partnerSearch}
+            onChange={setPartnerSearch}
+            placeholder="Search insurance partners by name, coverage, type, or premium"
+            resultCount={visibleInsurancePartners.length}
+            totalCount={INSURANCE_PARTNERS.length}
+          />
           <div style={{ background: "#1a0800", border: "1px solid #f9731644", borderRadius: 6, padding: "10px 14px", marginBottom: 14, fontSize: 10, color: "#fdba74", lineHeight: 1.6 }}>
             <strong>Important:</strong> do not close without the right coverage. Vacant properties and active rehabs are excluded from most standard policies. Get a quote before you buy.
           </div>
-          {INSURANCE_PARTNERS.map((ins) => (
+          {visibleInsurancePartners.length === 0 && (
+            <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>
+              No insurance partners match your search.
+            </div>
+          )}
+          {visibleInsurancePartners.map((ins) => (
             <div key={ins.id} style={{ ...card, marginBottom: 10, borderColor: `${ins.logoColor}33` }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -223,6 +305,14 @@ export default function PartnersTab({ ctx }) {
         <div>
           <div style={{ fontFamily: G.serif, fontSize: 16, color: G.text, marginBottom: 4 }}>Hard Money & Flip Financing</div>
           <div style={{ fontSize: 10, color: G.muted, marginBottom: 14, lineHeight: 1.6 }}>Ranked by DealBank deal maker feedback and funded loan volume. We earn a referral fee per funded loan - it never affects our rankings.</div>
+          <DataSearchBar
+            G={G}
+            value={partnerSearch}
+            onChange={setPartnerSearch}
+            placeholder="Search lenders by name, rates, points, LTV, features, or close time"
+            resultCount={visibleMortgagePartners.length}
+            totalCount={MORTGAGE_PARTNERS.length}
+          />
           {AD_SLOTS.slice(1, 2).map((ad) => (
             <TrackedPartnerLink
               key={ad.id}
@@ -245,8 +335,13 @@ export default function PartnersTab({ ctx }) {
               </div>
             </TrackedPartnerLink>
           ))}
+          {visibleMortgagePartners.length === 0 && (
+            <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>
+              No lender entries match your search.
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-            {MORTGAGE_PARTNERS.map((lender) => (
+            {visibleMortgagePartners.map((lender) => (
               <div key={lender.id} style={{ ...card, borderColor: `${lender.logoColor}33` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                   <div style={{ display: "flex", gap: 10, alignItems: "center" }}>

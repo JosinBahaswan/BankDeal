@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import DataSearchBar from "../components/DataSearchBar";
 import TopBar from "../components/TopBar";
 import AppActionModal from "../components/AppActionModal";
 import DashboardWorkspace from "../components/DashboardWorkspace";
@@ -102,6 +103,9 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
   const [commissionReviews, setCommissionReviews] = useState([]);
   const [reviewSubmitBusyId, setReviewSubmitBusyId] = useState("");
   const [reviewError, setReviewError] = useState("");
+  const [referralSearch, setReferralSearch] = useState("");
+  const [listingSearch, setListingSearch] = useState("");
+  const [closedSearch, setClosedSearch] = useState("");
   const [actionModal, setActionModal] = useState({ open: false, title: "", message: "", tone: "info" });
 
   function showActionModal(title, message, tone = "info") {
@@ -409,6 +413,57 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
       });
   }, [listingRows, netPct, user?.id]);
 
+  const filteredReferrals = useMemo(() => {
+    const query = referralSearch.trim().toLowerCase();
+    if (!query) return referrals;
+
+    return referrals.filter((row) => {
+      const searchable = [
+        row.addr,
+        row.flipper,
+        row.status,
+        row.note,
+        String(row.listPrice || ""),
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [referrals, referralSearch]);
+
+  const filteredActiveListings = useMemo(() => {
+    const query = listingSearch.trim().toLowerCase();
+    if (!query) return activeListings;
+
+    return activeListings.filter((row) => {
+      const searchable = [
+        row.address,
+        row.status,
+        String(row.listPrice || ""),
+        String(row.dom || ""),
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [activeListings, listingSearch]);
+
+  const filteredClosedDeals = useMemo(() => {
+    const query = closedSearch.trim().toLowerCase();
+    if (!query) return closedDeals;
+
+    return closedDeals.filter((row) => {
+      const searchable = [
+        row.address,
+        row.dealMaker,
+        row.date,
+        String(row.salePrice || ""),
+        String(row.grossCommission || ""),
+        String(row.yourNet || ""),
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [closedDeals, closedSearch]);
+
   const reviewsByListing = useMemo(() => {
     return new Map((commissionReviews || []).map((row) => [row.listing_id, row]));
   }, [commissionReviews]);
@@ -463,7 +518,7 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
     listings: "Keep active listings priced and positioned for speed to close.",
     closed: "Review closed volume and commission quality for compounding growth.",
     profile: "A complete profile improves routing quality and partner trust.",
-    earnings: "Monitor split health and compliance readiness on every transaction.",
+    splits: "Monitor split health and compliance readiness on every transaction.",
   };
   const workspaceMetrics = [
     { label: "Focus", value: activeTabLabel, color: G.blue },
@@ -518,6 +573,14 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
 
         {realtorTab === "referrals" && (
           <div>
+            <DataSearchBar
+              G={G}
+              value={referralSearch}
+              onChange={setReferralSearch}
+              placeholder="Search referrals by address, deal maker, status, note, or price"
+              resultCount={filteredReferrals.length}
+              totalCount={referrals.length}
+            />
             <div style={{ ...card, borderColor: `${G.blue}44`, marginBottom: 14 }}>
               <div style={{ fontSize: 11, color: G.blue, letterSpacing: 2, marginBottom: 6 }}>ACTIVE REFERRALS</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 8 }}>
@@ -543,7 +606,13 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
                   </div>
                 )}
 
-                {referrals.map((referral) => {
+                {!loading && referrals.length > 0 && filteredReferrals.length === 0 && (
+                  <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>
+                    No referrals match your search.
+                  </div>
+                )}
+
+                {filteredReferrals.map((referral) => {
                   const urgencyColor = referral.urgency === "high" ? G.green : referral.urgency === "medium" ? G.gold : G.muted;
 
                   return (
@@ -633,6 +702,14 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
         {realtorTab === "listings" && (
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 12 }}>Active Listings</div>
+            <DataSearchBar
+              G={G}
+              value={listingSearch}
+              onChange={setListingSearch}
+              placeholder="Search listings by address, status, DOM, or list price"
+              resultCount={filteredActiveListings.length}
+              totalCount={activeListings.length}
+            />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
                 { l: "Active", v: activeListings.length, c: G.blue },
@@ -652,7 +729,13 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
               </div>
             )}
 
-            {activeListings.map((listing) => (
+            {!loading && activeListings.length > 0 && filteredActiveListings.length === 0 && (
+              <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>
+                No active listings match your search.
+              </div>
+            )}
+
+            {filteredActiveListings.map((listing) => (
               <div key={listing.id} style={{ ...card, marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, gap: 8, flexWrap: "wrap" }}>
                   <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text }}>{listing.address}</div>
@@ -686,6 +769,14 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
         {realtorTab === "closed" && (
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text, marginBottom: 12 }}>Closed Deals</div>
+            <DataSearchBar
+              G={G}
+              value={closedSearch}
+              onChange={setClosedSearch}
+              placeholder="Search closed deals by address, deal maker, date, or value"
+              resultCount={filteredClosedDeals.length}
+              totalCount={closedDeals.length}
+            />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 12 }}>
               {[
                 { l: "Closed YTD", v: closedDeals.length, c: G.green },
@@ -704,6 +795,8 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
               <div style={{ ...lbl, marginBottom: 8 }}>Transaction History</div>
               {closedDeals.length === 0 ? (
                 <div style={{ fontSize: 10, color: G.muted }}>No closed listing records are visible yet.</div>
+              ) : filteredClosedDeals.length === 0 ? (
+                <div style={{ fontSize: 10, color: G.muted }}>No closed deals match your search.</div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse" }}>
@@ -715,7 +808,7 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
                       </tr>
                     </thead>
                     <tbody>
-                      {closedDeals.map((row) => (
+                      {filteredClosedDeals.map((row) => (
                         <tr key={row.id} style={{ borderBottom: `1px solid ${G.faint}` }}>
                           <td style={{ fontSize: 10, color: G.text, padding: "8px 6px" }}>{row.address}</td>
                           <td style={{ fontSize: 10, color: G.text, padding: "8px 6px" }}>{toCurrency(row.salePrice)}</td>

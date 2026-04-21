@@ -6,7 +6,7 @@ import InsuranceToolTab from "./InsuranceToolTab";
 import HardMoneyToolTab from "./HardMoneyToolTab";
 
 export default function ToolsTab({ ctx }) {
-  const { G, btnO } = ctx;
+  const { G, btnO, isMobile } = ctx;
   const [activeTool, setActiveTool] = useState("leads");
 
   const tabs = useMemo(
@@ -22,22 +22,22 @@ export default function ToolsTab({ ctx }) {
 
   return (
     <div>
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontFamily: G.serif, fontSize: 21, marginBottom: 5 }}>Deal Maker Tools</div>
-        <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.6 }}>
+      <div style={{ marginBottom: isMobile ? 10 : 12 }}>
+        <div style={{ fontFamily: G.serif, fontSize: isMobile ? 18 : 21, marginBottom: 5 }}>Deal Maker Tools</div>
+        <div style={{ fontSize: isMobile ? 9 : 10, color: G.muted, lineHeight: 1.6 }}>
           One command center for outbound lists, dialing, CRM automation, insurance coverage, and hard money underwriting.
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 12, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: isMobile ? 10 : 12, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }}>
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTool(tab.id)}
             style={{
               ...btnO,
-              padding: "6px 10px",
-              fontSize: 8,
+              padding: isMobile ? "8px 10px" : "6px 10px",
+              fontSize: isMobile ? 9 : 8,
               borderColor: activeTool === tab.id ? G.green : G.border,
               color: activeTool === tab.id ? G.green : G.muted,
               background: activeTool === tab.id ? G.greenGlow : "transparent",
@@ -50,7 +50,7 @@ export default function ToolsTab({ ctx }) {
         ))}
       </div>
 
-      <div style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: 10, padding: 12, boxShadow: G.shadowSm }}>
+      <div style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: 10, padding: isMobile ? 10 : 12, boxShadow: G.shadowSm }}>
         {activeTool === "leads" && <LeadsToolTab ctx={ctx} />}
         {activeTool === "dialer" && <PowerDialerToolTab ctx={ctx} />}
         {activeTool === "crm" && <CrmSequencesToolTab ctx={ctx} />}

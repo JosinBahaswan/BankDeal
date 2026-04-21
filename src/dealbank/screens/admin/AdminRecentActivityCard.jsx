@@ -1,9 +1,32 @@
+import { useMemo, useState } from "react";
+import DataSearchBar from "../../components/DataSearchBar";
 import { activityColor, formatRelativeTime } from "../../core/adminDashboardFormat";
 
 export default function AdminRecentActivityCard({ G, card, lbl, btnO, activity, loading, error, onReload }) {
+  const [activitySearch, setActivitySearch] = useState("");
+
+  const filteredActivity = useMemo(() => {
+    const query = activitySearch.trim().toLowerCase();
+    if (!query) return activity;
+
+    return activity.filter((item) => {
+      const searchable = [item.title, item.category, item.occurredAt].join(" ").toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [activity, activitySearch]);
+
   return (
     <div style={{ ...card }}>
       <div style={{ ...lbl, marginBottom: 10 }}>Recent Platform Activity</div>
+
+      <DataSearchBar
+        G={G}
+        value={activitySearch}
+        onChange={setActivitySearch}
+        placeholder="Search activity by title or category"
+        resultCount={filteredActivity.length}
+        totalCount={activity.length}
+      />
 
       {error && (
         <div style={{ marginBottom: 8 }}>
@@ -22,7 +45,11 @@ export default function AdminRecentActivityCard({ G, card, lbl, btnO, activity, 
         <div style={{ fontSize: 9, color: G.muted }}>No recent activity yet.</div>
       )}
 
-      {!error && activity.map((item, index) => (
+      {!error && !loading && activity.length > 0 && filteredActivity.length === 0 && (
+        <div style={{ fontSize: 9, color: G.muted }}>No activity entries match your search.</div>
+      )}
+
+      {!error && filteredActivity.map((item, index) => (
         <div
           key={item.id}
           style={{
@@ -30,7 +57,7 @@ export default function AdminRecentActivityCard({ G, card, lbl, btnO, activity, 
             justifyContent: "space-between",
             gap: 10,
             padding: "7px 0",
-            borderBottom: index < activity.length - 1 ? `1px solid ${G.faint}` : "none",
+            borderBottom: index < filteredActivity.length - 1 ? `1px solid ${G.faint}` : "none",
           }}
         >
           <span style={{ fontSize: 10, color: activityColor(item.category, G) }}>- {item.title}</span>

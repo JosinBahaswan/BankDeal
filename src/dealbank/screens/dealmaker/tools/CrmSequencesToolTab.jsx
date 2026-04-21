@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../../lib/supabaseClient";
+import DataSearchBar from "../../../components/DataSearchBar";
 import CrmPipelineBoard from "./crm/CrmPipelineBoard";
 import { buildSequenceMetrics } from "./crm/crmSequenceMetrics";
 
@@ -61,7 +62,7 @@ function newStepTemplate(index) {
 }
 
 export default function CrmSequencesToolTab({ ctx }) {
-  const { G, card, btnG, btnO, user } = ctx;
+  const { G, card, btnG, btnO, user, isMobile } = ctx;
 
   const [sequences, setSequences] = useState([]);
   const [pipeline, setPipeline] = useState(() => emptyPipeline());
@@ -70,6 +71,7 @@ export default function CrmSequencesToolTab({ ctx }) {
   const [notice, setNotice] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
   const [dispatchBusyId, setDispatchBusyId] = useState("");
+  const [crmSearch, setCrmSearch] = useState("");
   const [builderName, setBuilderName] = useState("Motivated Seller Follow-up");
   const [selectedStepId, setSelectedStepId] = useState(null);
   const [builderSteps, setBuilderSteps] = useState([
@@ -243,7 +245,39 @@ export default function CrmSequencesToolTab({ ctx }) {
     };
   }, [user?.id]);
 
-  const pipelineStages = useMemo(() => Object.keys(pipeline), [pipeline]);
+  const normalizedCrmSearch = crmSearch.trim().toLowerCase();
+
+  const filteredSequences = useMemo(() => {
+    if (!normalizedCrmSearch) return sequences;
+
+    return sequences.filter((row) => {
+      const searchable = [row.name, row.status, String(row.leadCount || "")].join(" ").toLowerCase();
+      return searchable.includes(normalizedCrmSearch);
+    });
+  }, [sequences, normalizedCrmSearch]);
+
+  const filteredPipeline = useMemo(() => {
+    if (!normalizedCrmSearch) return pipeline;
+
+    return PIPELINE_STAGES.reduce((acc, stage) => {
+      const rows = pipeline[stage] || [];
+      acc[stage] = rows.filter((row) => {
+        const searchable = [row.name, row.address, stage].join(" ").toLowerCase();
+        return searchable.includes(normalizedCrmSearch);
+      });
+      return acc;
+    }, {});
+  }, [pipeline, normalizedCrmSearch]);
+
+  const pipelineStages = useMemo(() => Object.keys(filteredPipeline), [filteredPipeline]);
+  const pipelineCardTotal = useMemo(
+    () => PIPELINE_STAGES.reduce((sum, stage) => sum + (pipeline[stage] || []).length, 0),
+    [pipeline],
+  );
+  const filteredPipelineCardTotal = useMemo(
+    () => PIPELINE_STAGES.reduce((sum, stage) => sum + (filteredPipeline[stage] || []).length, 0),
+    [filteredPipeline],
+  );
 
   const updateStep = (stepId, key, value) => {
     setBuilderSteps((prev) => prev.map((step) => (step.id === stepId ? { ...step, [key]: value } : step)));
@@ -425,16 +459,25 @@ export default function CrmSequencesToolTab({ ctx }) {
 
   return (
     <div>
-      <div style={{ fontFamily: G.serif, fontSize: 18, marginBottom: 4 }}>CRM & Sequences</div>
-      <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Track your pipeline and automate personalized follow-up with variable-based templates.</div>
+      <div style={{ fontFamily: G.serif, fontSize: isMobile ? 16 : 18, marginBottom: 4 }}>CRM & Sequences</div>
+      <div style={{ fontSize: isMobile ? 9 : 10, color: G.muted, marginBottom: 12 }}>Track your pipeline and automate personalized follow-up with variable-based templates.</div>
       {error && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{error}</div>}
       {notice && <div style={{ ...card, marginBottom: 10, borderColor: `${G.green}55`, color: G.green, fontSize: 10 }}>{notice}</div>}
       {loading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading CRM data from Supabase...</div>}
 
+      <DataSearchBar
+        G={G}
+        value={crmSearch}
+        onChange={setCrmSearch}
+        placeholder="Search sequences and leads by name, status, stage, or address"
+        resultCount={filteredSequences.length + filteredPipelineCardTotal}
+        totalCount={sequences.length + pipelineCardTotal}
+      />
+
       <div style={{ ...card, marginBottom: 12 }}>
         <div style={{ fontFamily: G.serif, fontSize: 15, marginBottom: 8 }}>Active Sequences</div>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: isMobile ? 520 : 560 }}>
             <thead>
               <tr style={{ textAlign: "left", borderBottom: `1px solid ${G.border}` }}>
                 <th style={{ fontSize: 9, color: G.muted, fontWeight: "normal", padding: "8px 6px" }}>Sequence</th>
@@ -447,7 +490,7 @@ export default function CrmSequencesToolTab({ ctx }) {
               </tr>
             </thead>
             <tbody>
-              {sequences.map((row) => (
+              {filteredSequences.map((row) => (
                 <tr key={row.id} style={{ borderBottom: `1px solid ${G.faint}` }}>
                   <td style={{ fontSize: 10, color: G.text, padding: "8px 6px" }}>{row.name}</td>
                   <td style={{ fontSize: 10, color: G.muted, padding: "8px 6px" }}>{row.leadCount}</td>
@@ -469,6 +512,13 @@ export default function CrmSequencesToolTab({ ctx }) {
                   </td>
                 </tr>
               ))}
+              {!loading && filteredSequences.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ fontSize: 9, color: G.muted, padding: "10px 6px" }}>
+                    No sequences match your search.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -477,20 +527,20 @@ export default function CrmSequencesToolTab({ ctx }) {
       <div style={{ ...card, marginBottom: 12 }}>
         <div style={{ fontFamily: G.serif, fontSize: 15, marginBottom: 8 }}>Inline Sequence Builder</div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 8, marginBottom: 8 }}>
           <input
             value={builderName}
             onChange={(e) => setBuilderName(e.target.value)}
             placeholder="Sequence name"
             style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, padding: "8px 10px", fontFamily: G.mono }}
           />
-          <button onClick={createSequence} style={{ ...btnG, fontSize: 9, padding: "8px 11px" }}>Launch Sequence</button>
+          <button onClick={createSequence} style={{ ...btnG, width: isMobile ? "100%" : "auto", fontSize: 9, padding: "8px 11px" }}>Launch Sequence</button>
         </div>
 
         <div style={{ fontSize: 8, color: G.muted, marginBottom: 5 }}>Variables</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
           {VARIABLE_TOKENS.map((token) => (
-            <button key={token} onClick={() => injectToken(token)} style={{ ...btnO, fontSize: 8, padding: "4px 8px", color: G.green, borderColor: `${G.green}66` }}>
+            <button key={token} onClick={() => injectToken(token)} style={{ ...btnO, fontSize: isMobile ? 9 : 8, padding: isMobile ? "5px 8px" : "4px 8px", color: G.green, borderColor: `${G.green}66` }}>
               {token}
             </button>
           ))}
@@ -498,7 +548,7 @@ export default function CrmSequencesToolTab({ ctx }) {
 
         <div style={{ display: "grid", gap: 8 }}>
           {builderSteps.map((step, idx) => (
-            <div key={step.id} style={{ background: G.surface, border: `1px solid ${selectedStepId === step.id ? G.green : G.border}`, borderRadius: 7, padding: 10 }} onClick={() => setSelectedStepId(step.id)}>
+            <div key={step.id} style={{ background: G.surface, border: `1px solid ${selectedStepId === step.id ? G.green : G.border}`, borderRadius: 7, padding: isMobile ? 8 : 10 }} onClick={() => setSelectedStepId(step.id)}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                 <div style={{ fontSize: 8, color: G.green }}>STEP {idx + 1}</div>
                 <input value={step.delay} onChange={(e) => updateStep(step.id, "delay", e.target.value.replace(/[^0-9]/g, ""))} style={{ width: 62, background: G.surface, border: `1px solid ${G.border}`, borderRadius: 4, color: G.text, padding: "3px 6px", fontSize: 9, fontFamily: G.mono }} />
@@ -517,13 +567,13 @@ export default function CrmSequencesToolTab({ ctx }) {
           ))}
         </div>
 
-        <button onClick={addStep} style={{ ...btnO, fontSize: 8, padding: "5px 9px", marginTop: 8 }}>+ Add Step</button>
+        <button onClick={addStep} style={{ ...btnO, width: isMobile ? "100%" : "auto", fontSize: isMobile ? 9 : 8, padding: isMobile ? "7px 10px" : "5px 9px", marginTop: 8 }}>+ Add Step</button>
       </div>
 
       <CrmPipelineBoard
         G={G}
         card={card}
-        pipeline={pipeline}
+        pipeline={filteredPipeline}
         pipelineStages={pipelineStages}
         onMove={movePipelineCard}
       />

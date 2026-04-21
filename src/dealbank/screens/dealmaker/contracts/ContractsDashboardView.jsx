@@ -1,3 +1,6 @@
+import { useMemo, useState } from "react";
+import DataSearchBar from "../../../components/DataSearchBar";
+
 export default function ContractsDashboardView({
   G,
   card,
@@ -18,6 +21,30 @@ export default function ContractsDashboardView({
   onOpenSign,
   onDownloadPdf,
 }) {
+  const [contractSearch, setContractSearch] = useState("");
+
+  const filteredContracts = useMemo(() => {
+    const query = contractSearch.trim().toLowerCase();
+    if (!query) return contracts;
+
+    return contracts.filter((contract) => {
+      const template = templateConfig[contract.templateId] || defaultTemplate;
+      const partySummary = (contract.parties || [])
+        .map((party) => `${party.signerName || ""} ${party.email || ""} ${party.role || ""}`)
+        .join(" ");
+
+      const searchable = [
+        contract.name,
+        contract.status,
+        template.label,
+        contract.created,
+        partySummary,
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [contracts, contractSearch, templateConfig, defaultTemplate]);
+
   return (
     <div>
       <div style={{ ...card, marginBottom: 12 }}>
@@ -55,6 +82,15 @@ export default function ContractsDashboardView({
           <button onClick={() => onCreateNew("assignment")} disabled={contractsLoading} style={{ ...btnG, fontSize: 9, padding: "7px 12px", width: isMobile ? "100%" : "auto", opacity: contractsLoading ? 0.75 : 1 }}>+ New Contract</button>
         </div>
 
+        <DataSearchBar
+          G={G}
+          value={contractSearch}
+          onChange={setContractSearch}
+          placeholder="Search contracts by name, status, template, or party"
+          resultCount={filteredContracts.length}
+          totalCount={contracts.length}
+        />
+
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
             <thead>
@@ -85,7 +121,13 @@ export default function ContractsDashboardView({
                     No contracts yet. Create your first contract to start tracking signatures.
                   </td>
                 </tr>
-              ) : contracts.map((contract) => {
+              ) : filteredContracts.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ fontSize: 10, color: G.muted, textAlign: "center", padding: "16px 8px" }}>
+                    No contracts match your search.
+                  </td>
+                </tr>
+              ) : filteredContracts.map((contract) => {
                 const template = templateConfig[contract.templateId] || defaultTemplate;
                 const assignmentFee = template.id === "assignment" ? fmt(contract.formVals.assignmentFee || 0) : "-";
                 const statusColor = contract.status === "Fully Executed" ? G.green : contract.status === "Awaiting Signature" ? G.gold : G.muted;

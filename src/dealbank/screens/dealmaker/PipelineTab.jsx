@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppActionModal from "../../components/AppActionModal";
+import DataSearchBar from "../../components/DataSearchBar";
 
 export default function PipelineTab({ ctx }) {
   const {
@@ -32,6 +33,7 @@ export default function PipelineTab({ ctx }) {
 
   const dealCardRefs = useRef({});
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [pipelineSearch, setPipelineSearch] = useState("");
 
   useEffect(() => {
     if (!pipelineFocusDealId) return;
@@ -56,6 +58,23 @@ export default function PipelineTab({ ctx }) {
   );
 
   const avgRoi = pipeline.length ? summary.roiSum / pipeline.length : 0;
+  const normalizedPipelineSearch = pipelineSearch.trim().toLowerCase();
+
+  const visiblePipeline = useMemo(() => {
+    if (!normalizedPipelineSearch) return pipeline;
+
+    return pipeline.filter((deal) => {
+      const searchable = [
+        deal.address,
+        deal.stage,
+        String(deal.offer || ""),
+        String(deal.arvNum || ""),
+        String(deal.projProfit || ""),
+      ].join(" ").toLowerCase();
+
+      return searchable.includes(normalizedPipelineSearch);
+    });
+  }, [pipeline, normalizedPipelineSearch]);
 
   if (activeDeal) {
     return (
@@ -308,6 +327,14 @@ export default function PipelineTab({ ctx }) {
         <div style={{ fontFamily: G.serif, fontSize: 18, color: G.text }}>My Pipeline</div>
         <button onClick={() => setFlipTab("analyze")} style={{ ...btnG, fontSize: 9, padding: "7px 12px", width: isMobile ? "100%" : "auto" }}>+ Analyze Deal</button>
       </div>
+      <DataSearchBar
+        G={G}
+        value={pipelineSearch}
+        onChange={setPipelineSearch}
+        placeholder="Search by address, stage, offer, ARV, or profit"
+        resultCount={visiblePipeline.length}
+        totalCount={pipeline.length}
+      />
       {pipeline.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8, marginBottom: 12 }}>
           {[
@@ -330,9 +357,13 @@ export default function PipelineTab({ ctx }) {
           <div style={{ fontSize: 10, color: G.muted, marginBottom: 14 }}>Analyze a property and save it to start your pipeline</div>
           <button onClick={() => setFlipTab("analyze")} style={{ ...btnG, fontSize: 10 }}>Analyze a Property</button>
         </div>
+      ) : visiblePipeline.length === 0 ? (
+        <div style={{ ...card, textAlign: "center", padding: "18px 12px", fontSize: 10, color: G.muted }}>
+          No pipeline deals match your search.
+        </div>
       ) : (
         PIPELINE_STAGES.map((stage) => {
-          const stageDeals = pipeline.filter((deal) => deal.stage === stage);
+          const stageDeals = visiblePipeline.filter((deal) => deal.stage === stage);
           if (!stageDeals.length) return null;
           return (
             <div key={stage} style={{ marginBottom: 14 }}>
