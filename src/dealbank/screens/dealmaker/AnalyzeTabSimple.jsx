@@ -33,10 +33,10 @@ export default function AnalyzeTabSimple({ ctx }) {
   const [emailBody, setEmailBody] = useState("");
 
   useEffect(() => {
-    if (address && address.length > 5 && !arvNum) {
+    if (address && address.length > 5 && !arvNum && !lookLoad) {
       lookupProperty && lookupProperty();
     }
-  }, [address, arvNum, lookupProperty]);
+  }, [address, arvNum, lookupProperty, lookLoad]);
 
   useEffect(() => {
     if (address && offer) {

@@ -1762,7 +1762,7 @@ export default function App() {
     };
   }, [user?.id, loadPipeline, pushToast]);
 
-  async function lookupProperty() {
+  const lookupProperty = useCallback(async () => {
     const lookupInput = address.trim();
 
     if (!lookupInput) {
@@ -1870,7 +1870,7 @@ Use real data for "${lookupInput}". avm.price = ARV after full renovation.`,
     }
 
     setLookLoad(false);
-  }
+  }, [address]);
 
   async function estimateReno() {
     if (!address.trim()) return;
