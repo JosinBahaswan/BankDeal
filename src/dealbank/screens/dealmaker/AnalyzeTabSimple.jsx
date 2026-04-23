@@ -23,6 +23,7 @@ export default function AnalyzeTabSimple({ ctx }) {
     analysis,
     isMobile,
     user,
+    lookLoad,
   } = ctx;
 
   const [msg, setMsg] = useState("");
