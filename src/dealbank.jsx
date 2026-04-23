@@ -70,9 +70,7 @@ function isLikelyPropertyLookupInput(value) {
   if (/^\d{6,}$/.test(input)) return true;
 
   const hasLetters = /[a-zA-Z]/.test(input);
-  const words = input.replace(/\s+/g, " ").split(" ").filter(Boolean);
-
-  return hasLetters && words.length >= 2;
+  return hasLetters && input.length >= 3;
 }
 
 const ADMIN_EMAIL_ENV = String(import.meta.env.VITE_ADMIN_EMAIL || "").trim().toLowerCase();
@@ -319,7 +317,8 @@ export default function App() {
   const [authNeedsVerification, setAuthNeedsVerification] = useState(false);
   const [authVerificationEmail, setAuthVerificationEmail] = useState("");
 
-  const [flipTab, setFlipTab] = useState("analyze");
+  const [flipTab, setFlipTab] = useState("properties");
+  const [contractsPrefill, setContractsPrefill] = useState(null);
   const [pipeline, setPipeline] = useState([]);
   const [savedMsg, setSavedMsg] = useState("");
   const [pipelineFocusDealId, setPipelineFocusDealId] = useState("");
@@ -1269,6 +1268,8 @@ export default function App() {
     setAuthNeedsVerification(false);
     setAuthVerificationEmail("");
 
+      // Ensure AI responds without emoji/tables and uses paragraphs/lists only
+      // (the server-side Claude proxy also sanitizes output as a safeguard)
     if (!authForm.email || !authForm.password) {
       setAuthError("Fill in all fields.");
       return;
@@ -1915,7 +1916,7 @@ Fill in real numbers for this market.`,
       const text = await askClaude(
         `Senior fix-and-flip analyst. Direct deal review.
 PRIMARY MARKET DATA SOURCE: ${propertyIntel?.provider || "not available"}${propertyIntel?.endpoint ? ` (${propertyIntel.endpoint})` : ""}
-PRIMARY MARKET DATA JSON (use this as factual grounding for property/comps when available): ${propertyGrounding || "No external market JSON provided"}
+PRIMARY MARKET DATA JSON (use this as MANDATORY factual grounding for property characteristics, historical sales, and AVM when available): ${propertyGrounding || "No external market JSON provided"}
 PROPERTY: ${address} | ARV: ${fmt(arvNum)} | ${offerPctNum}%: ${fmt(sixtyT)} | OFFER: ${fmt(offer)}
 COSTS: Rehab ${fmt(Math.round(totalReno))} | Holding ${fmt(Math.round(totalHolding))} | Selling ${fmt(Math.round(totalSelling))} | Soft Total ${fmt(Math.round(softNum))} | HM ${fmt(Math.round(totalHM))} | ALL-IN ${fmt(Math.round(allIn))}
 PROFIT: ${fmt(Math.round(projProfit))} | ROI: ${roi.toFixed(1)}% | TARGET: ${fmt(targetP)}
@@ -1923,9 +1924,25 @@ COMPS:\n${compsText}
 RENO: ${RENO_KEYS.map((c) => `${c.label}: ${fmt(toNum(reno[c.key]))}`).join(" | ")}
 HOLDING INPUTS: ${holdMonthsNum} mo @ ${fmt(holdMonthlyNum)}/mo + insurance ${fmt(insuranceAnnualNum)}/yr
 SELLING INPUTS: agent ${agentFeePctNum}% | closing ${closingCostPctNum}%
-If PRIMARY MARKET DATA JSON and manual inputs conflict, call out the conflict and use conservative underwriting assumptions.
-**1. DEAL VERDICT** **2. OFFER PRICE** **3. ARV CHECK** **4. RENO FLAGS** **5. TOP 3 RISKS** **6. BOTTOM LINE**`,
+
+UNDERWRITING RULES:
+1. If PRIMARY MARKET DATA JSON is provided, treat it as the "Golden Source".
+2. Cross-reference manual inputs (RENO, ARV) against the JSON facts. 
+3. If the JSON suggests a lower ARV than the manual input, provide a WARNING.
+4. Calculate 'Maximum Allowable Offer' based strictly on the math provided.
+
+Response format:
+**1. DEAL VERDICT (Pass/Fail/Caution)** 
+**2. GOLDEN DATA CHECK (Did JSON match inputs?)**
+**3. OFFER ANALYSIS** 
+**4. RENO FLAGS** 
+**5. TOP 3 RISKS** 
+**6. BOTTOM LINE**
+
+OUTPUT GUIDELINES: Reply using plain paragraphs and numbered or lettered lists only. Do NOT include emoji, markdown tables, or other decorative characters.`,
       );
+  // Instruct model to avoid emoji/tables; server proxy will further sanitize output
+  // OUTPUT GUIDELINES: Reply using plain paragraphs and numbered or lettered lists only. Do NOT include emoji, markdown tables, or other decorative characters.
       setAnalysis(text);
     } catch (err) {
       setAnlErr(`Failed: ${err.message}`);
@@ -1963,6 +1980,7 @@ If PRIMARY MARKET DATA JSON and manual inputs conflict, call out the conflict an
       "Paragraph 3: Cost breakdown showing the offer is math not a lowball.",
       "Paragraph 4: Cash offer benefits - speed, certainty, as-is, no repairs, no seller agent fees, flexible close.",
       "Sign off with [Investor Name], Cash Offers LLC, [Phone], [Email].",
+      "OUTPUT GUIDELINES: Return the letter as plain paragraphs. Do not include emoji or markdown tables.",
     ].filter(Boolean).join(" ");
 
     try {
@@ -2125,6 +2143,8 @@ If PRIMARY MARKET DATA JSON and manual inputs conflict, call out the conflict an
     setWForm,
     wSubmitted,
     setWSubmitted,
+    contractsPrefill,
+    setContractsPrefill,
   };
 
   if (screen === "landing" && !user) {

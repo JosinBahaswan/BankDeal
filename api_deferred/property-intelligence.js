@@ -8,10 +8,10 @@ import {
 
 const PROVIDER = "realty-base-us";
 const DEFAULT_HOST = "realty-base-us.p.rapidapi.com";
-const DEFAULT_QUERY_KEYS = ["query", "address", "propertyAddress", "property_address", "location", "q"];
-const DEFAULT_AUTOCOMPLETE_PATHS = ["/property/auto-complete", "/property/autocomplete"];
-const DEFAULT_AUTOCOMPLETE_QUERY_KEYS = ["query", "q", "address"];
-const DEFAULT_DETAIL_PATHS = ["/property/v2/detail", "/property/detail", "/detail"];
+const DEFAULT_QUERY_KEYS = ["location", "query", "address"];
+const DEFAULT_AUTOCOMPLETE_PATHS = ["/auto-complete"];
+const DEFAULT_AUTOCOMPLETE_QUERY_KEYS = ["location"];
+const DEFAULT_DETAIL_PATHS = ["/v2/detail", "/detail"];
 
 const KNOWN_COMP_PATHS = [
   "comps",
@@ -386,7 +386,11 @@ function pickComparableArray(payload) {
 
 function normalizePropertyPayload(payload, lookupAddress) {
   const propertyNode = asObject(
-    getByPath(payload, "property") || getByPath(payload, "data.property") || getByPath(payload, "result.property"),
+    getByPath(payload, "property") || 
+    getByPath(payload, "data.property") || 
+    getByPath(payload, "result.property") ||
+    getByPath(payload, "data") ||
+    getByPath(payload, "result")
   ) || payload;
 
   const property = {
@@ -661,6 +665,7 @@ async function fetchAutocompleteLookupCandidates({
         if (candidates.length > 0) {
           return {
             candidates,
+            payload,
             attempts,
           };
         }
@@ -686,6 +691,7 @@ async function fetchAutocompleteLookupCandidates({
 
   return {
     candidates: dedupeTextList([lookupAddress]),
+    payload: null,
     attempts,
   };
 }
@@ -852,6 +858,61 @@ export default async function handler(req, res) {
     process.env.RAPIDAPI_REALTY_BASE_AUTOCOMPLETE_QUERY_KEYS || process.env.REALTY_BASE_AUTOCOMPLETE_QUERY_KEYS,
     DEFAULT_AUTOCOMPLETE_QUERY_KEYS,
   );
+
+  if (body.mode === "autocomplete") {
+    if (autoCompletePaths.length === 0) {
+      return res.status(200).json({ suggestions: [] });
+    }
+
+    try {
+      const autoComplete = await fetchAutocompleteLookupCandidates({
+        host,
+        apiKey: rapidApiKey,
+        lookupAddress: address,
+        pathCandidates: autoCompletePaths,
+        queryKeys: autoCompleteQueryKeys,
+      });
+
+      // Try to extract structured entries from the raw payload
+      const rawPayload = autoComplete.payload;
+      let suggestions = [];
+
+      if (rawPayload) {
+        const entries = extractAutocompleteEntries(rawPayload);
+        suggestions = entries.map(entry => {
+          const fullAddress = firstString([
+            entry?.full_address,
+            entry?.address,
+            entry?.formattedAddress,
+            entry?.formatted_address,
+            entry?.name,
+          ]);
+          const propertyId = firstString([
+            entry?.propertyId,
+            entry?.property_id,
+            entry?.property?.propertyId,
+            entry?.property?.property_id,
+          ]);
+          return {
+            label: fullAddress || address,
+            value: propertyId ? `address:${propertyId}` : fullAddress || address,
+          };
+        }).filter(s => s.label && s.label !== address);
+      }
+
+      // If no structured entries, fall back to candidates list
+      if (suggestions.length === 0 && autoComplete.candidates) {
+        suggestions = autoComplete.candidates
+          .filter(c => c && c !== address)
+          .map(c => ({ label: c, value: c }));
+      }
+
+      return res.status(200).json({ suggestions });
+    } catch (error) {
+      return res.status(200).json({ suggestions: [], error: error.message });
+    }
+  }
+
   const detailPaths = parsePathList(
     process.env.RAPIDAPI_REALTY_BASE_DETAIL_PATHS || process.env.REALTY_BASE_DETAIL_PATHS,
     DEFAULT_DETAIL_PATHS,

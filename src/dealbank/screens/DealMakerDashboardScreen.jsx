@@ -2,8 +2,9 @@ import TopBar from "../components/TopBar";
 import DashboardWorkspace from "../components/DashboardWorkspace";
 import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
 import useViewport from "../core/useViewport";
-import AnalyzeTab from "./dealmaker/AnalyzeTab";
-import PipelineTab from "./dealmaker/PipelineTab";
+import AnalyzeTab from "./dealmaker/AnalyzeTabSimple";
+import PipelineTab from "./dealmaker/PipelineSimple";
+import PropertiesTab from "./dealmaker/PropertiesTab";
 import ContractorsTab from "./dealmaker/ContractorsTab";
 import ContractsTab from "./dealmaker/ContractsTab";
 import PartnersTab from "./dealmaker/PartnersTab";
@@ -32,15 +33,9 @@ export default function DealMakerDashboardScreen({ ctx }) {
   const mergedCtx = { ...ctx, isMobile, isTablet, viewportMode: mode };
 
   const FTABS = [
-    { id: "analyze", icon: "AN", label: "Analyze" },
-    { id: "pipeline", icon: "PL", label: "Pipeline" },
-    { id: "contracts", icon: "CT", label: "Contracts" },
-    { id: "contractors", icon: "CR", label: "Contractors" },
-    { id: "tools", icon: "TL", label: "Tools" },
-    { id: "partners", icon: "PT", label: "Partners" },
-    { id: "resources", icon: "RS", label: "Resources" },
-    { id: "laws", icon: "LW", label: "State Laws" },
-    { id: "marketplace", icon: "MP", label: "Marketplace" },
+    { id: "properties", icon: "🏠", label: "Properties" },
+    { id: "analyze", icon: "🔍", label: "Analyze" },
+    { id: "pipeline", icon: "📋", label: "Pipeline" },
   ];
 
   const activeTab = FTABS.find((tab) => tab.id === flipTab);
@@ -95,6 +90,7 @@ export default function DealMakerDashboardScreen({ ctx }) {
           metrics={workspaceMetrics}
           railSections={dealMakerRailSections}
         >
+          {flipTab === "properties" && <PropertiesTab ctx={mergedCtx} />}
           {flipTab === "analyze" && <AnalyzeTab ctx={mergedCtx} />}
           {flipTab === "pipeline" && <PipelineTab ctx={mergedCtx} />}
           {flipTab === "contracts" && <ContractsTab ctx={mergedCtx} />}

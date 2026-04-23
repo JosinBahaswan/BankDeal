@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { enforceCors, enforceRateLimit } from "../lib/server/httpSecurity.js";
 
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+const MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const DEMO_STREETS = ["Maple St", "Oak Ave", "Pine Dr", "Cedar Ln", "Willow Ct"];
 
@@ -213,6 +213,38 @@ function buildDemoClaudeResponse(prompt) {
   return "Demo mode active: AI response generated locally. Add ANTHROPIC_API_KEY for live Claude output.";
 }
 
+function sanitizeClaudeText(text) {
+  if (!text || typeof text !== "string") return text;
+  // Remove common emoji ranges
+  try {
+    text = text.replace(/[\u{1F300}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{2700}-\u{27BF}\u{1F680}-\u{1F6FF}]/gu, "");
+  } catch (e) {
+    // fall back if regex with u flag unsupported
+    text = text.replace(/[\u2600-\u26FF\u2700-\u27BF]/g, "");
+  }
+
+  // Convert simple pipe-based table rows into bullet lines
+  if (text.includes("|")) {
+    const lines = text.split(/\r?\n/);
+    const transformed = lines.map((ln) => {
+      if (ln.includes("|")) {
+        const cols = ln
+          .split("|")
+          .map((c) => c.trim())
+          .filter(Boolean);
+        if (cols.length === 0) return "";
+        return `- ${cols.join(" · ")}`;
+      }
+      return ln;
+    });
+    text = transformed.join("\n");
+  }
+
+  // Collapse excessive blank lines
+  text = text.replace(/\n{3,}/g, "\n\n");
+  return text.trim();
+}
+
 export default async function handler(req, res) {
   const cors = enforceCors(req, res, {
     methods: "POST, OPTIONS",
@@ -269,13 +301,21 @@ export default async function handler(req, res) {
   const requestedTokens = toInt(req.body?.maxTokens, 1400);
   const maxTokens = Math.min(Math.max(requestedTokens, 200), 4096);
 
-  if (forceDemoMode || !apiKey) {
-    const text = buildDemoClaudeResponse(prompt);
+  if (forceDemoMode) {
+    const raw = buildDemoClaudeResponse(prompt);
+    const text = sanitizeClaudeText(raw);
     return res.status(200).json({
       text,
       demo: true,
       provider: "mock-claude",
-      reason: forceDemoMode ? "CLAUDE_DEMO_MODE enabled" : "ANTHROPIC_API_KEY missing",
+      reason: "CLAUDE_DEMO_MODE enabled",
+    });
+  }
+
+  if (!apiKey) {
+    return res.status(500).json({ 
+      error: "ANTHROPIC_API_KEY is missing in server environment. Please add it to your Vercel/Environment variables.",
+      demo: false 
     });
   }
 
@@ -301,10 +341,10 @@ export default async function handler(req, res) {
       return res.status(anthropicResponse.status).json({ error: message });
     }
 
-    const text = Array.isArray(payload?.content)
+    const textRaw = Array.isArray(payload?.content)
       ? payload.content.map((item) => item?.text || "").join("")
       : "";
-
+    const text = sanitizeClaudeText(textRaw);
     return res.status(200).json({ text });
   } catch (error) {
     return res.status(500).json({ error: error?.message || "Claude proxy request failed" });

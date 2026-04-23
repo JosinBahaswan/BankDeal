@@ -133,10 +133,10 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
                 cursor: "pointer",
               }}
             >
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span style={{ width: 18, height: 2, borderRadius: 2, background: G.text, transform: menuOpen ? "rotate(45deg) translate(4px,4px)" : "none", transition: "all .2s" }} />
-                <span style={{ width: 18, height: 2, borderRadius: 2, background: G.text, opacity: menuOpen ? 0 : 1, transition: "all .2s" }} />
-                <span style={{ width: 18, height: 2, borderRadius: 2, background: G.text, transform: menuOpen ? "rotate(-45deg) translate(4px,-4px)" : "none", transition: "all .2s" }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 20 }}>
+                <span style={{ width: "100%", height: 2, borderRadius: 2, background: G.text, transform: menuOpen ? "translateY(6px) rotate(45deg)" : "none", transition: "all .2s" }} />
+                <span style={{ width: "100%", height: 2, borderRadius: 2, background: G.text, opacity: menuOpen ? 0 : 1, transition: "all .2s" }} />
+                <span style={{ width: "100%", height: 2, borderRadius: 2, background: G.text, transform: menuOpen ? "translateY(-6px) rotate(-45deg)" : "none", transition: "all .2s" }} />
               </div>
             </button>
           </div>
@@ -191,7 +191,7 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
           <div
             style={{
               position: "fixed",
-              top: "calc(70px + env(safe-area-inset-top, 0px))",
+              top: "calc(64px + env(safe-area-inset-top, 0px))",
               left: 12,
               right: 12,
               bottom: "calc(12px + env(safe-area-inset-bottom, 0px))",

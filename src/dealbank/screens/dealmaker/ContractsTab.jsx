@@ -331,6 +331,21 @@ export default function ContractsTab({ ctx }) {
     setView("new");
   }
 
+  useEffect(() => {
+    try {
+      const prefill = ctx?.contractsPrefill;
+      if (prefill) {
+        const nextTemplate = prefill.templateId || (prefill.contract && prefill.contract.templateId) || "assignment";
+        const contractObj = prefill.contract || { templateId: nextTemplate, formVals: prefill.formVals || {} };
+        openCreate(nextTemplate, contractObj);
+        if (ctx.setContractsPrefill) ctx.setContractsPrefill(null);
+      }
+    } catch {
+      // no-op
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx?.contractsPrefill]);
+
   async function saveContract(status) {
     if (!user?.id) {
       setContractsError("You must be logged in to save contracts.");

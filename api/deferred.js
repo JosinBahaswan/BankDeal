@@ -11,6 +11,10 @@ const DEFERRED_ROUTE_LOADERS = {
   "realtor-commission-review": () => import("../api_deferred/realtor-commission-review.js"),
   "title-portal-admin": () => import("../api_deferred/title-portal-admin.js"),
   "title-portal": () => import("../api_deferred/title-portal.js"),
+  "offmarket-properties": () => import("../api_deferred/offmarket-properties.js"),
+  "twilio-call": () => import("../api_deferred/twilio-call.js"),
+  "send-email": () => import("../api_deferred/send-email.js"),
+  "contracts-send": () => import("../api_deferred/contracts-send.js"),
 };
 
 const handlerCache = new Map();

@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import DataSearchBar from "../../components/DataSearchBar";
+import { supabase } from "../../../lib/supabaseClient";
 
 const OFFER_PRESETS = [55, 60, 65, 70];
 
@@ -88,6 +89,56 @@ export default function AnalyzeTab({ ctx }) {
   const [showHolding, setShowHolding] = useState(true);
   const [showSelling, setShowSelling] = useState(true);
   const [compsSearch, setCompsSearch] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestLoad, setSuggestLoad] = useState(false);
+  const suggestTimer = useRef(null);
+  const [showSuggest, setShowSuggest] = useState(false);
+
+  useEffect(() => {
+    if (!address || address.length < 3 || address.startsWith("address:")) {
+      setSuggestions([]);
+      setShowSuggest(false);
+      return;
+    }
+
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+
+    suggestTimer.current = setTimeout(async () => {
+      setSuggestLoad(true);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData?.session?.access_token;
+        
+        const response = await fetch("/api/property-intelligence", {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({ address, mode: "autocomplete" }),
+        });
+        const data = await response.json();
+        if (data.suggestions) {
+          setSuggestions(data.suggestions);
+          setShowSuggest(data.suggestions.length > 0);
+        }
+      } catch (err) {
+        console.error("Autocomplete error:", err);
+      }
+      setSuggestLoad(false);
+    }, 600);
+
+    return () => {
+      if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    };
+  }, [address]);
+
+  const selectSuggestion = (s) => {
+    setAddress(s.label);
+    setShowSuggest(false);
+    // Auto-trigger analysis if it's a specific property ID or full address
+    setTimeout(() => lookupProperty(), 100);
+  };
 
   const offerPctNum = Math.min(100, Math.max(0, parseFloat(offerPct) || 60));
   const subTabs = [
@@ -187,15 +238,60 @@ export default function AnalyzeTab({ ctx }) {
     <div>
       <div style={{ ...card, marginBottom: 12 }}>
         <div style={lbl}>Property Address</div>
-        <input
-          value={address}
-          onChange={(event) => setAddress(event.target.value)}
-          onKeyDown={(event) => event.key === "Enter" && lookupProperty()}
-          placeholder="Enter full address (e.g. 123 Main St, Sacramento, CA 95814)"
-          style={{ ...smIn, fontSize: 14, background: G.surface, border: `1px solid ${G.border}`, borderRadius: 4, padding: "10px 12px", marginBottom: 8 }}
-        />
-        <button onClick={lookupProperty} disabled={lookLoad} style={{ ...btnG, width: "100%", background: lookLoad ? "#1a2e1a" : G.green, color: lookLoad ? G.muted : "#000" }}>
-          {lookLoad ? "Analyzing property..." : "Analyze Property - Get Comps, ARV + Offer Price"}
+        <div style={{ position: "relative" }}>
+          <input
+            value={address}
+            onChange={(event) => setAddress(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                setShowSuggest(false);
+                lookupProperty();
+              }
+            }}
+            onFocus={() => { if (suggestions.length > 0) setShowSuggest(true); }}
+            placeholder="Enter full address (e.g. 123 Main St, Sacramento, CA 95814)"
+            style={{ ...smIn, width: "100%", fontSize: 14, background: G.surface, border: `1px solid ${G.border}`, borderRadius: 4, padding: "10px 12px", marginBottom: 8, boxSizing: "border-box" }}
+          />
+          {showSuggest && suggestions.length > 0 && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                right: 0,
+                background: G.surface,
+                border: `1px solid ${G.border}`,
+                borderRadius: 4,
+                marginTop: -4,
+                zIndex: 1000,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                maxHeight: 250,
+                overflowY: "auto",
+              }}
+            >
+              {suggestions.map((s, i) => (
+                <div
+                  key={i}
+                  onClick={() => selectSuggestion(s)}
+                  style={{
+                    padding: "10px 12px",
+                    fontSize: 12,
+                    color: G.text,
+                    borderBottom: i === suggestions.length - 1 ? "none" : `1px solid ${G.border}`,
+                    cursor: "pointer",
+                    hover: { background: G.greenGlow },
+                  }}
+                  onMouseEnter={(e) => (e.target.style.background = G.greenGlow)}
+                  onMouseLeave={(e) => (e.target.style.background = "transparent")}
+                >
+                  <div style={{ fontWeight: "bold" }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <button onClick={lookupProperty} disabled={lookLoad} style={{ ...btnG, width: "100%", background: lookLoad ? "#1a2e1a" : G.green, color: lookLoad ? G.muted : "#000", fontSize: isMobile ? 11 : 14, padding: isMobile ? "12px 10px" : "12px 18px" }}>
+          {lookLoad ? "Analyzing..." : isMobile ? "Analyze Property" : "Analyze Property - Get Comps, ARV + Offer Price"}
         </button>
       </div>
       {lookErr && <div style={{ color: G.red, fontSize: 10, marginBottom: 10 }}>Warning: {lookErr}</div>}
@@ -208,8 +304,8 @@ export default function AnalyzeTab({ ctx }) {
       {arvNum > 0 && (
         <div
           style={isMobile
-            ? { display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, marginBottom: 8 }
-            : { display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}
+            ? { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 6, marginBottom: 12 }
+            : { display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}
         >
           {subTabs.map((tab) => (
             <button
@@ -218,12 +314,12 @@ export default function AnalyzeTab({ ctx }) {
               onClick={() => setAnlTab(tab.id)}
               style={{
                 ...btnO,
-                padding: isMobile ? "8px 10px" : "6px 12px",
-                fontSize: isMobile ? 9 : 8,
+                flex: "1 1 auto",
+                padding: isMobile ? "10px 12px" : "8px 16px",
+                fontSize: isMobile ? 10 : 11,
                 borderColor: anlTab === tab.id ? G.green : G.border,
                 color: anlTab === tab.id ? G.green : G.muted,
                 background: anlTab === tab.id ? G.greenGlow : "transparent",
-                gridColumn: isMobile && tab.id === "seller-pitch" ? "1 / -1" : "auto",
               }}
             >
               {tab.label}
@@ -305,16 +401,16 @@ export default function AnalyzeTab({ ctx }) {
             </div>
 
             <div>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(auto-fit,minmax(120px,1fr))", gap: 8, marginBottom: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(auto-fit, minmax(130px, 1fr))" : "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 12 }}>
                 {[
                   { l: "All-In", v: fmt(Math.round(allIn)), c: G.text },
                   { l: "Profit", v: fmt(Math.round(projProfit)), c: projProfit > 0 ? G.green : G.red },
                   { l: "ROI", v: `${roi.toFixed(1)}%`, c: roi >= 20 ? G.green : roi >= 10 ? G.gold : G.red },
                   { l: "Hard Money", v: fmt(Math.round(totalHM)), c: G.gold },
                 ].map(({ l, v, c }) => (
-                  <div key={l} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 5, padding: "9px 11px" }}>
-                    <div style={{ ...lbl, marginBottom: 2 }}>{l}</div>
-                    <div style={{ fontFamily: G.serif, fontSize: 14, color: c, fontWeight: "bold" }}>{v}</div>
+                  <div key={l} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 8, padding: "12px" }}>
+                    <div style={{ ...lbl, marginBottom: 4 }}>{l}</div>
+                    <div style={{ fontFamily: G.serif, fontSize: 15, color: c, fontWeight: "bold" }}>{v}</div>
                   </div>
                 ))}
               </div>
@@ -348,15 +444,15 @@ export default function AnalyzeTab({ ctx }) {
                 ))}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 7 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(auto-fit, minmax(90px, 1fr))" : "repeat(3, minmax(0, 1fr))", gap: 7 }}>
                 {[
                   { l: "Rate %", v: hardRate, s: setHardRate },
                   { l: "Months", v: loanMo, s: setLoanMo },
                   { l: "Points", v: loanPts, s: setLoanPts },
                 ].map(({ l, v, s }) => (
-                  <div key={l} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 4, padding: "8px 10px" }}>
-                    <div style={{ fontSize: 7, color: G.muted, letterSpacing: 2, marginBottom: 2 }}>{l.toUpperCase()}</div>
-                    <input value={v} onChange={(event) => s(sanitizeDecimalInput(event.target.value))} style={{ ...smIn, fontSize: 15, fontFamily: G.serif, fontWeight: "bold" }} />
+                  <div key={l} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "10px" }}>
+                    <div style={{ fontSize: 8, color: G.muted, letterSpacing: 1, marginBottom: 4 }}>{l.toUpperCase()}</div>
+                    <input value={v} onChange={(event) => s(sanitizeDecimalInput(event.target.value))} style={{ ...smIn, fontSize: 16, fontFamily: G.serif, fontWeight: "bold", padding: "4px 0", border: "none", borderBottom: `1px solid ${G.border}`, borderRadius: 0 }} />
                   </div>
                 ))}
               </div>
@@ -376,13 +472,13 @@ export default function AnalyzeTab({ ctx }) {
 
             {renoNote && <div style={{ fontSize: 9, color: "#7070aa", marginBottom: 8, lineHeight: 1.6 }}>{renoNote}</div>}
 
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 6, marginBottom: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(auto-fit, minmax(130px, 1fr))" : "repeat(3, minmax(0, 1fr))", gap: 6, marginBottom: 10 }}>
               {RENO_KEYS.map(({ key, label: itemLabel }) => (
-                <div key={key} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 4, padding: "7px 9px" }}>
-                  <div style={{ fontSize: 7, color: G.muted, letterSpacing: 2, marginBottom: 2 }}>{itemLabel.toUpperCase()}</div>
-                  <div style={{ display: "flex", gap: 2 }}>
-                    <span style={{ color: G.muted, fontSize: 11 }}>$</span>
-                    <input value={reno[key] ? Number(reno[key]).toLocaleString() : ""} onChange={(event) => setReno((prev) => ({ ...prev, [key]: sanitizeIntInput(event.target.value) }))} placeholder="0" style={{ ...smIn, fontSize: 12 }} />
+                <div key={key} style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 8, color: G.muted, letterSpacing: 1, marginBottom: 4 }}>{itemLabel.toUpperCase()}</div>
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <span style={{ color: G.muted, fontSize: 13 }}>$</span>
+                    <input value={reno[key] ? Number(reno[key]).toLocaleString() : ""} onChange={(event) => setReno((prev) => ({ ...prev, [key]: sanitizeIntInput(event.target.value) }))} placeholder="0" style={{ ...smIn, border: "none", borderBottom: `1px solid ${G.border}`, borderRadius: 0, padding: "2px 0", fontSize: 14 }} />
                   </div>
                 </div>
               ))}
@@ -397,15 +493,15 @@ export default function AnalyzeTab({ ctx }) {
               </div>
               {showHolding && (
                 <div>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 7, marginBottom: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(auto-fit, minmax(130px, 1fr))" : "repeat(3, minmax(0, 1fr))", gap: 7, marginBottom: 8 }}>
                     {[
                       { l: "Hold Months", v: holdMonths, s: setHoldMonths, intOnly: true },
                       { l: "Monthly Carry $", v: holdMonthly, s: setHoldMonthly, intOnly: true },
                       { l: "Insurance / Yr $", v: insuranceAnnual, s: setInsuranceAnnual, intOnly: true },
                     ].map(({ l, v, s, intOnly }) => (
-                      <div key={l} style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: 4, padding: "8px 10px" }}>
-                        <div style={{ fontSize: 7, color: G.muted, letterSpacing: 2, marginBottom: 2 }}>{l.toUpperCase()}</div>
-                        <input value={v} onChange={(event) => s(intOnly ? sanitizeIntInput(event.target.value) : sanitizeDecimalInput(event.target.value))} style={{ ...smIn, fontSize: 14, fontFamily: G.serif, fontWeight: "bold" }} />
+                      <div key={l} style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: 6, padding: "10px" }}>
+                        <div style={{ fontSize: 8, color: G.muted, letterSpacing: 1, marginBottom: 4 }}>{l.toUpperCase()}</div>
+                        <input value={v} onChange={(event) => s(intOnly ? sanitizeIntInput(event.target.value) : sanitizeDecimalInput(event.target.value))} style={{ ...smIn, fontSize: 16, fontFamily: G.serif, fontWeight: "bold", padding: "4px 0", border: "none", borderBottom: `1px solid ${G.border}`, borderRadius: 0 }} />
                       </div>
                     ))}
                   </div>
@@ -425,14 +521,14 @@ export default function AnalyzeTab({ ctx }) {
               </div>
               {showSelling && (
                 <div>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 7, marginBottom: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(auto-fit, minmax(130px, 1fr))" : "repeat(2, minmax(0, 1fr))", gap: 7, marginBottom: 8 }}>
                     {[
                       { l: "Agent %", v: agentFeePct, s: setAgentFeePct },
                       { l: "Closing %", v: closingCostPct, s: setClosingCostPct },
                     ].map(({ l, v, s }) => (
-                      <div key={l} style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: 4, padding: "8px 10px" }}>
-                        <div style={{ fontSize: 7, color: G.muted, letterSpacing: 2, marginBottom: 2 }}>{l.toUpperCase()}</div>
-                        <input value={v} onChange={(event) => s(sanitizeDecimalInput(event.target.value))} style={{ ...smIn, fontSize: 14, fontFamily: G.serif, fontWeight: "bold" }} />
+                      <div key={l} style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: 6, padding: "10px" }}>
+                        <div style={{ fontSize: 8, color: G.muted, letterSpacing: 1, marginBottom: 4 }}>{l.toUpperCase()}</div>
+                        <input value={v} onChange={(event) => s(sanitizeDecimalInput(event.target.value))} style={{ ...smIn, fontSize: 16, fontFamily: G.serif, fontWeight: "bold", padding: "4px 0", border: "none", borderBottom: `1px solid ${G.border}`, borderRadius: 0 }} />
                       </div>
                     ))}
                   </div>
