@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useViewport from "../core/useViewport";
 
 export default function TopBar({ title, tabs, active, onTab, userName, onSignOut, G, btnO }) {
   const { isMobile, isTablet } = useViewport();
   const [menuOpen, setMenuOpen] = useState(false);
+  const headerRef = useRef(null);
+  const [overlayTop, setOverlayTop] = useState(null);
+  const [overlayMaxHeight, setOverlayMaxHeight] = useState(null);
 
   const currentTab = useMemo(() => tabs.find((tab) => tab.id === active), [tabs, active]);
   const initials = useMemo(
@@ -37,8 +40,30 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
     };
   }, [isMobile, menuOpen]);
 
+  useEffect(() => {
+    function updateTop() {
+      if (!headerRef.current) return;
+      const rect = headerRef.current.getBoundingClientRect();
+      const headerBottom = Math.ceil(rect.bottom);
+      // Reserve some bottom spacing so the overlay doesn't touch the safe-area bottom
+      const bottomSpacing = 24;
+      // Compute a sensible max height for the overlay (viewport minus header and bottom spacing)
+      const computedMax = Math.max(120, Math.floor(window.innerHeight - headerBottom - bottomSpacing));
+
+      setOverlayTop(`${headerBottom}px`);
+      setOverlayMaxHeight(computedMax);
+    }
+
+    if (!menuOpen) return undefined;
+
+    updateTop();
+    window.addEventListener("resize", updateTop);
+    return () => window.removeEventListener("resize", updateTop);
+  }, [menuOpen]);
+
   return (
     <div
+      ref={headerRef}
       style={{
         position: "sticky",
         top: 0,
@@ -191,10 +216,9 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
           <div
             style={{
               position: "fixed",
-              top: "calc(64px + env(safe-area-inset-top, 0px))",
+              top: overlayTop || "calc(64px + env(safe-area-inset-top, 0px))",
               left: 12,
               right: 12,
-              bottom: "calc(12px + env(safe-area-inset-bottom, 0px))",
               zIndex: 245,
               border: `1px solid ${G.border}`,
               borderRadius: 12,
@@ -205,13 +229,14 @@ export default function TopBar({ title, tabs, active, onTab, userName, onSignOut
               flexDirection: "column",
               gap: 10,
               overflow: "hidden",
+              maxHeight: overlayMaxHeight ? `${overlayMaxHeight}px` : undefined,
             }}
           >
             <div style={{ fontSize: 10, color: G.muted, letterSpacing: 1, fontWeight: 700 }}>
               Quick Switch
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, overflowY: "auto", minHeight: 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, overflowY: "auto", minHeight: 120 }}>
               {tabs.map((tab) => {
                 const isActive = active === tab.id;
                 return (

@@ -36,6 +36,7 @@ export default function DealMakerDashboardScreen({ ctx }) {
     { id: "properties", icon: "🏠", label: "Properties" },
     { id: "analyze", icon: "🔍", label: "Analyze" },
     { id: "pipeline", icon: "📋", label: "Pipeline" },
+    { id: "marketplace", icon: "MK", label: "Marketplace" },
   ];
 
   const activeTab = FTABS.find((tab) => tab.id === flipTab);

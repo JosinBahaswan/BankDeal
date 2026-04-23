@@ -301,7 +301,7 @@ export default function LandingScreen({
             top: 60,
             left: 0,
             right: 0,
-            zIndex: 90,
+            zIndex: 110,
             background: T.bg,
             borderBottom: `1px solid ${T.border}`,
             padding: "16px 20px",

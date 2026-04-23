@@ -1,6 +1,6 @@
 export const BREAKPOINTS = Object.freeze({
-  mobileMax: 639,
-  tabletMin: 640,
+  mobileMax: 767,
+  tabletMin: 768,
   tabletMax: 1024,
   desktopMin: 1025,
 });

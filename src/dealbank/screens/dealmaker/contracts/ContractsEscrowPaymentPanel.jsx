@@ -4,7 +4,6 @@ import { loadStripe } from "@stripe/stripe-js";
 import { createEarnestMoneyEscrow } from "../../../core/stripeEscrow";
 
 const STRIPE_PUBLISHABLE_KEY = String(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "").trim();
-const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
 
 function asCurrencyValue(value) {
   const parsed = Number(value);
@@ -93,6 +92,7 @@ export default function ContractsEscrowPaymentPanel({
   btnO,
   activeContract,
 }) {
+  const [stripePromise, setStripePromise] = useState(null);
   const [beneficiaryUserId, setBeneficiaryUserId] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
@@ -126,8 +126,13 @@ export default function ContractsEscrowPaymentPanel({
         throw new Error("Contract context is missing.");
       }
 
-      if (!stripePromise || !STRIPE_PUBLISHABLE_KEY) {
+      if (!STRIPE_PUBLISHABLE_KEY) {
         throw new Error("Missing VITE_STRIPE_PUBLISHABLE_KEY for PaymentElement.");
+      }
+
+      // Ensure Stripe.js is loaded lazily to avoid network requests during unrelated app usage
+      if (!stripePromise) {
+        setStripePromise(loadStripe(STRIPE_PUBLISHABLE_KEY));
       }
 
       const normalizedAmount = asCurrencyValue(amount);
