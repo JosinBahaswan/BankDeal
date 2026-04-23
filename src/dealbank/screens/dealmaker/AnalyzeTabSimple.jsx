@@ -110,41 +110,43 @@ export default function AnalyzeTabSimple({ ctx }) {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 16 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 16 }}>
         <div style={{ ...card }}>
           <div style={{ ...lbl, color: G.green, marginBottom: 12, display: "flex", justifyContent: "space-between" }}>
             <span>Comparable Sales</span>
             <span style={{ fontSize: 10, color: G.muted }}>2-Mile Radius</span>
           </div>
-          <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
             {compsData && compsData.length > 0 ? (
-              compsData.slice(0, 4).map((c, i) => (
-                <div key={i} style={{ padding: "8px", background: G.bg, borderRadius: 6, border: `1px solid ${G.faint}` }}>
-                  <div style={{ fontSize: 12, color: G.text, fontWeight: "600" }}>{c.address}</div>
-                  <div style={{ fontSize: 11, color: G.muted, marginTop: 2 }}>
-                    <span style={{ color: G.green }}>{fmt(c.price)}</span> · {c.bedrooms}bd/{c.bathrooms}ba · {c.squareFootage} sqft
+              compsData.slice(0, 6).map((c, i) => (
+                <div key={i} style={{ padding: "12px", background: G.bg, borderRadius: 8, border: `1px solid ${G.faint}` }}>
+                  <div style={{ fontSize: 13, color: G.text, fontWeight: "600" }}>{c.address}</div>
+                  <div style={{ fontSize: 12, color: G.muted, marginTop: 4 }}>
+                    <span style={{ color: G.green, fontWeight: "bold" }}>{fmt(c.price)}</span> · {c.bedrooms}bd/{c.bathrooms}ba · {c.squareFootage} sqft
                   </div>
                 </div>
               ))
             ) : (
-              <div style={{ color: G.muted, fontSize: 12, textAlign: "center", padding: 20 }}>No comparable sales data found.</div>
+              <div style={{ color: G.muted, fontSize: 12, textAlign: "center", padding: 20, gridColumn: "1 / -1" }}>No comparable sales data found.</div>
             )}
           </div>
         </div>
 
         <div style={{ ...card }}>
           <div style={{ ...lbl, color: G.green, marginBottom: 12 }}>Claude AI Recommendation</div>
-          <button onClick={() => runAnalysis && runAnalysis()} style={{ ...btnO, width: "100%", marginBottom: 12, fontSize: 11 }}>Run AI Analysis</button>
+          <button onClick={() => runAnalysis && runAnalysis()} style={{ ...btnO, width: "100%", marginBottom: 16, fontSize: 13, padding: "12px" }}>Run AI Analysis</button>
           <div style={{
-            fontSize: 12,
-            lineHeight: 1.6,
-            color: "#a0b0a0",
-            maxHeight: 200,
+            fontSize: 15,
+            lineHeight: 1.7,
+            color: "#e0eee0",
+            maxHeight: 600,
             overflowY: "auto",
-            padding: "10px",
-            background: "#081008",
-            borderRadius: 6,
-            border: `1px solid ${G.border}`
+            padding: "24px",
+            background: "#0a140a",
+            borderRadius: 12,
+            border: `1px solid ${G.green}44`,
+            boxShadow: "inset 0 2px 10px rgba(0,0,0,0.5)",
+            whiteSpace: "pre-wrap",
           }}>
             {analysis || "AI analysis will appear here after clicking the button above."}
           </div>
