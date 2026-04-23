@@ -47,6 +47,74 @@
     {
       "source": "/api/title-portal",
       "destination": "/api/deferred?route=title-portal"
+    },
+    {
+      "source": "/api/claude",
+      "destination": "/api/deferred?route=claude"
+    },
+    {
+      "source": "/api/confirm-checkout",
+      "destination": "/api/deferred?route=confirm-checkout"
+    },
+    {
+      "source": "/api/contract-sign-apply",
+      "destination": "/api/deferred?route=contract-sign-apply"
+    },
+    {
+      "source": "/api/contract-sign",
+      "destination": "/api/deferred?route=contract-sign"
+    },
+    {
+      "source": "/api/create-checkout",
+      "destination": "/api/deferred?route=create-checkout"
+    },
+    {
+      "source": "/api/lead-listings",
+      "destination": "/api/deferred?route=lead-listings"
+    },
+    {
+      "source": "/api/send-sms",
+      "destination": "/api/deferred?route=send-sms"
+    },
+    {
+      "source": "/api/stripe-connect-account-link",
+      "destination": "/api/deferred?route=stripe-connect-account-link"
+    },
+    {
+      "source": "/api/stripe-connect-webhook",
+      "destination": "/api/deferred?route=stripe-connect-webhook"
+    },
+    {
+      "source": "/api/stripe-escrow-create",
+      "destination": "/api/deferred?route=stripe-escrow-create"
+    },
+    {
+      "source": "/api/stripe-escrow-release",
+      "destination": "/api/deferred?route=stripe-escrow-release"
+    },
+    {
+      "source": "/api/stripe-webhook",
+      "destination": "/api/deferred?route=stripe-webhook"
+    },
+    {
+      "source": "/api/twilio-access-token",
+      "destination": "/api/deferred?route=twilio-access-token"
+    },
+    {
+      "source": "/api/offmarket-properties",
+      "destination": "/api/deferred?route=offmarket-properties"
+    },
+    {
+      "source": "/api/twilio-call",
+      "destination": "/api/deferred?route=twilio-call"
+    },
+    {
+      "source": "/api/send-email",
+      "destination": "/api/deferred?route=send-email"
+    },
+    {
+      "source": "/api/contracts-send",
+      "destination": "/api/deferred?route=contracts-send"
     }
   ],
   "crons": [

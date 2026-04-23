@@ -15,6 +15,20 @@ const DEFERRED_ROUTE_LOADERS = {
   "twilio-call": () => import("../api_deferred/twilio-call.js"),
   "send-email": () => import("../api_deferred/send-email.js"),
   "contracts-send": () => import("../api_deferred/contracts-send.js"),
+  // Newly consolidated routes
+  "claude": () => import("../api_deferred/claude.js"),
+  "confirm-checkout": () => import("../api_deferred/confirm-checkout.js"),
+  "contract-sign-apply": () => import("../api_deferred/contract-sign-apply.js"),
+  "contract-sign": () => import("../api_deferred/contract-sign.js"),
+  "create-checkout": () => import("../api_deferred/create-checkout.js"),
+  "lead-listings": () => import("../api_deferred/lead-listings.js"),
+  "send-sms": () => import("../api_deferred/send-sms.js"),
+  "stripe-connect-account-link": () => import("../api_deferred/stripe-connect-account-link.js"),
+  "stripe-connect-webhook": () => import("../api_deferred/stripe-connect-webhook.js"),
+  "stripe-escrow-create": () => import("../api_deferred/stripe-escrow-create.js"),
+  "stripe-escrow-release": () => import("../api_deferred/stripe-escrow-release.js"),
+  "stripe-webhook": () => import("../api_deferred/stripe-webhook.js"),
+  "twilio-access-token": () => import("../api_deferred/twilio-access-token.js"),
 };
 
 const handlerCache = new Map();

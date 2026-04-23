@@ -1,4 +1,4 @@
-﻿import twilio from "twilio";
+import twilio from "twilio";
 import { createClient } from "@supabase/supabase-js";
 import { enforceCors, enforceRateLimit } from "../lib/server/httpSecurity.js";
 
