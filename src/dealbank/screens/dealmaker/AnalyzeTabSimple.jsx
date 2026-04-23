@@ -22,6 +22,7 @@ export default function AnalyzeTabSimple({ ctx }) {
     runAnalysis,
     analysis,
     isMobile,
+    user,
     lookLoad,
     lookErr,
   } = ctx;
