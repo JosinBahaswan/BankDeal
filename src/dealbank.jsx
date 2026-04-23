@@ -2343,6 +2343,7 @@ OUTPUT GUIDELINES: Reply using plain paragraphs and numbered or lettered lists o
         setContractorTab={setContractorTab}
         user={user}
         onSignOut={onSignOut}
+        showAlert={showAlert}
       />
     );
   }
@@ -2360,6 +2361,7 @@ OUTPUT GUIDELINES: Reply using plain paragraphs and numbered or lettered lists o
         realtorTab={realtorTab}
         setRealtorTab={setRealtorTab}
         onSignOut={onSignOut}
+        showAlert={showAlert}
       />
     );
   }

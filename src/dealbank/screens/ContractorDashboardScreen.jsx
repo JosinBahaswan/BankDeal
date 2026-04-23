@@ -110,7 +110,7 @@ function extensionFromName(fileName, fallback = "jpg") {
   return ext.replace(/[^a-z0-9]/g, "") || fallback;
 }
 
-export default function ContractorDashboardScreen({ G, card, lbl, btnG, contractorTab, setContractorTab, user, onSignOut, btnO }) {
+export default function ContractorDashboardScreen({ G, card, lbl, btnG, contractorTab, setContractorTab, user, onSignOut, btnO, showAlert }) {
   const { isMobile, mode } = useViewport();
 
   const CTABS = [
@@ -185,7 +185,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
         .maybeSingle();
 
       if (contractorProfileError) {
-        setLeadsError(`Unable to resolve contractor profile: ${contractorProfileError.message}`);
+        showAlert(`Unable to resolve contractor profile: ${contractorProfileError.message}`);
       } else {
         resolvedContractorProfileId = String(contractorProfile?.id || "");
         setPhotoPath(String(contractorProfile?.photo_path || ""));
@@ -212,7 +212,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
         setActiveJobs([]);
         setJobHistoryRows([]);
         setLeadsLoading(false);
-        setLeadsError(`Unable to load job leads: ${leadsLoadError.message}`);
+        showAlert(`Unable to load job leads: ${leadsLoadError.message}`);
         return;
       }
 
@@ -229,7 +229,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
 
         if (listingError) {
           setLeadsLoading(false);
-          setLeadsError(`Unable to load listing details: ${listingError.message}`);
+          showAlert(`Unable to load listing details: ${listingError.message}`);
           return;
         }
 
@@ -386,7 +386,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
   async function uploadContractorPhoto(uploadBlob, extension = "jpg", contentType = "image/jpeg") {
     if (!user?.id) return;
     if (!contractorProfileId) {
-      setLeadsError("Complete contractor onboarding before uploading profile photos.");
+      showAlert("Complete contractor onboarding before uploading profile photos.");
       return;
     }
 
@@ -411,7 +411,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
 
     if (uploadError) {
       setPhotoUploadBusy(false);
-      setLeadsError(`Unable to upload contractor photo: ${uploadError.message}`);
+      showAlert(`Unable to upload contractor photo: ${uploadError.message}`);
       return;
     }
 
@@ -422,7 +422,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
 
     if (profileUpdateError) {
       setPhotoUploadBusy(false);
-      setLeadsError(`Photo uploaded, but profile update failed: ${profileUpdateError.message}`);
+      showAlert(`Photo uploaded, but profile update failed: ${profileUpdateError.message}`);
       return;
     }
 
@@ -725,7 +725,6 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
               resultCount={filteredLeadRows.length}
               totalCount={leadRows.length}
             />
-            {leadsError && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{leadsError}</div>}
             {leadsLoading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading fresh job leads...</div>}
             {!leadsLoading && leadRows.length === 0 && (
               <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>

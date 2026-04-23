@@ -95,11 +95,6 @@ export default function AnalyzeTabSimple({ ctx }) {
           placeholder="Enter property address..."
           style={{ ...smIn, width: "100%", padding: "12px", borderRadius: 8, border: `1px solid ${G.border}`, background: G.surface, color: G.text, marginBottom: 8 }}
         />
-        {lookErr && (
-          <div style={{ color: G.red || "#ff4444", fontSize: 11, marginBottom: 12, padding: "4px 8px", background: "rgba(255,0,0,0.1)", borderRadius: 4 }}>
-            {lookErr}
-          </div>
-        )}
         <div style={{ display: "flex", gap: 10, flexDirection: isMobile ? "column" : "row" }}>
           <button onClick={() => lookupProperty && lookupProperty()} style={{ ...btnG, flex: 2 }}>Fetch Market Data (Realty Base)</button>
           <button onClick={() => estimateReno && estimateReno()} style={{ ...btnO, flex: 1 }}>Estimate Renovation</button>

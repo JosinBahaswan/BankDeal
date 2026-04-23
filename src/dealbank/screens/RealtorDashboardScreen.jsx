@@ -91,7 +91,7 @@ function listingDays(publishedAt, closedAt = "") {
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
 
-export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSignOut, userName, user, realtorTab, setRealtorTab }) {
+export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSignOut, userName, user, realtorTab, setRealtorTab, showAlert }) {
   const { isMobile, mode } = useViewport();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -144,7 +144,7 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
       let specialtyRows = [];
 
       if (profileResult.error) {
-        nextError = `Unable to load realtor profile: ${profileResult.error.message}`;
+        if (showAlert) showAlert(`Unable to load realtor profile: ${profileResult.error.message}`);
         profileRow = null;
       }
 
@@ -184,10 +184,9 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
 
       if (listingsResult.error) {
         setListingRows([]);
-        setError(nextError || `Unable to load listing pipeline: ${listingsResult.error.message}`);
+        if (showAlert) showAlert(`Unable to load listing pipeline: ${listingsResult.error.message}`);
       } else {
         setListingRows(listingsResult.data || []);
-        setError(nextError);
       }
 
       setRealtorProfile(profileRow);
@@ -319,7 +318,7 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
         setCommissionReviews(rows);
       } catch (error) {
         if (!active) return;
-        setReviewError(error?.message || "Failed to load commission compliance reviews");
+        if (showAlert) showAlert(error?.message || "Failed to load commission compliance reviews");
       }
     }
 
@@ -478,7 +477,7 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
       await submitRealtorCommissionReview(supabase, listingId);
       setRefreshTick((prev) => prev + 1);
     } catch (error) {
-      setReviewError(error?.message || "Failed to submit commission compliance review");
+      if (showAlert) showAlert(error?.message || "Failed to submit commission compliance review");
     } finally {
       setReviewSubmitBusyId("");
     }
@@ -568,7 +567,6 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
           railSections={realtorRailSections}
         >
 
-        {error && <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55`, color: G.red, fontSize: 10 }}>{error}</div>}
         {loading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading realtor pipeline from Supabase...</div>}
 
         {realtorTab === "referrals" && (

@@ -4,7 +4,7 @@ import { fetchOffMarketProperties } from "../../core/mockApis";
 const FILTER_OPTIONS = ["All", "Vacant", "Foreclosure", "Tax Delinquent", "Absentee Owner", "Pre-Foreclosure", "High Equity", "Probate"];
 
 export default function PropertiesTab({ ctx }) {
-  const { G, card, lbl, btnG, btnO, fmt, isMobile, setAddress, setFlipTab } = ctx;
+  const { G, card, lbl, btnG, btnO, fmt, isMobile, setAddress, setFlipTab, showAlert } = ctx;
   const [filter, setFilter] = useState("All");
   const [loading, setLoading] = useState(false);
   const [properties, setProperties] = useState([]);
@@ -24,7 +24,7 @@ export default function PropertiesTab({ ctx }) {
       console.error("fetch offmarket error", err);
       setProperties([]);
       // Propagate error to UI if ctx.toast exists, or just log
-      if (ctx.toast) ctx.toast({ text: err.message, tone: "error" });
+      if (showAlert) showAlert(err.message, "Gagal Memuat Data", "error");
     }
     setLoading(false);
   }
