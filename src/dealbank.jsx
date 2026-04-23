@@ -53,6 +53,7 @@ import TermsOfServiceScreen from "./dealbank/screens/legal/TermsOfServiceScreen"
 import RealtorOnboardingScreen from "./dealbank/screens/RealtorOnboardingScreen";
 import RealtorDashboardScreen from "./dealbank/screens/RealtorDashboardScreen";
 import { supabase } from "./lib/supabaseClient";
+import AlertModal from "./dealbank/components/AlertModal";
 
 const USER_TYPES = new Set(["dealmaker", "contractor", "realtor", "admin"]);
 
@@ -411,6 +412,32 @@ export default function App() {
   const [contractorBillingRefreshTick, setContractorBillingRefreshTick] = useState(0);
   const [showRealtorOnboarding, setShowRealtorOnboarding] = useState(false);
   const [realtorOnboarding, setRealtorOnboarding] = useState(() => createRealtorOnboardingState());
+
+  const [alert, setAlert] = useState({ show: false, title: "", message: "", type: "error" });
+
+  const showAlert = useCallback((message, title = "", type = "error") => {
+    let cleanMessage = message;
+    let cleanTitle = title;
+
+    // Map technical errors to non-technical Indonesian
+    if (message.includes("401") || message.includes("Unauthorized") || message.includes("Session expired")) {
+      cleanTitle = "Sesi Berakhir";
+      cleanMessage = "Sesi login Anda telah berakhir demi keamanan. Silakan login kembali untuk melanjutkan analisis properti.";
+    } else if (message.includes("429") || message.includes("Too many requests")) {
+      cleanTitle = "Terlalu Banyak Permintaan";
+      cleanMessage = "Sistem sedang sibuk memproses data. Mohon tunggu sebentar sebelum mencoba kembali.";
+    } else if (message.includes("ANTHROPIC_API_KEY")) {
+      cleanTitle = "Layanan AI Terbatas";
+      cleanMessage = "Layanan AI sedang dalam mode demo karena kunci akses belum diatur. Silakan hubungi admin.";
+    } else if (message.includes("Realty Base request failed") || message.includes("property intelligence unavailable")) {
+      cleanTitle = "Data Market Terbatas";
+      cleanMessage = "Kami kesulitan mengambil data pasar otomatis saat ini. Anda tetap bisa memasukkan angka secara manual di tab Analisis.";
+    }
+
+    setAlert({ show: true, title: cleanTitle, message: cleanMessage, type });
+  }, []);
+
+  const hideAlert = () => setAlert(prev => ({ ...prev, show: false }));
 
   const offerRef = useRef(null);
   const confirmedCheckoutSessionsRef = useRef(new Set());
@@ -1090,6 +1117,7 @@ export default function App() {
         submitting: false,
         error: error?.message || "Failed to save contractor onboarding.",
       }));
+      showAlert(error?.message || "Gagal menyimpan data pendaftaran.", "Pendaftaran Gagal", "error");
     }
   }
 
@@ -1183,7 +1211,9 @@ export default function App() {
     ];
 
     if (required.some((value) => String(value || "").trim() === "")) {
-      setRealtorOnboarding((prev) => ({ ...prev, error: "Complete all profile fields before launching." }));
+      const msg = "Mohon lengkapi semua data profil sebelum melanjutkan.";
+      setRealtorOnboarding((prev) => ({ ...prev, error: msg }));
+      showAlert(msg, "Data Belum Lengkap", "warning");
       return;
     }
 
@@ -1260,6 +1290,7 @@ export default function App() {
         submitting: false,
         error: error?.message || "Failed to save realtor onboarding.",
       }));
+      showAlert(error?.message || "Gagal mengaktifkan profil realtor.", "Gagal Aktivasi", "error");
     }
   }
 
@@ -1343,13 +1374,17 @@ export default function App() {
             return;
           }
 
-          setAuthError(signUpError.message || "Unable to create account.");
+          const errMsg = signUpError.message || "Unable to create account.";
+          setAuthError(errMsg);
+          showAlert(errMsg, "Gagal Daftar", "error");
           return;
         }
 
         const authUser = signUpData?.user;
         if (!authUser) {
-          setAuthError("Unable to complete signup. Please try login.");
+          const errMsg = "Unable to complete signup. Please try login.";
+          setAuthError(errMsg);
+          showAlert(errMsg, "Gagal Daftar", "error");
           return;
         }
 
@@ -1377,7 +1412,9 @@ export default function App() {
 
       if (loginError || !loginData?.user) {
         if (isInvalidCredentialError(loginError) && normalizedAuthEmail.endsWith("@dealbank.local")) {
-          setAuthError("Login failed. Check your email and password. For local accounts, use an email ending with @dealbank.local and a valid admin alias password.");
+          const msg = "Email atau password salah. Pastikan data login Anda benar.";
+          setAuthError(msg);
+          showAlert(msg, "Login Gagal", "error");
           return;
         }
 
@@ -1388,7 +1425,9 @@ export default function App() {
           return;
         }
 
-        setAuthError(loginError?.message || "Invalid email or password.");
+        const errMsg = loginError?.message || "Invalid email or password.";
+        setAuthError(errMsg);
+        showAlert(errMsg, "Login Gagal", "error");
         return;
       }
 
@@ -1400,6 +1439,7 @@ export default function App() {
       });
     } catch (error) {
       setAuthError(error?.message || "Authentication failed.");
+      showAlert(error?.message || "Gagal melakukan autentikasi.", "Error Autentikasi", "error");
     }
   }
 
@@ -1860,9 +1900,13 @@ Use real data for "${lookupInput}". avm.price = ARV after full renovation.`,
     }
 
     if (!hasStructuredData) {
-      setLookErr(`Failed: ${warnings.join(" | ") || "unable to load property data"}`);
+      const errMsg = warnings.join(" | ") || "unable to load property data";
+      setLookErr(`Failed: ${errMsg}`);
+      showAlert(errMsg, "Gagal Memuat Data", "error");
     } else if (warnings.length > 0) {
-      setLookErr(`Warning: ${warnings.join(" | ")}`);
+      const warnMsg = warnings.join(" | ");
+      setLookErr(`Warning: ${warnMsg}`);
+      showAlert(warnMsg, "Peringatan Data", "warning");
     }
 
     if (hasStructuredData) {
@@ -1946,6 +1990,7 @@ OUTPUT GUIDELINES: Reply using plain paragraphs and numbered or lettered lists o
       setAnalysis(text);
     } catch (err) {
       setAnlErr(`Failed: ${err.message}`);
+      showAlert(err.message, "Analisis Gagal", "error");
     }
     setAnlLoad(false);
   }
@@ -2145,6 +2190,7 @@ OUTPUT GUIDELINES: Reply using plain paragraphs and numbered or lettered lists o
     setWSubmitted,
     contractsPrefill,
     setContractsPrefill,
+    showAlert,
   };
 
   if (screen === "landing" && !user) {
@@ -2321,6 +2367,15 @@ OUTPUT GUIDELINES: Reply using plain paragraphs and numbered or lettered lists o
   return (
     <div style={{ background: G.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: G.text, fontFamily: G.mono }}>
       <button onClick={() => setScreen("landing")} style={btnG}>Go to DealBank</button>
+      
+      <AlertModal 
+        show={alert.show} 
+        title={alert.title} 
+        message={alert.message} 
+        type={alert.type} 
+        onClose={hideAlert} 
+        G={G} 
+      />
     </div>
   );
 }
