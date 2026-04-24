@@ -23,12 +23,28 @@ async function callDeferred(route, payload = {}) {
 }
 
 /**
- * Fetch off-market properties via BatchLeads proxy.
+ * Fetch off-market / listed properties.
+ *
+ * Priority:  BatchData → Legacy BatchLeads → Realty Base US (fallback)
+ *
+ * @param {object} params
+ * @param {string} params.listType  - Filter label e.g. "Vacant", "Foreclosure", "All"
+ * @param {string} params.search    - Free-text search (city, address, …)
+ * @returns {{ properties: Array, provider: string, message: string }}
  */
-export async function fetchOffMarketProperties(filters = {}) {
+export async function fetchOffMarketProperties({ listType = "All", search = "" } = {}) {
+  const payload = {
+    listType: listType === "All" ? "" : listType,
+    search: search.trim(),
+  };
   try {
-    const data = await callDeferred("offmarket-properties", { filters });
-    return data.properties || [];
+    const data = await callDeferred("offmarket-properties", payload);
+    // Return the full response so PropertiesTab can read provider + message
+    return {
+      properties: data.properties || [],
+      provider: data.provider || "",
+      message: data.message || "",
+    };
   } catch (err) {
     throw err; // Propagate real error to UI
   }

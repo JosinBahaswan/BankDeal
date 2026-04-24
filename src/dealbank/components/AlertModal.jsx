@@ -1,77 +1,121 @@
 import React from "react";
 
-export default function AlertModal({ show, title, message, type = "error", onClose, G }) {
+/**
+ * AlertModal
+ *
+ * types:
+ *  "error"   — red, ❌
+ *  "warning" — amber/gold, ⚠️
+ *  "info"    — blue, ℹ️
+ *  "success" — green, ✅
+ */
+export default function AlertModal({ show, title, message, type = "error", onClose, G, children }) {
   if (!show) return null;
 
-  const isWarning = type === "warning";
-  const icon = isWarning ? "⚠️" : "❌";
-  const accentColor = isWarning ? G.gold : G.red;
+  const CONFIG = {
+    error:   { icon: "❌", color: G.red   || "#ef4444" },
+    warning: { icon: "⚠️", color: G.gold  || "#f59e0b" },
+    info:    { icon: "ℹ️", color: G.blue  || "#3b82f6" },
+    success: { icon: "✅", color: G.green || "#22c55e" },
+  };
+
+  const { icon, color } = CONFIG[type] || CONFIG.error;
 
   return (
-    <div style={{
-      position: "fixed",
-      inset: 0,
-      zIndex: 9999,
-      background: "rgba(0,0,0,0.85)",
-      display: "grid",
-      placeItems: "center",
-      backdropFilter: "blur(8px)",
-      animation: "fadeIn 0.2s ease-out"
-    }}>
-      <div style={{
-        width: "90%",
-        maxWidth: 450,
-        background: G.card,
-        border: `1px solid ${accentColor}44`,
-        borderRadius: 20,
-        padding: 32,
-        textAlign: "center",
-        boxShadow: `0 20px 50px rgba(0,0,0,0.5), 0 0 20px ${accentColor}11`,
-        position: "relative",
-        overflow: "hidden"
-      }}>
-        {/* Progress bar decoration */}
-        <div style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 4,
-          background: `linear-gradient(90deg, ${accentColor}, ${accentColor}44)`
-        }} />
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title || "Alert"}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.85)",
+        display: "grid",
+        placeItems: "center",
+        backdropFilter: "blur(8px)",
+        animation: "alertFadeIn 0.2s ease-out",
+        padding: "16px",
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 460,
+          background: G.card || "#1a1a2e",
+          border: `1px solid ${color}44`,
+          borderRadius: 20,
+          padding: 32,
+          textAlign: "center",
+          boxShadow: `0 20px 50px rgba(0,0,0,0.5), 0 0 20px ${color}11`,
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        {/* Top accent bar */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 4,
+            background: `linear-gradient(90deg, ${color}, ${color}44)`,
+          }}
+        />
 
-        <div style={{ 
-          fontSize: 48, 
-          marginBottom: 20,
-          filter: `drop-shadow(0 0 10px ${accentColor}44)`
-        }}>
+        {/* Icon */}
+        <div
+          style={{
+            fontSize: 48,
+            marginBottom: 20,
+            filter: `drop-shadow(0 0 10px ${color}44)`,
+            lineHeight: 1,
+          }}
+        >
           {icon}
         </div>
 
-        <div style={{ 
-          fontFamily: G.serif, 
-          fontSize: 24, 
-          color: G.text, 
-          marginBottom: 12,
-          fontWeight: "800"
-        }}>
-          {title || (isWarning ? "Perhatian" : "Terjadi Kesalahan")}
+        {/* Title */}
+        <div
+          style={{
+            fontFamily: G.serif || "Georgia, serif",
+            fontSize: 22,
+            color: G.text || "#fff",
+            marginBottom: 12,
+            fontWeight: "800",
+          }}
+        >
+          {title || (type === "warning" ? "Perhatian" : type === "info" ? "Informasi" : type === "success" ? "Berhasil" : "Terjadi Kesalahan")}
         </div>
 
-        <div style={{ 
-          fontSize: 15, 
-          color: G.muted, 
-          lineHeight: 1.6, 
-          marginBottom: 28,
-          padding: "0 10px"
-        }}>
+        {/* Message */}
+        <div
+          style={{
+            fontSize: 15,
+            color: G.muted || "#9ca3af",
+            lineHeight: 1.6,
+            marginBottom: children ? 16 : 28,
+            padding: "0 10px",
+          }}
+        >
           {message}
         </div>
 
-        <button 
+        {/* Optional extra content (e.g. a phone number display) */}
+        {children && (
+          <div style={{ marginBottom: 24 }}>
+            {children}
+          </div>
+        )}
+
+        {/* Close button */}
+        <button
+          id="alert-modal-close-btn"
           onClick={onClose}
           style={{
-            background: accentColor,
+            background: color,
             color: "#fff",
             border: "none",
             borderRadius: 12,
@@ -81,19 +125,19 @@ export default function AlertModal({ show, title, message, type = "error", onClo
             cursor: "pointer",
             width: "100%",
             transition: "all 0.2s ease",
-            boxShadow: `0 4px 12px ${accentColor}44`
+            boxShadow: `0 4px 12px ${color}44`,
           }}
-          onMouseOver={(e) => e.target.style.transform = "translateY(-2px)"}
-          onMouseOut={(e) => e.target.style.transform = "translateY(0)"}
+          onMouseOver={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
+          onMouseOut={(e) => (e.currentTarget.style.transform = "translateY(0)")}
         >
           Mengerti
         </button>
       </div>
 
       <style>{`
-        @keyframes fadeIn {
+        @keyframes alertFadeIn {
           from { opacity: 0; transform: scale(0.95); }
-          to { opacity: 1; transform: scale(1); }
+          to   { opacity: 1; transform: scale(1); }
         }
       `}</style>
     </div>
