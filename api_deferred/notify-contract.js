@@ -8,7 +8,8 @@ import {
   createSupabaseAdminClient,
   verifyContractActor,
 } from "../lib/server/contractsShared.js";
-import { resolveStorageSignedUrl } from "../lib/server/contractsDocumentService.js";
+import { resolveStorageSignedUrl, loadContractBundle, renderBundlePdfBuffer, persistGeneratedPdf } from "../lib/server/contractsDocumentService.js";
+import { verifySendgridSetup } from "../lib/server/sendgridShared.js";
 import { compactSendgridError, nextRetryDelayMs, sendWithRetry } from "../lib/server/sendgridRetry.js";
 
 function jsonBody(req) {
@@ -384,12 +385,15 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Invalid JSON body" });
   }
 
-  const apiKey = asText(process.env.SENDGRID_API_KEY);
-  if (!apiKey) {
-    return res.status(500).json({ error: "Server is missing SENDGRID_API_KEY" });
+  let apiKey;
+  let fromEmail;
+  try {
+    const cfg = verifySendgridSetup();
+    apiKey = cfg.apiKey;
+    fromEmail = cfg.fromEmail;
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || "SendGrid configuration error" });
   }
-
-  const fromEmail = asEmail(process.env.SENDGRID_FROM_EMAIL, "no-reply@dealbank.local");
   const contractId = asText(body.contractId);
   if (!contractId) {
     return res.status(400).json({ error: "contractId is required" });
@@ -444,6 +448,19 @@ export default async function handler(req, res) {
   }
   if (!pdfUrl) {
     pdfUrl = asText(body.pdfUrl);
+  }
+
+  // If PDF is still not available, attempt to generate and persist it server-side
+  if (!pdfUrl) {
+    try {
+      const bundle = await loadContractBundle(supabaseAdmin, contractId);
+      const pdfBuffer = await renderBundlePdfBuffer(bundle);
+      const persisted = await persistGeneratedPdf(supabaseAdmin, contractId, pdfBuffer);
+      pdfUrl = asText(persisted?.signedUrl);
+    } catch (err) {
+      console.error("notify-contract: failed to generate/persist PDF fallback", err?.message || err);
+      // fall through to error response below
+    }
   }
 
   if (!pdfUrl) {

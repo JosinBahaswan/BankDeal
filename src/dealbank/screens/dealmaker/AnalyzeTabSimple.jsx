@@ -159,11 +159,11 @@ export default function AnalyzeTabSimple({ ctx }) {
       </div>
 
       <div style={{ ...card, borderTop: `1px solid ${G.border}` }}>
-        <div style={{ ...lbl, marginBottom: 12 }}>Step 3: Contact Homeowner</div>
+        <div style={{ ...lbl, marginBottom: 12 }}>Next Step: Connect with Homeowner</div>
         <div style={{ display: "flex", gap: 10, flexDirection: isMobile ? "column" : "row" }}>
-          <button onClick={() => setCallModalOpen(true)} style={{ ...btnG, flex: 1, padding: "14px" }}>Call Homeowner (Twilio)</button>
-          <button onClick={() => setEmailModalOpen(true)} style={{ ...btnO, flex: 1, padding: "14px" }}>Email Homeowner (SendGrid)</button>
-          <button onClick={() => saveDeal && saveDeal()} style={{ ...btnG, flex: 1, padding: "14px", background: G.surface, border: `1px solid ${G.green}`, color: G.green }}>Save to Pipeline</button>
+          <button onClick={() => setCallModalOpen(true)} style={{ ...btnG, flex: 1, padding: "14px" }}>Call Homeowner</button>
+          <button onClick={() => setEmailModalOpen(true)} style={{ ...btnO, flex: 1, padding: "14px" }}>Send Email Offer</button>
+          <button onClick={() => saveDeal && saveDeal()} style={{ ...btnG, flex: 1, padding: "14px", background: G.surface, border: `1px solid ${G.green}`, color: G.green }}>Push to Pipeline</button>
         </div>
       </div>
 

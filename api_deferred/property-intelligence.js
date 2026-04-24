@@ -835,7 +835,11 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: error?.message || "Unauthorized" });
   }
 
-  const rapidApiKey = asText(process.env.RAPIDAPI_KEY_REALTY_BASE || process.env.RAPIDAPI_KEY);
+  const rapidApiKey = asText(
+    process.env.RAPIDAPI_KEY_REALTY_BASE ||
+    process.env.RAPIDAPI_KEY_REALTY_US ||
+    process.env.RAPIDAPI_KEY
+  );
   if (!rapidApiKey) {
     return res.status(200).json(
       buildFallbackIntelligence(
@@ -845,7 +849,17 @@ export default async function handler(req, res) {
     );
   }
 
-  const host = asText(process.env.RAPIDAPI_REALTY_BASE_HOST || process.env.REALTY_BASE_RAPIDAPI_HOST, DEFAULT_HOST);
+  const host = (() => {
+    const explicit = asText(
+      process.env.RAPIDAPI_REALTY_BASE_HOST ||
+      process.env.RAPIDAPI_REALTY_US_HOST ||
+      process.env.REALTY_BASE_RAPIDAPI_HOST ||
+      process.env.REALTY_US_RAPIDAPI_HOST,
+    );
+    if (explicit) return explicit;
+    if (process.env.RAPIDAPI_KEY_REALTY_US) return "realty-us.p.rapidapi.com";
+    return DEFAULT_HOST;
+  })();
   const queryKeys = parseKeyList(
     process.env.RAPIDAPI_REALTY_BASE_QUERY_KEYS || process.env.REALTY_BASE_QUERY_KEYS,
     [asText(process.env.RAPIDAPI_REALTY_BASE_QUERY_KEY || process.env.REALTY_BASE_QUERY_KEY, "query"), ...DEFAULT_QUERY_KEYS],

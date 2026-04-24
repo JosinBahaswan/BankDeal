@@ -1,10 +1,11 @@
-import { createHash } from "crypto";
+import { createHash, createSign, createPublicKey } from "crypto";
 import { enforceCors, enforceRateLimit } from "../lib/server/httpSecurity.js";
 import {
   asText,
   createSupabaseAdminClient,
   jsonBody,
   resolveClientIp,
+  normalizePem,
 } from "../lib/server/contractsShared.js";
 import {
   loadContractBundle,
@@ -111,22 +112,91 @@ export default async function handler(req, res) {
 
   const partyId = partyRow?.id || null;
 
-  // Insert signature record as admin
-  const signaturePayload = {
+  // Build canonical attestation payload and sign it using server private key (RS256)
+  function canonicalSignaturePayload(payload) {
+    return JSON.stringify({
+      version: 1,
+      contractId: payload.contractId,
+      partyRole: payload.partyRole,
+      signerName: payload.signerName,
+      signerEmail: payload.signerEmail,
+      signerIp: payload.signerIp,
+      signedAt: payload.signedAt,
+      sigMethod: payload.sigMethod,
+      docHash: payload.docHash,
+      signerUserId: payload.signerUserId,
+    });
+  }
+
+  const signedAt = asText(body.signedAt) || new Date().toISOString();
+  const signerIp = resolveClientIp(req) || null;
+  const signerUserId = null; // public signing flow (no authenticated user)
+
+  const privateKeyPem = normalizePem(process.env.CONTRACTS_SIGNING_PRIVATE_KEY_PEM || "");
+  if (!privateKeyPem) {
+    return res.status(500).json({ error: "Server is missing CONTRACTS_SIGNING_PRIVATE_KEY_PEM" });
+  }
+
+  const certPem = normalizePem(process.env.CONTRACTS_SIGNING_CERT_PEM || "");
+
+  let signatureAlgorithm = "RS256";
+  let signaturePayload = "";
+  let signatureValue = "";
+  let signingCertFingerprint = null;
+  let serverSignedAt = new Date().toISOString();
+
+  try {
+    signaturePayload = canonicalSignaturePayload({
+      contractId,
+      partyRole: recipientRole,
+      signerName,
+      signerEmail: recipientEmail,
+      signerIp,
+      signedAt,
+      sigMethod,
+      docHash,
+      signerUserId,
+    });
+
+    const signer = createSign("RSA-SHA256");
+    signer.update(signaturePayload);
+    signer.end();
+    signatureValue = signer.sign(privateKeyPem, "base64");
+
+    if (certPem) {
+      signingCertFingerprint = createHash("sha256").update(certPem).digest("hex");
+    } else {
+      const publicKeyPem = createPublicKey(privateKeyPem).export({ format: "pem", type: "spki" });
+      signingCertFingerprint = createHash("sha256").update(String(publicKeyPem)).digest("hex");
+    }
+  } catch (err) {
+    console.error("contract-sign-apply: attestation signing failed", err?.message || err);
+    return res.status(500).json({ error: "Failed to create RS256 attestation for signature" });
+  }
+
+  // Insert signature record as admin (include attestation fields)
+  const signatureInsert = {
     contract_id: contractId,
     party_id: partyId,
     signer_name: signerName,
     signer_email: recipientEmail || asText(body.signerEmail || body.signer_email || ""),
-    signer_ip: resolveClientIp(req) || null,
+    signer_ip: signerIp,
+    signed_at: signedAt,
+    server_signed_at: serverSignedAt,
     sig_method: sigMethod === "drawn" ? "drawn" : "typed",
     sig_image_url: sigImagePath,
     doc_hash: docHash,
     party_role: recipientRole,
+    signature_algorithm: signatureAlgorithm,
+    signature_payload: signaturePayload,
+    signature_value: signatureValue,
+    signing_cert_fingerprint: signingCertFingerprint,
+    signing_cert_pem: certPem || null,
   };
 
   const { error: insertError } = await supabaseAdmin
     .from("contract_signatures")
-    .insert(signaturePayload);
+    .insert(signatureInsert);
 
   if (insertError) {
     return res.status(500).json({ error: `Failed to persist signature: ${insertError.message}` });

@@ -14,15 +14,12 @@ import MarketplaceTab from "./dealmaker/MarketplaceTab";
 import ToolsTab from "./dealmaker/tools/ToolsTab";
 
 const TAB_SUMMARY = {
-  analyze: "Underwrite the deal first, then push only validated numbers into pipeline and contracts.",
-  pipeline: "Move deals through stages daily so your next offer and next disposition are always visible.",
-  contracts: "Keep signature flow and delivery status healthy so cashflow timing does not slip.",
-  contractors: "Source execution partners before closing to reduce renovation downtime.",
-  tools: "Use dialer, lead lists, and sequences to keep acquisition momentum consistent.",
-  partners: "Coordinate lender, title, and referral partners before bottlenecks appear.",
-  resources: "Maintain current playbooks and scripts so the team executes with the same standard.",
-  laws: "Review state-specific constraints before final terms and disclosures.",
-  marketplace: "Position your inventory early with clear spread and timeline expectations.",
+  properties: "Step 1: Browse off-market leads or input a specific address to start a new deal.",
+  analyze: "Step 2: Underwrite the deal, calculate offer price, and run AI analysis on comps.",
+  pipeline: "Step 3: Track homeowner contact and move deals through the acquisition funnel.",
+  contracts: "Step 4: Manage eSign flows, signature audit trails, and final executed documents.",
+  marketplace: "Path A (Wholesale): List your inventory early to start sourcing investors.",
+  contractors: "Path B (Flip): Source execution partners and coordinate renovation timelines.",
 };
 
 export default function DealMakerDashboardScreen({ ctx }) {
@@ -33,10 +30,12 @@ export default function DealMakerDashboardScreen({ ctx }) {
   const mergedCtx = { ...ctx, isMobile, isTablet, viewportMode: mode };
 
   const FTABS = [
-    { id: "properties", icon: "🏠", label: "Properties" },
-    { id: "analyze", icon: "🔍", label: "Analyze" },
-    { id: "pipeline", icon: "📋", label: "Pipeline" },
+    { id: "properties", icon: "🏠", label: "1. Properties" },
+    { id: "analyze", icon: "🔍", label: "2. Analyze" },
+    { id: "pipeline", icon: "📋", label: "3. Pipeline" },
+    { id: "contracts", icon: "✍️", label: "4. Contracts" },
     { id: "marketplace", icon: "MK", label: "Marketplace" },
+    { id: "contractors", icon: "👷", label: "Contractors" },
   ];
 
   const activeTab = FTABS.find((tab) => tab.id === flipTab);

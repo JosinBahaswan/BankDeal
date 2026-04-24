@@ -9,6 +9,8 @@ import {
   jsonBody,
   verifyContractActor,
 } from "../lib/server/contractsShared.js";
+import { normalizePem } from "../lib/server/contractsShared.js";
+import { verifySendgridSetup } from "../lib/server/sendgridShared.js";
 import {
   loadContractBundle,
   renderBundlePdfBuffer,
@@ -62,6 +64,12 @@ export default async function handler(req, res) {
     actor = await verifyContractActor(req, supabaseAdmin);
   } catch (err) {
     return res.status(401).json({ error: err?.message || "Unauthorized request" });
+  }
+
+  // Require server signing private key to be configured for RS256 attestation
+  const privateKeyPem = normalizePem(process.env.CONTRACTS_SIGNING_PRIVATE_KEY_PEM || "");
+  if (!privateKeyPem) {
+    return res.status(500).json({ error: "Server is missing CONTRACTS_SIGNING_PRIVATE_KEY_PEM. Configure CONTRACTS_SIGNING_PRIVATE_KEY_PEM to enable RS256 attestation for contract signing." });
   }
 
   try {
@@ -163,8 +171,16 @@ export default async function handler(req, res) {
     // 6) Send a signing invitation email with link
     const signUrl = `${appBaseUrl(req)}/api/contract-sign?token=${encodeURIComponent(rawToken)}`;
 
-    const sendgridKey = asText(process.env.SENDGRID_API_KEY || "");
-    const fromEmail = asText(process.env.SENDGRID_FROM_EMAIL || "no-reply@dealbank.local");
+    let sendgridConfig;
+    try {
+      sendgridConfig = verifySendgridSetup();
+    } catch (err) {
+      console.error("contracts-send: SendGrid configuration error", err?.message || err);
+      throw new Error(err?.message || "SendGrid configuration error");
+    }
+
+    const sendgridKey = asText(sendgridConfig.apiKey || process.env.SENDGRID_API_KEY || "");
+    const fromEmail = asText(sendgridConfig.fromEmail || process.env.SENDGRID_FROM_EMAIL || "no-reply@dealbank.local");
 
     if (sendgridKey) {
       sgMail.setApiKey(sendgridKey);

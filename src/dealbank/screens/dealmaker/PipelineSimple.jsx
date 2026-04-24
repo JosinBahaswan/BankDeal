@@ -4,7 +4,7 @@ import { sendContractForESign } from "../../core/mockApis";
 export default function PipelineSimple({ ctx }) {
   const { G, card, lbl, btnG, btnO, fmt, pipeline = [], updateDealStage, isMobile, setFlipTab } = ctx;
 
-  const STAGES = ["Analyzing", "Contacted", "Under Contract", "Closed"];
+  const STAGES = ["Analyzing", "Negotiating", "Under Contract", "Disposition"];
   
   const [contractModal, setContractModal] = useState({ open: false, deal: null });
   const [contractForm, setContractForm] = useState({ sellerName: "", closeDate: "" });
@@ -22,7 +22,8 @@ export default function PipelineSimple({ ctx }) {
       });
       if (res.success) {
         updateDealStage(contractModal.deal, "Under Contract");
-        setMsg(`Contract sent for ${contractModal.deal.address}! Status: Contract Sent`);
+        setMsg(`Contract sent for ${contractModal.deal.address}! Redirecting to manage signatures...`);
+        setTimeout(() => setFlipTab("contracts"), 2000);
         setContractModal({ open: false, deal: null });
       }
     } catch (err) {
@@ -35,8 +36,8 @@ export default function PipelineSimple({ ctx }) {
     <div style={{ animation: "fadeIn 0.3s ease-out" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div>
-          <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text }}>📋 Pipeline Dashboard</div>
-          <div style={{ fontSize: 12, color: G.muted }}>Track your progress from analysis to closing</div>
+          <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text }}>📋 Step 3: Deal Pipeline</div>
+          <div style={{ fontSize: 12, color: G.muted }}>Manage acquisition and track towards Under Contract status</div>
         </div>
         {msg && <div style={{ background: G.greenGlow, color: G.green, padding: "8px 16px", borderRadius: 20, fontSize: 11, fontWeight: "bold" }}>{msg}</div>}
       </div>
@@ -45,7 +46,8 @@ export default function PipelineSimple({ ctx }) {
         {STAGES.map((stage) => {
           const stageDeals = pipeline.filter((d) => {
             const s = d.stage || "Analyzing";
-            if (stage === "Under Contract" && (s === "Wholesale" || s === "Flip")) return true;
+            if (stage === "Disposition" && (s === "Wholesale" || s === "Flip")) return true;
+            if (stage === "Negotiating" && s === "Contacted") return true;
             return s === stage;
           });
 
@@ -63,17 +65,17 @@ export default function PipelineSimple({ ctx }) {
                     <div style={{ fontSize: 11, color: G.muted, marginBottom: 10 }}>Offer: {fmt(deal.offer)} · ARV: {fmt(deal.arvNum)}</div>
                     
                     <div style={{ display: "grid", gap: 6 }}>
-                      {deal.stage === "Analyzing" && (
-                        <button onClick={() => updateDealStage(deal, "Contacted")} style={{ ...btnG, fontSize: 10, padding: "6px" }}>Mark as Contacted</button>
+                      {(deal.stage === "Analyzing" || !deal.stage) && (
+                        <button onClick={() => updateDealStage(deal, "Contacted")} style={{ ...btnG, fontSize: 10, padding: "6px" }}>Call Homeowner</button>
                       )}
 
                       {deal.stage === "Contacted" && (
-                        <button onClick={() => setContractModal({ open: true, deal })} style={{ ...btnG, fontSize: 10, padding: "6px" }}>Send Contract (eSign)</button>
+                        <button onClick={() => setContractModal({ open: true, deal })} style={{ ...btnG, fontSize: 10, padding: "6px" }}>Send Purchase Agreement</button>
                       )}
 
                       {(deal.stage === "Under Contract" || deal.stage === "Wholesale" || deal.stage === "Flip") && (
                         <div style={{ display: "grid", gap: 6 }}>
-                          <div style={{ fontSize: 9, color: G.green, textAlign: "center", marginBottom: 4 }}>✅ UNDER CONTRACT</div>
+                          <div style={{ fontSize: 9, color: G.green, textAlign: "center", marginBottom: 4 }}>✍️ UNDER CONTRACT</div>
                           <div style={{ display: "flex", gap: 4 }}>
                             <button onClick={() => updateDealStage(deal, "Wholesale")} style={{ ...btnO, flex: 1, fontSize: 9, padding: "6px", borderColor: deal.stage === "Wholesale" ? G.green : G.border }}>WHOLESALE</button>
                             <button onClick={() => updateDealStage(deal, "Flip")} style={{ ...btnO, flex: 1, fontSize: 9, padding: "6px", borderColor: deal.stage === "Flip" ? G.green : G.border }}>FLIP</button>
@@ -82,7 +84,7 @@ export default function PipelineSimple({ ctx }) {
                             <button onClick={() => setFlipTab("marketplace")} style={{ ...btnG, fontSize: 9, padding: "6px" }}>List in Marketplace</button>
                           )}
                           {deal.stage === "Flip" && (
-                            <button onClick={() => setFlipTab("contractors")} style={{ ...btnG, fontSize: 9, padding: "6px", background: G.gold, border: "none", color: "#000" }}>Connect Contractors</button>
+                            <button onClick={() => setFlipTab("contractors")} style={{ ...btnG, fontSize: 9, padding: "6px", background: G.gold, border: "none", color: "#000" }}>Contact Contractors</button>
                           )}
                           <button onClick={() => updateDealStage(deal, "Closed")} style={{ ...btnG, fontSize: 10, padding: "6px", marginTop: 4 }}>Mark as Closed</button>
                         </div>
@@ -95,7 +97,7 @@ export default function PipelineSimple({ ctx }) {
                   </div>
                 ))}
               </div>
-              {stageDeals.length === 0 && <div style={{ color: G.muted, fontSize: 11, textAlign: "center", marginTop: 20 }}>Drag and drop coming soon</div>}
+              {stageDeals.length === 0 && <div style={{ color: G.muted, fontSize: 11, textAlign: "center", marginTop: 20 }}>Pipeline empty</div>}
             </div>
           );
         })}

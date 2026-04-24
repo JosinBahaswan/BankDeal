@@ -374,6 +374,12 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: error?.message || "Unauthorized" });
   }
 
+  // Ensure Twilio provider is configured in production
+  const twilioConfigCheck = readTwilioConfig();
+  if (process.env.NODE_ENV === "production" && !twilioConfigCheck.ready) {
+    return res.status(500).json({ error: "Twilio is not fully configured for production: set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and either TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID" });
+  }
+
   try {
     const context = await loadSequenceContext(supabaseAdmin, identity.userId, sequenceId);
 

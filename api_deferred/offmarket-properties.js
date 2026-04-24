@@ -15,6 +15,8 @@
  *   - Sets agentPhoneUnavailable: true  on properties with no phone found
  */
 
+import { enforceRateLimit } from "../lib/server/httpSecurity.js";
+
 const REALTY_US_HOST = "realty-us.p.rapidapi.com";
 const REALTY_US_SEARCH_PATH = "/properties/search-buy";
 const REALTY_US_DETAIL_PATH = "/properties/detail";
@@ -51,6 +53,28 @@ async function fetchWithTimeout(url, opts, timeoutMs = 12000) {
     return await fetch(url, { ...opts, signal: ctrl.signal });
   } finally {
     clearTimeout(timer);
+  }
+}
+
+// Simple in-memory cache for Realty US detail responses to reduce RapidAPI calls
+const REALTY_US_DETAIL_CACHE_TTL_MS = Number(process.env.REALTY_US_DETAIL_CACHE_TTL_MS || 60 * 60 * 1000);
+const REALTY_US_DETAIL_CACHE = new Map();
+
+function getRealtyDetailCache(pid) {
+  const entry = REALTY_US_DETAIL_CACHE.get(pid);
+  if (!entry) return null;
+  if (Date.now() > entry.expires) {
+    REALTY_US_DETAIL_CACHE.delete(pid);
+    return null;
+  }
+  return entry.value;
+}
+
+function setRealtyDetailCache(pid, value) {
+  try {
+    REALTY_US_DETAIL_CACHE.set(pid, { value, expires: Date.now() + REALTY_US_DETAIL_CACHE_TTL_MS });
+  } catch{
+    // ignore cache failures
   }
 }
 
@@ -180,8 +204,14 @@ function extractAgentPhoneFromSearchResult(result) {
 }
 
 async function realtyUsPropertyDetail({ apiKey, propertyId, listingId }) {
+  const pid = asText(propertyId);
+  if (!pid) return null;
+
+  const cached = getRealtyDetailCache(pid);
+  if (cached) return cached;
+
   const url = new URL(`https://${REALTY_US_HOST}${REALTY_US_DETAIL_PATH}`);
-  url.searchParams.set("propertyId", propertyId);
+  url.searchParams.set("propertyId", pid);
   if (listingId) url.searchParams.set("listingId", listingId);
 
   const resp = await fetchWithTimeout(url.toString(), {
@@ -194,7 +224,9 @@ async function realtyUsPropertyDetail({ apiKey, propertyId, listingId }) {
   }, 10000);
 
   if (!resp.ok) return null;
-  return await resp.json().catch(() => null);
+  const json = await resp.json().catch(() => null);
+  if (json) setRealtyDetailCache(pid, json);
+  return json;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -358,6 +390,15 @@ export default async function handler(req, res) {
     req.method === "POST"
       ? req.body || {}
       : req.query || {};
+
+  const rateLimit = enforceRateLimit(req, res, {
+    keyPrefix: "offmarket-properties",
+    max: Number(process.env.RATE_LIMIT_OFFMARKET_MAX || 40),
+    windowMs: Number(process.env.RATE_LIMIT_OFFMARKET_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+  });
+  if (!rateLimit.allowed) {
+    return res.status(429).json({ error: "Too many requests. Please retry later." });
+  }
 
   // Simple filter mapping for BatchData
   const listType = String(body.listType || body.filter || body.list || "").trim();
