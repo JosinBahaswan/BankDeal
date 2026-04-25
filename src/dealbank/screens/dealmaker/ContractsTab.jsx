@@ -667,7 +667,31 @@ async function downloadContract(contract) {
       return;
     }
   } catch  {
-    // lanjut ke blob download
+    // Jika persist tidak mengembalikan URL, coba langsung minta POST yang mengembalikan PDF binary
+    try {
+      const postBlob = await generateAndPersistContractPdf(contract.id, { download: true });
+
+      // Validasi: cek apakah blob adalah PDF valid
+      const arrayBuffer = await postBlob.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      const header = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+
+      if (header === "%PDF") {
+        const validBlob = new Blob([arrayBuffer], { type: "application/pdf" });
+        const href = URL.createObjectURL(validBlob);
+        const anchor = document.createElement("a");
+        anchor.href = href;
+        anchor.download = `${safeFilename(contract.name)}.pdf`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        setTimeout(() => URL.revokeObjectURL(href), 5000);
+        return;
+      }
+      // jika bukan PDF, lanjut ke fallback GET
+    } catch  {
+      // lanjut ke blob download (GET)
+    }
   }
 
   // 3. Fallback: blob download dengan validasi

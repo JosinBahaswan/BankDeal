@@ -53,12 +53,26 @@ async function authorizedJsonFetch(url, options = {}) {
 
 async function authorizedBlobFetch(url) {
   const authHeader = await bearerAuthHeader();
-  const response = await fetch(url, {
-    method: "GET",
+  // Support optional second argument: options = { method, body, headers }
+  let opts = {};
+  if (arguments.length >= 2 && typeof arguments[1] === "object" && arguments[1] !== null) {
+    opts = arguments[1];
+  }
+
+  const fetchOptions = {
+    method: opts.method || "GET",
     headers: {
       ...authHeader,
+      ...(opts.headers || {}),
     },
-  });
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  };
+
+  if (fetchOptions.body && !fetchOptions.headers["Content-Type"]) {
+    fetchOptions.headers["Content-Type"] = "application/json";
+  }
+
+  const response = await fetch(url, fetchOptions);
 
   if (!response.ok) {
     let details = "";
@@ -86,10 +100,24 @@ export async function createSignatureAttestation(input) {
   });
 }
 
-export async function generateAndPersistContractPdf(contractId) {
+export async function generateAndPersistContractPdf(contractId, options = {}) {
   const normalizedContractId = asText(contractId);
   if (!normalizedContractId) {
     throw new Error("contractId is required");
+  }
+
+  const wantsDownload = !!options.download;
+
+  if (wantsDownload) {
+    // POST + request binary PDF
+    return authorizedBlobFetch(CONTRACT_PDF_ENDPOINT, {
+      method: "POST",
+      body: {
+        contractId: normalizedContractId,
+        persist: true,
+        download: true,
+      },
+    });
   }
 
   return authorizedJsonFetch(CONTRACT_PDF_ENDPOINT, {

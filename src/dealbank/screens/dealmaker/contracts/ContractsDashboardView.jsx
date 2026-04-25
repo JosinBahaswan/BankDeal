@@ -91,77 +91,120 @@ export default function ContractsDashboardView({
           totalCount={contracts.length}
         />
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: `1px solid ${G.border}` }}>
-                {[
-                  "Contract",
-                  "Status",
-                  "Parties",
-                  "Created",
-                  "Assignment Fee",
-                  "DealBank Fee",
-                  "Actions",
-                ].map((head) => (
-                  <th key={head} style={{ fontSize: 8, color: G.muted, fontWeight: "normal", letterSpacing: 1, padding: "8px 6px" }}>{head}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {contractsLoading ? (
-                <tr>
-                  <td colSpan={7} style={{ fontSize: 10, color: G.muted, textAlign: "center", padding: "16px 8px" }}>
-                    Loading contracts...
-                  </td>
-                </tr>
-              ) : contracts.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ fontSize: 10, color: G.muted, textAlign: "center", padding: "16px 8px" }}>
-                    No contracts yet. Create your first contract to start tracking signatures.
-                  </td>
-                </tr>
-              ) : filteredContracts.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ fontSize: 10, color: G.muted, textAlign: "center", padding: "16px 8px" }}>
-                    No contracts match your search.
-                  </td>
-                </tr>
-              ) : filteredContracts.map((contract) => {
+        {isMobile ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            {contractsLoading ? (
+              <div style={{ ...card, textAlign: "center", padding: 16, fontSize: 10, color: G.muted }}>Loading contracts...</div>
+            ) : contracts.length === 0 ? (
+              <div style={{ ...card, textAlign: "center", padding: 16, fontSize: 10, color: G.muted }}>No contracts yet. Create your first contract to start tracking signatures.</div>
+            ) : filteredContracts.length === 0 ? (
+              <div style={{ ...card, textAlign: "center", padding: 16, fontSize: 10, color: G.muted }}>No contracts match your search.</div>
+            ) : (
+              filteredContracts.map((contract) => {
                 const template = templateConfig[contract.templateId] || defaultTemplate;
                 const assignmentFee = template.id === "assignment" ? fmt(contract.formVals.assignmentFee || 0) : "-";
                 const statusColor = contract.status === "Fully Executed" ? G.green : contract.status === "Awaiting Signature" ? G.gold : G.muted;
 
                 return (
-                  <tr key={contract.id} style={{ borderBottom: `1px solid ${G.faint}` }}>
-                    <td style={{ padding: "9px 6px" }}>
-                      <div style={{ fontSize: 10, color: G.text }}>{contract.name}</div>
-                      <div style={{ fontSize: 8, color: G.muted }}>{template.label}</div>
-                    </td>
-                    <td style={{ padding: "9px 6px" }}>
-                      <span style={{ fontSize: 8, color: statusColor, border: `1px solid ${statusColor}55`, background: `${statusColor}22`, borderRadius: 3, padding: "2px 7px", letterSpacing: 1 }}>{contract.status}</span>
-                    </td>
-                    <td style={{ fontSize: 9, color: G.muted, padding: "9px 6px" }}>{contract.parties.length}</td>
-                    <td style={{ fontSize: 9, color: G.muted, padding: "9px 6px" }}>{contract.created}</td>
-                    <td style={{ fontSize: 9, color: G.text, padding: "9px 6px" }}>{assignmentFee}</td>
-                    <td style={{ fontSize: 9, color: G.gold, padding: "9px 6px" }}>{contract.feeAmount ? fmt(contract.feeAmount) : "-"}</td>
-                    <td style={{ padding: "9px 6px" }}>
-                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                        {contract.status !== "Fully Executed" && contract.auditTrail.length === 0 && (
-                          <button onClick={() => onEditAndSend(contract)} style={{ ...btnO, fontSize: 8, padding: "4px 8px" }}>Edit & Send</button>
-                        )}
-                        <button onClick={() => onOpenSign(contract.id)} style={{ ...btnO, fontSize: 8, padding: "4px 8px", borderColor: G.gold, color: G.gold }}>
-                          {contract.status === "Fully Executed" ? "View Audit" : "Sign"}
-                        </button>
-                        <button onClick={() => onDownloadPdf(contract)} style={{ ...btnO, fontSize: 8, padding: "4px 8px" }}>View + Download PDF</button>
+                  <div key={contract.id} style={{ ...card, padding: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: G.text, fontFamily: G.serif, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{contract.name}</div>
+                        <div style={{ fontSize: 10, color: G.muted }}>{template.label} · {contract.created}</div>
+                        <div style={{ marginTop: 8, fontSize: 11, color: G.muted }}>Parties: {contract.parties.length} · Fee: {assignmentFee} · DealBank: {contract.feeAmount ? fmt(contract.feeAmount) : "-"}</div>
                       </div>
+
+                      <div style={{ display: "flex", gap: 8, flexDirection: "column", alignItems: "stretch", minWidth: 120 }}>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 10, color: statusColor, border: `1px solid ${statusColor}55`, background: `${statusColor}22`, borderRadius: 3, padding: "4px 6px", display: "inline-block", letterSpacing: 1 }}>{contract.status}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
+                          {contract.status !== "Fully Executed" && contract.auditTrail.length === 0 && (
+                            <button onClick={() => onEditAndSend(contract)} style={{ ...btnO, fontSize: 10, padding: "8px" }}>Edit & Send</button>
+                          )}
+                          <button onClick={() => onOpenSign(contract.id)} style={{ ...btnO, fontSize: 10, padding: "8px", borderColor: G.gold, color: G.gold }}>{contract.status === "Fully Executed" ? "View Audit" : "Sign"}</button>
+                          <button onClick={() => onDownloadPdf(contract)} style={{ ...btnO, fontSize: 10, padding: "8px" }}>View + Download PDF</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
+              <thead>
+                <tr style={{ textAlign: "left", borderBottom: `1px solid ${G.border}` }}>
+                  {[
+                    "Contract",
+                    "Status",
+                    "Parties",
+                    "Created",
+                    "Assignment Fee",
+                    "DealBank Fee",
+                    "Actions",
+                  ].map((head) => (
+                    <th key={head} style={{ fontSize: 8, color: G.muted, fontWeight: "normal", letterSpacing: 1, padding: "8px 6px" }}>{head}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {contractsLoading ? (
+                  <tr>
+                    <td colSpan={7} style={{ fontSize: 10, color: G.muted, textAlign: "center", padding: "16px 8px" }}>
+                      Loading contracts...
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                ) : contracts.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ fontSize: 10, color: G.muted, textAlign: "center", padding: "16px 8px" }}>
+                      No contracts yet. Create your first contract to start tracking signatures.
+                    </td>
+                  </tr>
+                ) : filteredContracts.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ fontSize: 10, color: G.muted, textAlign: "center", padding: "16px 8px" }}>
+                      No contracts match your search.
+                    </td>
+                  </tr>
+                ) : filteredContracts.map((contract) => {
+                  const template = templateConfig[contract.templateId] || defaultTemplate;
+                  const assignmentFee = template.id === "assignment" ? fmt(contract.formVals.assignmentFee || 0) : "-";
+                  const statusColor = contract.status === "Fully Executed" ? G.green : contract.status === "Awaiting Signature" ? G.gold : G.muted;
+
+                  return (
+                    <tr key={contract.id} style={{ borderBottom: `1px solid ${G.faint}` }}>
+                      <td style={{ padding: "9px 6px" }}>
+                        <div style={{ fontSize: 10, color: G.text }}>{contract.name}</div>
+                        <div style={{ fontSize: 8, color: G.muted }}>{template.label}</div>
+                      </td>
+                      <td style={{ padding: "9px 6px" }}>
+                        <span style={{ fontSize: 8, color: statusColor, border: `1px solid ${statusColor}55`, background: `${statusColor}22`, borderRadius: 3, padding: "2px 7px", letterSpacing: 1 }}>{contract.status}</span>
+                      </td>
+                      <td style={{ fontSize: 9, color: G.muted, padding: "9px 6px" }}>{contract.parties.length}</td>
+                      <td style={{ fontSize: 9, color: G.muted, padding: "9px 6px" }}>{contract.created}</td>
+                      <td style={{ fontSize: 9, color: G.text, padding: "9px 6px" }}>{assignmentFee}</td>
+                      <td style={{ fontSize: 9, color: G.gold, padding: "9px 6px" }}>{contract.feeAmount ? fmt(contract.feeAmount) : "-"}</td>
+                      <td style={{ padding: "9px 6px" }}>
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                          {contract.status !== "Fully Executed" && contract.auditTrail.length === 0 && (
+                            <button onClick={() => onEditAndSend(contract)} style={{ ...btnO, fontSize: 8, padding: "4px 8px" }}>Edit & Send</button>
+                          )}
+                          <button onClick={() => onOpenSign(contract.id)} style={{ ...btnO, fontSize: 8, padding: "4px 8px", borderColor: G.gold, color: G.gold }}>
+                            {contract.status === "Fully Executed" ? "View Audit" : "Sign"}
+                          </button>
+                          <button onClick={() => onDownloadPdf(contract)} style={{ ...btnO, fontSize: 8, padding: "4px 8px" }}>View + Download PDF</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,1fr)", gap: 8 }}>
