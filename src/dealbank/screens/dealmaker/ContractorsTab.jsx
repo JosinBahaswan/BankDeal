@@ -53,7 +53,7 @@ export default function ContractorsTab({ ctx }) {
 
       const { data: profileRows, error: profileError } = await supabase
         .from("contractor_profiles")
-        .select("id, user_id, city, rate_type, rate_amount, bio, verified_badge, rating, total_jobs, photo_path")
+        .select("id, user_id, city, rate_type, rate_amount, bio, verified_badge, rating, total_jobs, photo_path, contractor:users!user_id(name, email, phone)")
         .order("verified_badge", { ascending: false })
         .order("rating", { ascending: false, nullsFirst: false })
         .limit(50);
@@ -115,7 +115,8 @@ export default function ContractorsTab({ ctx }) {
 
       const mapped = (profileRows || []).map((row, index) => {
         const isSelf = row.user_id === user.id;
-        const name = isSelf ? (user.name || "You") : `Contractor ${String(row.id || index).slice(0, 6).toUpperCase()}`;
+        const contractorData = row.contractor || {};
+        const name = contractorData.name || (isSelf ? (user.name || "You") : `Contractor ${String(row.id || index).slice(0, 6).toUpperCase()}`);
         const trades = tradesByContractor[row.id] || [];
         const initials = String(name)
           .split(" ")
@@ -129,6 +130,8 @@ export default function ContractorsTab({ ctx }) {
           avatar: initials || "CT",
           avatarUrl: row.photo_path ? (nextAvatarMap[row.photo_path] || "") : "",
           name,
+          email: contractorData.email || "",
+          phone: contractorData.phone || "",
           verified: Boolean(row.verified_badge),
           trade: trades.length > 0 ? trades.join(", ") : "General Contractor",
           location: row.city || "California",
@@ -192,7 +195,17 @@ export default function ContractorsTab({ ctx }) {
             </div>
             <div style={{ fontSize: 10, color: G.muted, lineHeight: 1.6, marginBottom: 8 }}>{contractor.bio}</div>
             <button
-              onClick={() => pushToast?.(`Quote request sent to ${contractor.name}. Trade: ${contractor.trade}.`, "success")}
+              onClick={() => {
+                if (!contractor.email) {
+                  pushToast?.("Contractor email not listed.", "error");
+                  return;
+                }
+                const subject = encodeURIComponent(`Quote Request: Professional Services`);
+                const body = encodeURIComponent(`Hi ${contractor.name},\n\nI found your profile on DealBank and would like to request a quote for an upcoming project.\n\nProject details:\n[Insert details here]\n\nPlease let me know if you are available.\n\nThanks.`);
+                const mailto = `mailto:${contractor.email}?subject=${subject}&body=${body}`;
+                window.open(mailto, "_blank", "noopener,noreferrer");
+                pushToast?.(`Quote request initiated for ${contractor.name}.`, "success");
+              }}
               style={{ ...btnG, width: "100%", fontSize: 9, padding: "8px" }}
             >
               Request Quote

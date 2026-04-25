@@ -194,34 +194,13 @@ export default function ContractsEscrowPaymentPanel({
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8, marginBottom: 8 }}>
         <div>
-          <div style={lbl}>Beneficiary User ID (optional override)</div>
+          <div style={lbl}>Escrow Amount (USD)</div>
           <input
-            value={beneficiaryUserId}
-            onChange={(event) => setBeneficiaryUserId(event.target.value)}
-            placeholder="Leave empty to auto-resolve from contract parties"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="2500"
             style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: "8px 10px", boxSizing: "border-box", outline: "none" }}
           />
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <div>
-            <div style={lbl}>Escrow Amount (USD)</div>
-            <input
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-              placeholder="2500"
-              style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: "8px 10px", boxSizing: "border-box", outline: "none" }}
-            />
-          </div>
-          <div>
-            <div style={lbl}>Platform Fee Rate %</div>
-            <input
-              value={platformFeeRate}
-              onChange={(event) => setPlatformFeeRate(event.target.value)}
-              placeholder="1.5"
-              style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: "8px 10px", boxSizing: "border-box", outline: "none" }}
-            />
-          </div>
         </div>
 
         <div>
@@ -233,6 +212,30 @@ export default function ContractsEscrowPaymentPanel({
             style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: "8px 10px", boxSizing: "border-box", outline: "none" }}
           />
         </div>
+
+        <details style={{ marginTop: 8 }}>
+          <summary style={{ ...lbl, color: G.muted, cursor: "pointer", userSelect: "none" }}>Advanced Override Options</summary>
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr", gap: 8, padding: "8px", border: `1px dashed ${G.border}`, borderRadius: 6 }}>
+            <div>
+              <div style={lbl}>Beneficiary User ID (Manual Override)</div>
+              <input
+                value={beneficiaryUserId}
+                onChange={(event) => setBeneficiaryUserId(event.target.value)}
+                placeholder="Leave empty to auto-resolve from contract parties"
+                style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: "8px 10px", boxSizing: "border-box", outline: "none" }}
+              />
+            </div>
+            <div>
+              <div style={lbl}>Platform Fee Rate %</div>
+              <input
+                value={platformFeeRate}
+                onChange={(event) => setPlatformFeeRate(event.target.value)}
+                placeholder="1.5"
+                style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: "8px 10px", boxSizing: "border-box", outline: "none" }}
+              />
+            </div>
+          </div>
+        </details>
       </div>
 
       {createError && <div style={{ fontSize: 10, color: G.red, marginBottom: 8 }}>{createError}</div>}

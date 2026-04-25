@@ -155,7 +155,7 @@ export default async function handler(req, res) {
 
   if (!beneficiaryUserId) {
     return res.status(400).json({
-      error: "Unable to auto-resolve beneficiaryUserId from contract parties. Provide beneficiaryUserId explicitly.",
+      error: "No registered DealBank account matches the contract parties. The beneficiary (e.g., Seller) must create an account using their contract email before you can fund this escrow.",
     });
   }
 

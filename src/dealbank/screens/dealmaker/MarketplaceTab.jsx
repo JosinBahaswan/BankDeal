@@ -71,6 +71,9 @@ function mapListingRow(row, user) {
   const roi = Number(row.roi || calcRoi(arv, ask, reno, fee));
   const isOwner = user?.id && row.seller_id === user.id;
 
+  // Use joined seller data if available
+  const seller = row.seller || {};
+
   return {
     id: row.id,
     addr: row.address || "Unknown address",
@@ -96,17 +99,11 @@ function mapListingRow(row, user) {
     saved: Number(row.save_count || 0),
     status: statusLabel(row.status),
     isOwner,
-    contact: isOwner
-      ? {
-        name: user?.name || "You",
-        phone: user?.phone || "Phone not provided",
-        email: user?.email || "",
-      }
-      : {
-        name: "DealBank Seller",
-        phone: "Contact via DealBank",
-        email: "",
-      },
+    contact: {
+      name: seller.name || (isOwner ? (user?.name || "You") : "DealBank Seller"),
+      phone: seller.phone || (isOwner ? (user?.phone || "Phone not provided") : "Contact via DealBank"),
+      email: seller.email || (isOwner ? (user?.email || "") : ""),
+    },
   };
 }
 
@@ -180,7 +177,7 @@ export default function MarketplaceTab({ ctx }) {
       const [listingsResult, savesResult, buyersResult] = await Promise.all([
         supabase
           .from("marketplace_listings")
-          .select("*")
+          .select("*, seller:users!seller_id(name, email, phone)")
           .order("published_at", { ascending: false }),
         supabase
           .from("marketplace_saves")
@@ -388,13 +385,16 @@ export default function MarketplaceTab({ ctx }) {
 
   const contactWholesaler = (listing) => {
     if (!listing.contact?.email) {
+      pushToast?.("Contact email not available for this wholesaler yet. Try contacting them via phone or DealBank support.", "error");
       return;
     }
 
     const subject = encodeURIComponent(`Deal inquiry: ${listing.addr}`);
     const body = encodeURIComponent(`Hi ${listing.contact.name},\n\nI'm interested in ${listing.addr}. Please share next steps and access details.\n\nThanks.`);
     const mailto = `mailto:${listing.contact.email}?subject=${subject}&body=${body}`;
-    window.location.href = mailto;
+    
+    // Use window.open for better compatibility across browsers and PWA/webviews
+    window.open(mailto, "_blank", "noopener,noreferrer");
   };
 
   async function toggleSave(listingId) {
@@ -568,7 +568,7 @@ export default function MarketplaceTab({ ctx }) {
               <div style={{ fontFamily: G.serif, fontSize: 14, color: G.text, fontWeight: "bold", marginBottom: 4 }}>{activeListing.contact.name}</div>
               <div style={{ fontSize: 10, color: G.muted, marginBottom: 2 }}>{activeListing.contact.phone}</div>
               <div style={{ fontSize: 10, color: G.muted, marginBottom: 12 }}>{activeListing.contact.email || "Contact details available after connection"}</div>
-              <button onClick={() => contactWholesaler(activeListing)} disabled={!activeListing.contact.email} style={{ ...btnG, width: "100%", fontSize: 10, marginBottom: 8, opacity: activeListing.contact.email ? 1 : 0.6 }}>
+              <button onClick={() => contactWholesaler(activeListing)} style={{ ...btnG, width: "100%", fontSize: 10, marginBottom: 8 }}>
                 Contact Wholesaler
               </button>
               <button onClick={() => toggleSave(activeListing.id)} disabled={saveBusyId === activeListing.id} style={{ ...btnO, width: "100%", fontSize: 10, borderColor: savedDeals.includes(activeListing.id) ? G.green : G.border, color: savedDeals.includes(activeListing.id) ? G.green : G.muted, opacity: saveBusyId === activeListing.id ? 0.65 : 1 }}>
