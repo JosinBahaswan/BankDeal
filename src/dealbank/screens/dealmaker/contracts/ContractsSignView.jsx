@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 export default function ContractsSignView({
   G,
   card,
@@ -27,6 +29,8 @@ export default function ContractsSignView({
   onDownloadContract,
   escrowPaymentPanel,
 }) {
+  const [showRaw, setShowRaw] = useState(false);
+
   return (
     <div>
       <button onClick={onBack} style={{ ...btnO, marginBottom: 12, padding: "5px 12px", fontSize: 9 }}>← Back to Contracts</button>
@@ -54,7 +58,91 @@ export default function ContractsSignView({
               PLATFORM FEE 1.5%
             </div>
           </div>
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: G.mono, fontSize: 10, color: G.text, lineHeight: 1.7 }}>{contractText}</pre>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+            <button
+              onClick={() => setShowRaw((s) => !s)}
+              style={{ ...btnO, fontSize: 9, padding: "6px 10px" }}
+            >
+              {showRaw ? "Hide Contract Text" : "View Contract Text"}
+            </button>
+          </div>
+
+          {showRaw && (
+            <div style={{ marginTop: 8, background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 8, alignItems: "start" }}>
+                {template.fields.map((field) => {
+                  const raw = activeContract.formVals?.[field.key];
+                  const value = raw || "[pending]";
+                  const display = field.prefix ? `${field.prefix}${value}` : value;
+                  const isEmail = String(field.key || "").toLowerCase().includes("email");
+                  return (
+                    <div key={field.key} style={{ display: "contents" }}>
+                      <div style={{ fontSize: 10, color: G.muted }}>{field.label}</div>
+                      <div style={{ fontSize: 11, color: G.text, fontFamily: G.serif }}>
+                        {isEmail && value !== "[pending]" ? (
+                          <a href={`mailto:${value}`} style={{ color: G.text, textDecoration: "underline" }}>{value}</a>
+                        ) : (
+                          display
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Clauses</div>
+                <div style={{ fontSize: 10, color: G.text, lineHeight: 1.6 }}>
+                  {template.clauses.map((clause, i) => (
+                    <div key={i} style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, color: G.muted }}>{i + 1}.</div>
+                      <div style={{ marginLeft: 14 }}>{clause}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          <div style={{ marginTop: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Contract Details</div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {template.fields.map((field) => {
+                    const raw = activeContract.formVals?.[field.key];
+                    const value = raw || "[pending]";
+                    const display = field.prefix ? `${field.prefix}${value}` : value;
+                    const isEmail = String(field.key || "").toLowerCase().includes("email");
+                    return (
+                      <div key={field.key} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "8px" }}>
+                        <div style={{ minWidth: 120, fontSize: 10, color: G.muted }}>{field.label}</div>
+                        <div style={{ fontSize: 11, color: G.text, fontFamily: G.serif }}>
+                          {isEmail && value !== "[pending]" ? (
+                            <a href={`mailto:${value}`} style={{ color: G.text, textDecoration: "underline" }}>{value}</a>
+                          ) : (
+                            display
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Contract Clauses</div>
+                <div style={{ fontSize: 10, color: G.text, lineHeight: 1.6 }}>
+                  {template.clauses.map((clause, i) => (
+                    <div key={i} style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, color: G.muted }}>{i + 1}.</div>
+                      <div style={{ marginLeft: 14 }}>{clause}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div style={{ marginTop: 12, borderTop: `1px solid ${G.faint}`, paddingTop: 10 }}>
             <div style={{ ...lbl, marginBottom: 6 }}>Execution Tracker</div>
