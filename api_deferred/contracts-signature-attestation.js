@@ -171,7 +171,21 @@ export default async function handler(req, res) {
     const signer = createSign("RSA-SHA256");
     signer.update(signaturePayload);
     signer.end();
-    signatureValue = signer.sign(privateKeyPem, "base64");
+
+    // support PKCS#1 / PKCS#8 keys and base64-encoded single-line keys
+    let toSignKey = privateKeyPem;
+    // If key looks like base64 (no PEM header but long), decode it
+    const compact = String(privateKeyPem || "").replace(/\s+/g, "");
+    if (!toSignKey.includes("-----BEGIN ") && /^[A-Za-z0-9+/=]+$/.test(compact) && compact.length > 100) {
+      try {
+        const decoded = Buffer.from(compact, "base64").toString("utf8");
+        toSignKey = decoded.replace(/\\n/g, "\n").replace(/\r/g, "").trim();
+      } catch {
+        // leave as-is
+      }
+    }
+
+    signatureValue = signer.sign(toSignKey, "base64");
   } catch (error) {
     return res.status(500).json({
       error: error?.message || "Unable to sign contract attestation payload",
