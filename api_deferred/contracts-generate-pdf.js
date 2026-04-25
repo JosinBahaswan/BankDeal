@@ -107,7 +107,36 @@ export default async function handler(req, res) {
     if (pdfUrl) {
       res.setHeader("X-Contract-Pdf-Url", pdfUrl);
     }
-    return res.status(200).send(pdfBuffer);
+    // Ensure we send a proper binary response with explicit length
+    try {
+      const length = (pdfBuffer && typeof pdfBuffer.length === "number")
+        ? pdfBuffer.length
+        : (pdfBuffer && typeof pdfBuffer.byteLength === "number")
+          ? pdfBuffer.byteLength
+          : 0;
+
+      // Add debug headers showing the PDF file prefix to help diagnose corruption
+      try {
+        const prefixAscii = pdfBuffer.slice(0, 16).toString("ascii").replace(/\r|\n/g, "");
+        const prefixHex = pdfBuffer.slice(0, 8).toString("hex");
+        if (prefixAscii) res.setHeader("X-Debug-PDF-Prefix", prefixAscii);
+        if (prefixHex) res.setHeader("X-Debug-PDF-Prefix-Hex", prefixHex);
+      } catch{
+        // ignore header debug failures
+      }
+
+      res.setHeader("Content-Length", String(length));
+      // Prevent caching and conditional requests to avoid 304 responses from dev server/proxies
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.setHeader("Content-Transfer-Encoding", "binary");
+      res.statusCode = 200;
+      res.end(pdfBuffer);
+      return;
+    } catch (err) {
+      return res.status(500).json({ error: err?.message || "Failed to send PDF binary" });
+    }
   }
 
   return res.status(200).json({
