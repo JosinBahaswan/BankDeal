@@ -6,7 +6,9 @@ export const TEMPLATE_CONFIG = {
     parties: ["Assignor", "Assignee"],
     fields: [
       { key: "assignor", label: "Assignor Name", placeholder: "Ray Torres" },
+      { key: "assignorEmail", label: "Assignor Email", placeholder: "ray@example.com" },
       { key: "assignee", label: "Assignee Name", placeholder: "Pacific Equity Group" },
+      { key: "assigneeEmail", label: "Assignee Email", placeholder: "pacific@example.com" },
       { key: "propertyAddress", label: "Property Address", placeholder: "1842 Maple St, Sacramento, CA" },
       { key: "purchasePrice", label: "Purchase Price", placeholder: "195000", prefix: "$" },
       { key: "assignmentFee", label: "Assignment Fee", placeholder: "12000", prefix: "$" },
@@ -30,7 +32,9 @@ export const TEMPLATE_CONFIG = {
     parties: ["Buyer", "Seller"],
     fields: [
       { key: "buyer", label: "Buyer Name", placeholder: "Cash Offers LLC" },
+      { key: "buyerEmail", label: "Buyer Email", placeholder: "buyer@example.com" },
       { key: "seller", label: "Seller Name", placeholder: "Maria Ortega" },
+      { key: "sellerEmail", label: "Seller Email", placeholder: "seller@example.com" },
       { key: "propertyAddress", label: "Property Address", placeholder: "4402 Elmwood Ct, Modesto, CA" },
       { key: "purchasePrice", label: "Purchase Price", placeholder: "172000", prefix: "$" },
       { key: "earnestMoney", label: "Earnest Money", placeholder: "3000", prefix: "$" },
@@ -52,8 +56,10 @@ export const TEMPLATE_CONFIG = {
     summary: "Partnership agreement for acquisition, rehab, and disposition.",
     parties: ["Partner A", "Partner B"],
     fields: [
-      { key: "partnerA", label: "Partner A", placeholder: "Cash Offers LLC" },
-      { key: "partnerB", label: "Partner B", placeholder: "Central Valley Investments" },
+      { key: "partnerA", label: "Partner A Name", placeholder: "Cash Offers LLC" },
+      { key: "partnerAEmail", label: "Partner A Email", placeholder: "partner-a@example.com" },
+      { key: "partnerB", label: "Partner B Name", placeholder: "Central Valley Investments" },
+      { key: "partnerBEmail", label: "Partner B Email", placeholder: "partner-b@example.com" },
       { key: "propertyAddress", label: "Target Property", placeholder: "2891 Vista Canyon Rd, Bakersfield, CA" },
       { key: "capitalCommitment", label: "Capital Commitment", placeholder: "85000", prefix: "$" },
       { key: "profitSplit", label: "Profit Split", placeholder: "60/40" },
@@ -108,24 +114,30 @@ export function toUiStatus(status) {
 
 function roleFieldKey(templateId, role) {
   if (templateId === "assignment") {
-    if (role === "Assignor") return "assignor";
-    if (role === "Assignee") return "assignee";
+    if (role === "Assignor") return { name: "assignor", email: "assignorEmail" };
+    if (role === "Assignee") return { name: "assignee", email: "assigneeEmail" };
   }
   if (templateId === "purchase") {
-    if (role === "Buyer") return "buyer";
-    if (role === "Seller") return "seller";
+    if (role === "Buyer") return { name: "buyer", email: "buyerEmail" };
+    if (role === "Seller") return { name: "seller", email: "sellerEmail" };
   }
   if (templateId === "jointventure") {
-    if (role === "Partner A") return "partnerA";
-    if (role === "Partner B") return "partnerB";
+    if (role === "Partner A") return { name: "partnerA", email: "partnerAEmail" };
+    if (role === "Partner B") return { name: "partnerB", email: "partnerBEmail" };
   }
-  return "";
+  return { name: "", email: "" };
 }
 
 export function partyNameFromForm(templateId, role, formVals, fallbackName = "") {
-  const fieldKey = roleFieldKey(templateId, role);
-  if (fieldKey && formVals[fieldKey]) return String(formVals[fieldKey]);
+  const keys = roleFieldKey(templateId, role);
+  if (keys.name && formVals[keys.name]) return String(formVals[keys.name]);
   return fallbackName;
+}
+
+export function partyEmailFromForm(templateId, role, formVals, fallbackEmail = "") {
+  const keys = roleFieldKey(templateId, role);
+  if (keys.email && formVals[keys.email]) return String(formVals[keys.email]);
+  return fallbackEmail;
 }
 
 export function buildContractName(template, formVals) {

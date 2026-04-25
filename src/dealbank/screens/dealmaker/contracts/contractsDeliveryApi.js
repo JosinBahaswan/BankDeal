@@ -161,3 +161,14 @@ export async function deleteContract(contractId) {
     body: { contractId: normalizedContractId },
   });
 }
+
+export async function sendSigningInvitations(contractId) {
+  const normalizedContractId = asText(contractId);
+  if (!normalizedContractId) throw new Error("contractId is required");
+
+  const url = `/api/deferred?route=contract-invite`;
+  return authorizedJsonFetch(url, {
+    method: "POST",
+    body: { contractId: normalizedContractId },
+  });
+}

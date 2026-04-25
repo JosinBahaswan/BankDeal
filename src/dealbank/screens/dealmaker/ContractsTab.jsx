@@ -10,6 +10,7 @@ import {
   generateAndPersistContractPdf,
   triggerExecutedContractDelivery,
   deleteContract,
+  sendSigningInvitations,
 } from "./contracts/contractsDeliveryApi";
 import {
   TEMPLATE_CONFIG,
@@ -19,6 +20,7 @@ import {
   toUiTemplate,
   toUiStatus,
   partyNameFromForm,
+  partyEmailFromForm,
   buildContractName,
   sha256Hex,
   makeId,
@@ -85,10 +87,18 @@ export default function ContractsTab({ ctx }) {
 
   const nextSigner = useMemo(() => {
     if (!activeContract) return null;
-    return activeContract.parties.find((party) => party.status !== "Signed") || null;
-  }, [activeContract]);
+    const pending = activeContract.parties.find((party) => party.status !== "Signed");
+    if (!pending) return null;
 
-  const canApplySignature = sigMode === "type" ? typedName.trim().length > 2 : drawnReady;
+    // If party has a specific email and it's NOT the current user, it's an external signer
+    const isExternal = pending.email && user?.email && pending.email.toLowerCase() !== user.email.toLowerCase();
+    return { ...pending, isExternal };
+  }, [activeContract, user?.email]);
+
+  const canApplySignature = useMemo(() => {
+    if (!nextSigner || nextSigner.isExternal) return false;
+    return sigMode === "type" ? typedName.trim().length > 2 : drawnReady;
+  }, [nextSigner, sigMode, typedName, drawnReady]);
 
   async function uploadDataUrlToStorage(path, dataUrl) {
     if (!CONTRACTS_BUCKET) {
@@ -210,7 +220,7 @@ export default function ContractsTab({ ctx }) {
           return {
             ...party,
             partyId: partyRow?.id || "",
-            email: partyRow?.email || "",
+            email: partyRow?.email || partyEmailFromForm(uiTemplateId, party.role, loadedFormVals, index === 0 ? user?.email || "" : ""),
             signerName: partyRow?.name || partyNameFromForm(uiTemplateId, party.role, loadedFormVals, index === 0 ? user?.name || party.role : ""),
           };
         });
@@ -399,7 +409,7 @@ export default function ContractsTab({ ctx }) {
         contract_id: contractId,
         role,
         name: partyNameFromForm(templateId, role, formVals, index === 0 ? user?.name || role : ""),
-        email: index === 0 ? user?.email || "" : "",
+        email: partyEmailFromForm(templateId, role, formVals, index === 0 ? user?.email || "" : ""),
         phone: "",
         party_order: index + 1,
       }));
@@ -443,6 +453,14 @@ export default function ContractsTab({ ctx }) {
         setSigMode("type");
         setTypedName("");
         setDrawnReady(false);
+        try {
+          const inviteResult = await sendSigningInvitations(contractId);
+          if (inviteResult.ok) {
+            setDeliveryNote("Contract saved and signing invitations sent to all parties.");
+          }
+        } catch (err) {
+          setDeliveryNote(`Contract saved, but failed to send some invitations: ${err?.message || "Check SendGrid config"}`);
+        }
       }
 
       setEditingId(null);

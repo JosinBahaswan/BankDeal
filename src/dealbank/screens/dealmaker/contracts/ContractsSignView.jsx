@@ -65,7 +65,7 @@ export default function ContractsSignView({
                   <div style={{ fontSize: 8, color: G.muted }}>{party.signerName || "Pending signer"}</div>
                 </div>
                 <div style={{ fontSize: 8, color: party.status === "Signed" ? G.green : nextSigner?.role === party.role ? G.gold : G.muted }}>
-                  {party.status === "Signed" ? `Signed ${party.signedAt}` : nextSigner?.role === party.role ? "Your Turn" : "Waiting"}
+                  {party.status === "Signed" ? `Signed ${party.signedAt}` : nextSigner?.role === party.role ? (party.isExternal ? "Awaiting External Signature" : "Your Turn") : "Waiting"}
                 </div>
               </div>
             ))}
@@ -102,64 +102,76 @@ export default function ContractsSignView({
             <div>
               <div style={{ ...lbl, marginBottom: 6 }}>Sign Contract</div>
               <div style={{ fontSize: 10, color: G.text, marginBottom: 8 }}>
-                Next signer: <strong>{nextSigner?.role || "None"}</strong>
+                Next signer: <strong>{nextSigner?.role || "None"}</strong> {nextSigner?.isExternal && <span style={{ color: G.gold }}>(External: {nextSigner.email})</span>}
               </div>
 
-              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                {[
-                  ["type", "Type"],
-                  ["draw", "Draw"],
-                ].map(([id, label]) => (
-                  <button
-                    key={id}
-                    onClick={() => onSigModeChange(id)}
-                    style={{ ...btnO, flex: 1, fontSize: 8, padding: "6px 8px", borderColor: sigMode === id ? G.green : G.border, color: sigMode === id ? G.green : G.muted, background: sigMode === id ? G.greenGlow : "transparent" }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {sigMode === "type" ? (
-                <div style={{ marginBottom: 8 }}>
-                  <input
-                    value={typedName}
-                    onChange={(event) => onTypedNameChange(event.target.value)}
-                    placeholder="Type full legal name"
-                    style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: "8px 10px", boxSizing: "border-box", outline: "none" }}
-                  />
-                  <div style={{ fontFamily: G.serif, fontStyle: "italic", color: G.green, marginTop: 6, minHeight: 20 }}>{typedName}</div>
+              {nextSigner?.isExternal ? (
+                <div style={{ background: `${G.gold}11`, border: `1px solid ${G.gold}44`, borderRadius: 6, padding: "12px", textAlign: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, marginBottom: 4 }}>⏳ Awaiting Signature</div>
+                  <div style={{ fontSize: 9, color: G.muted }}>
+                    This party must sign via the email link sent to <strong>{nextSigner.email}</strong>. 
+                    You will be notified once they complete the signature.
+                  </div>
                 </div>
               ) : (
-                <div style={{ marginBottom: 8 }}>
-                  <canvas
-                    ref={canvasRef}
-                    width={isMobile ? 320 : 400}
-                    height={120}
-                    onMouseDown={onStartDraw}
-                    onMouseMove={onDrawLine}
-                    onMouseUp={onEndDraw}
-                    onMouseLeave={onEndDraw}
-                    onTouchStart={onStartDraw}
-                    onTouchMove={onDrawLine}
-                    onTouchEnd={onEndDraw}
-                    style={{ width: "100%", height: 120, borderRadius: 6, border: `1px solid ${G.border}`, background: G.surface, touchAction: "none" }}
-                  />
-                  <button onClick={onClearDrawnSignature} style={{ ...btnO, marginTop: 6, fontSize: 8, padding: "4px 8px" }}>Clear</button>
-                </div>
+                <>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                    {[
+                      ["type", "Type"],
+                      ["draw", "Draw"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        onClick={() => onSigModeChange(id)}
+                        style={{ ...btnO, flex: 1, fontSize: 8, padding: "6px 8px", borderColor: sigMode === id ? G.green : G.border, color: sigMode === id ? G.green : G.muted, background: sigMode === id ? G.greenGlow : "transparent" }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {sigMode === "type" ? (
+                    <div style={{ marginBottom: 8 }}>
+                      <input
+                        value={typedName}
+                        onChange={(event) => onTypedNameChange(event.target.value)}
+                        placeholder="Type full legal name"
+                        style={{ width: "100%", background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, color: G.text, fontFamily: G.mono, fontSize: 11, padding: "8px 10px", boxSizing: "border-box", outline: "none" }}
+                      />
+                      <div style={{ fontFamily: G.serif, fontStyle: "italic", color: G.green, marginTop: 6, minHeight: 20 }}>{typedName}</div>
+                    </div>
+                  ) : (
+                    <div style={{ marginBottom: 8 }}>
+                      <canvas
+                        ref={canvasRef}
+                        width={isMobile ? 320 : 400}
+                        height={120}
+                        onMouseDown={onStartDraw}
+                        onMouseMove={onDrawLine}
+                        onMouseUp={onEndDraw}
+                        onMouseLeave={onEndDraw}
+                        onTouchStart={onStartDraw}
+                        onTouchMove={onDrawLine}
+                        onTouchEnd={onEndDraw}
+                        style={{ width: "100%", height: 120, borderRadius: 6, border: `1px solid ${G.border}`, background: G.surface, touchAction: "none" }}
+                      />
+                      <button onClick={onClearDrawnSignature} style={{ ...btnO, marginTop: 6, fontSize: 8, padding: "4px 8px" }}>Clear</button>
+                    </div>
+                  )}
+
+                  <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "8px 9px", fontSize: 9, color: G.muted, lineHeight: 1.7, marginBottom: 8 }}>
+                    By applying this signature you agree to contract terms and authorize title/escrow disbursement of the 1.5% DealBank platform fee at close.
+                  </div>
+
+                  <button
+                    onClick={onApplySignature}
+                    disabled={!canApplySignature || signBusy}
+                    style={{ ...btnG, width: "100%", fontSize: 9, background: canApplySignature && !signBusy ? G.green : G.faint, color: canApplySignature && !signBusy ? "#000" : G.muted }}
+                  >
+                    {signBusy ? "Applying Signature..." : "Apply Signature"}
+                  </button>
+                </>
               )}
-
-              <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 6, padding: "8px 9px", fontSize: 9, color: G.muted, lineHeight: 1.7, marginBottom: 8 }}>
-                By applying this signature you agree to contract terms and authorize title/escrow disbursement of the 1.5% DealBank platform fee at close.
-              </div>
-
-              <button
-                onClick={onApplySignature}
-                disabled={!canApplySignature || signBusy}
-                style={{ ...btnG, width: "100%", fontSize: 9, background: canApplySignature && !signBusy ? G.green : G.faint, color: canApplySignature && !signBusy ? "#000" : G.muted }}
-              >
-                {signBusy ? "Applying Signature..." : "Apply Signature"}
-              </button>
             </div>
           )}
 
