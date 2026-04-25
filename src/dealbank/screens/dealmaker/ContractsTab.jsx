@@ -642,41 +642,71 @@ export default function ContractsTab({ ctx }) {
     }
   }
 
-  async function downloadContract(contract) {
-    try {
-      if (contract.status === "Fully Executed") {
-        try {
-          const persisted = await generateAndPersistContractPdf(contract.id);
-          const uploadedPdfUrl = String(persisted?.pdfUrl || "").trim();
-          if (uploadedPdfUrl || persisted?.pdfPath) {
-            setContracts((prev) => prev.map((item) => (
-              item.id === contract.id
-                ? {
-                    ...item,
-                    pdfPath: String(persisted?.pdfPath || item.pdfPath || ""),
-                    pdfUrl: uploadedPdfUrl || item.pdfUrl,
-                  }
-                : item
-            )));
-          }
-        } catch (error) {
-          setContractsError(error?.message || "Failed to persist executed PDF to storage.");
-        }
-      }
+async function downloadContract(contract) {
+  setContractsError("");
 
-      const blob = await downloadContractPdfBlob(contract.id);
-      const href = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = href;
-      anchor.download = `${safeFilename(contract.name)}.pdf`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      URL.revokeObjectURL(href);
-    } catch (error) {
-      setContractsError(error?.message || "Failed to generate PDF contract.");
-    }
+  // 1. Coba buka stored PDF URL langsung (cara paling aman)
+  if (contract.pdfUrl) {
+    window.open(contract.pdfUrl, "_blank", "noopener,noreferrer");
+    return;
   }
+
+  // 2. Coba generate + persist dulu, lalu buka URL-nya
+  try {
+    const persisted = await generateAndPersistContractPdf(contract.id);
+    const uploadedPdfUrl = String(persisted?.pdfUrl || "").trim();
+
+    if (uploadedPdfUrl) {
+      // Update state lokal
+      setContracts((prev) => prev.map((item) =>
+        item.id === contract.id
+          ? { ...item, pdfPath: String(persisted?.pdfPath || item.pdfPath || ""), pdfUrl: uploadedPdfUrl }
+          : item
+      ));
+      window.open(uploadedPdfUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+  } catch  {
+    // lanjut ke blob download
+  }
+
+  // 3. Fallback: blob download dengan validasi
+  try {
+    const blob = await downloadContractPdfBlob(contract.id);
+
+    // Validasi: cek apakah blob adalah PDF valid
+    const arrayBuffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    const header = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+
+    if (header !== "%PDF") {
+      // Bukan PDF — decode sebagai teks untuk lihat error
+      const text = new TextDecoder().decode(bytes);
+      let errorMsg = "Server mengembalikan file yang bukan PDF.";
+      try {
+        const parsed = JSON.parse(text);
+        errorMsg = parsed?.error || errorMsg;
+      } catch {
+        // bukan JSON juga
+      }
+      setContractsError(errorMsg);
+      return;
+    }
+
+    // PDF valid — download
+    const validBlob = new Blob([arrayBuffer], { type: "application/pdf" });
+    const href = URL.createObjectURL(validBlob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = `${safeFilename(contract.name)}.pdf`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    setTimeout(() => URL.revokeObjectURL(href), 5000);
+  } catch (error) {
+    setContractsError(error?.message || "Gagal mengunduh PDF kontrak.");
+  }
+}
 
   if (view === "new") {
     return (

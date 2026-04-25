@@ -138,6 +138,10 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: err?.message || "Failed to send PDF binary" });
     }
   }
+  const pdfHeader = pdfBuffer.slice(0, 4).toString("ascii");
+  if (!pdfHeader.startsWith("%PDF")) {
+    return res.status(500).json({ error: "PDF generation failed: invalid buffer" });
+  }
 
   return res.status(200).json({
     ok: true,

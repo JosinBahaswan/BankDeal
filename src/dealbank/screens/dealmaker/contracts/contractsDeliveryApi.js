@@ -1,9 +1,8 @@
 import { supabase } from "../../../../lib/supabaseClient";
 
-const SIGNATURE_ATTESTATION_ENDPOINT = String(import.meta.env.VITE_CONTRACT_SIGNATURE_ATTESTATION_ENDPOINT || "/api/contracts-signature-attestation").trim();
-const CONTRACT_PDF_ENDPOINT = String(import.meta.env.VITE_CONTRACTS_PDF_ENDPOINT || "/api/contracts-generate-pdf").trim();
-const EXECUTED_CONTRACT_WEBHOOK_URL = String(import.meta.env.VITE_EXECUTED_CONTRACT_WEBHOOK_URL || "/api/notify-contract").trim();
-
+const SIGNATURE_ATTESTATION_ENDPOINT = String(import.meta.env.VITE_CONTRACT_SIGNATURE_ATTESTATION_ENDPOINT || "/api/deferred/contracts-signature-attestation").trim();
+const CONTRACT_PDF_ENDPOINT = String(import.meta.env.VITE_CONTRACTS_PDF_ENDPOINT || "/api/deferred/contracts-generate-pdf").trim();
+const EXECUTED_CONTRACT_WEBHOOK_URL = String(import.meta.env.VITE_EXECUTED_CONTRACT_WEBHOOK_URL || "/api/deferred/notify-contract").trim();
 function asText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
