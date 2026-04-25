@@ -20,6 +20,7 @@ export default function ContractsDashboardView({
   onEditAndSend,
   onOpenSign,
   onDownloadPdf,
+  onDelete,
 }) {
   const [contractSearch, setContractSearch] = useState("");
 
@@ -124,6 +125,9 @@ export default function ContractsDashboardView({
                           )}
                           <button onClick={() => onOpenSign(contract.id)} style={{ ...btnO, fontSize: 10, padding: "8px", borderColor: G.gold, color: G.gold }}>{contract.status === "Fully Executed" ? "View Audit" : "Sign"}</button>
                           <button onClick={() => onDownloadPdf(contract)} style={{ ...btnO, fontSize: 10, padding: "8px" }}>View + Download PDF</button>
+                          {contract.auditTrail.length === 0 && (
+                            <button onClick={() => onDelete && onDelete(contract)} style={{ ...btnO, fontSize: 10, padding: "8px", borderColor: G.red, color: G.red }}>Delete</button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -196,6 +200,9 @@ export default function ContractsDashboardView({
                             {contract.status === "Fully Executed" ? "View Audit" : "Sign"}
                           </button>
                           <button onClick={() => onDownloadPdf(contract)} style={{ ...btnO, fontSize: 8, padding: "4px 8px" }}>View + Download PDF</button>
+                          {contract.auditTrail.length === 0 && (
+                            <button onClick={() => onDelete && onDelete(contract)} style={{ ...btnO, fontSize: 8, padding: "4px 8px", borderColor: G.red, color: G.red }}>Delete</button>
+                          )}
                         </div>
                       </td>
                     </tr>

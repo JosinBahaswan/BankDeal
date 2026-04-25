@@ -150,3 +150,14 @@ export async function triggerExecutedContractDelivery(payload) {
     body: payload,
   });
 }
+
+export async function deleteContract(contractId) {
+  const normalizedContractId = asText(contractId);
+  if (!normalizedContractId) throw new Error("contractId is required");
+
+  const url = `/api/deferred?route=contract-delete`;
+  return authorizedJsonFetch(url, {
+    method: "POST",
+    body: { contractId: normalizedContractId },
+  });
+}

@@ -9,6 +9,7 @@ import {
   downloadContractPdfBlob,
   generateAndPersistContractPdf,
   triggerExecutedContractDelivery,
+  deleteContract,
 } from "./contracts/contractsDeliveryApi";
 import {
   TEMPLATE_CONFIG,
@@ -732,6 +733,31 @@ async function downloadContract(contract) {
   }
 }
 
+  async function handleDeleteContract(contract) {
+    if (!contract || !contract.id) return;
+    if (!user?.id) {
+      setContractsError("You must be logged in to delete contracts.");
+      return;
+    }
+
+    const ok = window.confirm(`Delete contract "${contract.name}"? This action cannot be undone.`);
+    if (!ok) return;
+
+    setSaveBusy(true);
+    setContractsError("");
+
+    try {
+      await deleteContract(contract.id);
+      // Remove locally
+      setContracts((prev) => prev.filter((c) => c.id !== contract.id));
+      if (activeId === contract.id) setActiveId("");
+    } catch (error) {
+      setContractsError(error?.message || "Failed to delete contract.");
+    } finally {
+      setSaveBusy(false);
+    }
+  }
+
   if (view === "new") {
     return (
       <ContractsCreateView
@@ -827,6 +853,7 @@ async function downloadContract(contract) {
       onEditAndSend={(contract) => openCreate(contract.templateId, contract)}
       onOpenSign={openSign}
       onDownloadPdf={downloadContract}
+      onDelete={handleDeleteContract}
     />
   );
 }

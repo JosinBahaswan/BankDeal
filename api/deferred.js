@@ -1,5 +1,6 @@
 const DEFERRED_ROUTE_LOADERS = {
   "contract-delivery-retry": () => import("../api_deferred/contract-delivery-retry.js"),
+  "contract-delete": () => import("../api_deferred/contract-delete.js"),
   "contracts-generate-pdf": () => import("../api_deferred/contracts-generate-pdf.js"),
   "contracts-signature-attestation": () => import("../api_deferred/contracts-signature-attestation.js"),
   "cslb-verify": () => import("../api_deferred/cslb-verify.js"),
