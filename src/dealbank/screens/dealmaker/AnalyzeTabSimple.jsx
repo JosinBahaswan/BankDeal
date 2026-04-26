@@ -60,18 +60,16 @@ export default function AnalyzeTabSimple({ ctx }) {
     return () => { active = false; };
   }, [emailTemplate, emailBody]);
 
+  const lastIntelRef = useRef(null);
+
   useEffect(() => {
-    let active = true;
-    // keep recipient defaults in sync with loaded property intel
-    const phone = propertyIntel?.ownerPhone || "";
-    const email = propertyIntel?.ownerEmail || "";
-    Promise.resolve().then(() => {
-      if (!active) return;
-      if (phone !== recipientPhone) setRecipientPhone(phone);
-      if (email !== recipientEmail) setRecipientEmail(email);
-    });
-    return () => { active = false; };
-  }, [propertyIntel, recipientPhone, recipientEmail]);
+    // Only auto-populate when propertyIntel actually changes to a new property
+    if (propertyIntel && propertyIntel !== lastIntelRef.current) {
+      lastIntelRef.current = propertyIntel;
+      if (propertyIntel.ownerPhone) setRecipientPhone(propertyIntel.ownerPhone);
+      if (propertyIntel.ownerEmail) setRecipientEmail(propertyIntel.ownerEmail);
+    }
+  }, [propertyIntel]);
 
   async function handleCall() {
     if (!recipientPhone) {
