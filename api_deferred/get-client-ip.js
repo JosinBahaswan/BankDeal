@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   });
   if (cors.handled) return;
 
-  const rateLimit = enforceRateLimit(req, res, {
+  const rateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "get-client-ip",
     max: Number(process.env.RATE_LIMIT_CLIENT_IP_MAX || 120),
     windowMs: Number(process.env.RATE_LIMIT_CLIENT_IP_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

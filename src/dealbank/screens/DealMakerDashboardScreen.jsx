@@ -1,5 +1,6 @@
 import TopBar from "../components/TopBar";
 import DashboardWorkspace from "../components/DashboardWorkspace";
+import ErrorBoundary from "../components/ErrorBoundary";
 import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
 import useViewport from "../core/useViewport";
 import AnalyzeTab from "./dealmaker/AnalyzeTabSimple";
@@ -90,16 +91,18 @@ export default function DealMakerDashboardScreen({ ctx }) {
           metrics={workspaceMetrics}
           railSections={dealMakerRailSections}
         >
-          {flipTab === "properties" && <PropertiesTab ctx={mergedCtx} />}
-          {flipTab === "analyze" && <AnalyzeTab ctx={mergedCtx} />}
-          {flipTab === "pipeline" && <PipelineTab ctx={mergedCtx} />}
-          {flipTab === "contracts" && <ContractsTab ctx={mergedCtx} />}
-          {flipTab === "contractors" && <ContractorsTab ctx={mergedCtx} />}
-          {flipTab === "tools" && <ToolsTab ctx={mergedCtx} />}
-          {flipTab === "partners" && <PartnersTab ctx={mergedCtx} />}
-          {flipTab === "resources" && <ResourcesTab ctx={mergedCtx} />}
-          {flipTab === "laws" && <LawsTab ctx={mergedCtx} />}
-          {flipTab === "marketplace" && <MarketplaceTab ctx={mergedCtx} />}
+          <ErrorBoundary fallback={<div style={{ padding: 16 }}>An unexpected error occurred. Please refresh.</div>}>
+            {flipTab === "properties" && <PropertiesTab ctx={mergedCtx} />}
+            {flipTab === "analyze" && <AnalyzeTab ctx={mergedCtx} />}
+            {flipTab === "pipeline" && <PipelineTab ctx={mergedCtx} />}
+            {flipTab === "contracts" && <ContractsTab ctx={mergedCtx} />}
+            {flipTab === "contractors" && <ContractorsTab ctx={mergedCtx} />}
+            {flipTab === "tools" && <ToolsTab ctx={mergedCtx} />}
+            {flipTab === "partners" && <PartnersTab ctx={mergedCtx} />}
+            {flipTab === "resources" && <ResourcesTab ctx={mergedCtx} />}
+            {flipTab === "laws" && <LawsTab ctx={mergedCtx} />}
+            {flipTab === "marketplace" && <MarketplaceTab ctx={mergedCtx} />}
+          </ErrorBoundary>
         </DashboardWorkspace>
       </div>
 

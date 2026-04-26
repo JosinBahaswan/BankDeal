@@ -803,7 +803,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const rateLimit = enforceRateLimit(req, res, {
+  const rateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "property-intelligence",
     max: Number(process.env.RATE_LIMIT_PROPERTY_INTELLIGENCE_MAX || 40),
     windowMs: Number(process.env.RATE_LIMIT_PROPERTY_INTELLIGENCE_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

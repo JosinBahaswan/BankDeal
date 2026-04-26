@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   const cors = enforceCors(req, res, { methods: "GET, OPTIONS", headers: "Content-Type" });
   if (cors.handled) return;
 
-  const rateLimit = enforceRateLimit(req, res, { keyPrefix: "contract-sign", max: Number(process.env.RATE_LIMIT_CONTRACT_SIGN_MAX || 300), windowMs: Number(process.env.RATE_LIMIT_CONTRACT_SIGN_WINDOW_MS || 60_000) });
+  const rateLimit = await enforceRateLimit(req, res, { keyPrefix: "contract-sign", max: Number(process.env.RATE_LIMIT_CONTRACT_SIGN_MAX || 300), windowMs: Number(process.env.RATE_LIMIT_CONTRACT_SIGN_WINDOW_MS || 60_000) });
   if (!rateLimit.allowed) return res.status(429).send(portalErrorHtml("Too many requests. Please retry later."));
 
   if (req.method !== "GET") {

@@ -643,7 +643,7 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method not allowed" });
     }
 
-    const webhookRateLimit = enforceRateLimit(req, res, {
+    const webhookRateLimit = await enforceRateLimit(req, res, {
       keyPrefix: "twilio-call-webhook",
       max: Number(process.env.RATE_LIMIT_TWILIO_WEBHOOK_MAX || 600),
       windowMs: Number(process.env.RATE_LIMIT_TWILIO_WEBHOOK_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
@@ -671,7 +671,7 @@ export default async function handler(req, res) {
   }
 
   if (!twimlRequest) {
-    const rateLimit = enforceRateLimit(req, res, {
+    const rateLimit = await enforceRateLimit(req, res, {
       keyPrefix: "twilio-access-token",
       max: Number(process.env.RATE_LIMIT_TWILIO_ACCESS_MAX || 30),
       windowMs: Number(process.env.RATE_LIMIT_TWILIO_ACCESS_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

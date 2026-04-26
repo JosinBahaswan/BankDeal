@@ -335,7 +335,7 @@ export default async function handler(req, res) {
   });
   if (cors.handled) return;
 
-  const rateLimit = enforceRateLimit(req, res, {
+  const rateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "send-sms",
     max: Number(process.env.RATE_LIMIT_SEND_SMS_MAX || 15),
     windowMs: Number(process.env.RATE_LIMIT_SEND_SMS_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

@@ -1,7 +1,19 @@
 import twilio from "twilio";
 import { createSupabaseAdminClient, verifyContractActor, asText, jsonBody } from "../lib/server/contractsShared.js";
+import { enforceCors, enforceRateLimit } from "../lib/server/httpSecurity.js";
 
 export default async function handler(req, res) {
+  const cors = enforceCors(req, res, { methods: "POST, OPTIONS", headers: "Content-Type, Authorization" });
+  if (cors.handled) return;
+
+  const rateLimit = await enforceRateLimit(req, res, {
+    keyPrefix: "twilio-call",
+    max: Number(process.env.RATE_LIMIT_TWILIO_CALL_MAX || 20),
+    windowMs: Number(process.env.RATE_LIMIT_TWILIO_CALL_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+  });
+  if (!rateLimit.allowed) {
+    return res.status(429).json({ error: "Too many requests. Please retry later." });
+  }
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromNumber = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_CALLER_ID;

@@ -78,7 +78,7 @@ export default async function handler(req, res) {
   });
   if (cors.handled) return;
 
-  const rateLimit = enforceRateLimit(req, res, {
+  const rateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "partner-referral-event",
     max: Number(process.env.RATE_LIMIT_PARTNER_REFERRAL_MAX || 120),
     windowMs: Number(process.env.RATE_LIMIT_PARTNER_REFERRAL_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

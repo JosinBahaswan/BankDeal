@@ -5,6 +5,7 @@ import DataSearchBar from "../components/DataSearchBar";
 import TopBar from "../components/TopBar";
 import AppActionModal from "../components/AppActionModal";
 import DashboardWorkspace from "../components/DashboardWorkspace";
+import ErrorBoundary from "../components/ErrorBoundary";
 import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
 import useViewport from "../core/useViewport";
 
@@ -713,6 +714,8 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
           railSections={contractorRailSections}
         >
 
+        <ErrorBoundary fallback={<div style={{ padding: 16 }}>An unexpected error occurred. Please refresh.</div>}>
+
         {contractorTab === "leads" && (
           <div>
             <div style={{ fontFamily: G.serif, fontSize: 22, color: G.text, marginBottom: 4 }}>Job Leads</div>
@@ -1139,6 +1142,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
             ))}
           </div>
         )}
+        </ErrorBoundary>
         </DashboardWorkspace>
       </div>
 

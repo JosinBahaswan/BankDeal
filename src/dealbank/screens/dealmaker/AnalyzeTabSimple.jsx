@@ -52,21 +52,26 @@ export default function AnalyzeTabSimple({ ctx }) {
     return "";
   }, [address, offer, user?.name, fmt]);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (emailTemplate && emailTemplate !== emailBody) setEmailBody(emailTemplate);
+    let active = true;
+    if (emailTemplate && emailTemplate !== emailBody) {
+      Promise.resolve().then(() => { if (active) setEmailBody(emailTemplate); });
+    }
+    return () => { active = false; };
   }, [emailTemplate, emailBody]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    let active = true;
     // keep recipient defaults in sync with loaded property intel
     const phone = propertyIntel?.ownerPhone || "";
     const email = propertyIntel?.ownerEmail || "";
-    if (phone !== recipientPhone) setRecipientPhone(phone);
-    if (email !== recipientEmail) setRecipientEmail(email);
+    Promise.resolve().then(() => {
+      if (!active) return;
+      if (phone !== recipientPhone) setRecipientPhone(phone);
+      if (email !== recipientEmail) setRecipientEmail(email);
+    });
+    return () => { active = false; };
   }, [propertyIntel, recipientPhone, recipientEmail]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleCall() {
     if (!recipientPhone) {

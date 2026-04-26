@@ -30,7 +30,7 @@ export default async function handler(req, res) {
   });
   if (cors.handled) return;
 
-  const rateLimit = enforceRateLimit(req, res, {
+  const rateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "contracts-send",
     max: Number(process.env.RATE_LIMIT_CONTRACTS_SEND_MAX || 20),
     windowMs: Number(process.env.RATE_LIMIT_CONTRACTS_SEND_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

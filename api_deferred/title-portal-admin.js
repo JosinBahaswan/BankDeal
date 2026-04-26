@@ -226,7 +226,7 @@ export default async function handler(req, res) {
   });
   if (cors.handled) return;
 
-  const rateLimit = enforceRateLimit(req, res, {
+  const rateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "title-portal-admin",
     max: Number(process.env.RATE_LIMIT_TITLE_PORTAL_ADMIN_MAX || process.env.RATE_LIMIT_MAX || 60),
     windowMs: Number(process.env.RATE_LIMIT_TITLE_PORTAL_ADMIN_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

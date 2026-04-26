@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   });
   if (cors.handled) return;
 
-  const rateLimit = enforceRateLimit(req, res, {
+  const rateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "contracts-generate-pdf",
     max: Number(process.env.RATE_LIMIT_CONTRACT_PDF_MAX || 30),
     windowMs: Number(process.env.RATE_LIMIT_CONTRACT_PDF_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

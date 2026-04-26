@@ -1,3 +1,6 @@
+// Note: handlerCache is an in-memory map and does NOT persist across
+// serverless cold starts. Route modules will be imported on first request
+// and cached only for the current lambda/container lifetime.
 const DEFERRED_ROUTE_LOADERS = {
   "contract-delivery-retry": () => import("../api_deferred/contract-delivery-retry.js"),
   "contract-delete": () => import("../api_deferred/contract-delete.js"),
@@ -16,6 +19,7 @@ const DEFERRED_ROUTE_LOADERS = {
   "twilio-call": () => import("../api_deferred/twilio-call.js"),
   "send-email": () => import("../api_deferred/send-email.js"),
   "contracts-send": () => import("../api_deferred/contracts-send.js"),
+  "contract-invite": () => import("../api_deferred/contract-invite.js"),
   // Newly consolidated routes
   "claude": () => import("../api_deferred/claude.js"),
   "confirm-checkout": () => import("../api_deferred/confirm-checkout.js"),

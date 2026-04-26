@@ -61,7 +61,7 @@ export default async function handler(req, res) {
   });
   if (cors.handled) return;
 
-  const rateLimit = enforceRateLimit(req, res, {
+  const rateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "cslb-verify",
     max: Number(process.env.RATE_LIMIT_CSLB_MAX || 30),
     windowMs: Number(process.env.RATE_LIMIT_CSLB_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

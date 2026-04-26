@@ -4,6 +4,7 @@ import DataSearchBar from "../components/DataSearchBar";
 import TopBar from "../components/TopBar";
 import AppActionModal from "../components/AppActionModal";
 import DashboardWorkspace from "../components/DashboardWorkspace";
+import ErrorBoundary from "../components/ErrorBoundary";
 import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
 import useViewport from "../core/useViewport";
 import CommissionCompliancePanel from "./realtor/CommissionCompliancePanel";
@@ -569,6 +570,8 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
           railSections={realtorRailSections}
         >
 
+        <ErrorBoundary fallback={<div style={{ padding: 16 }}>An unexpected error occurred. Please refresh.</div>}>
+
         {loading && <div style={{ ...card, marginBottom: 10, fontSize: 10, color: G.muted }}>Loading realtor pipeline from Supabase...</div>}
 
         {realtorTab === "referrals" && (
@@ -933,6 +936,9 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
             </div>
           </div>
         )}
+
+        </ErrorBoundary>
+
         </DashboardWorkspace>
       </div>
 

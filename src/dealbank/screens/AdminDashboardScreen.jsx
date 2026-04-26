@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 import TopBar from "../components/TopBar";
 import DataSearchBar from "../components/DataSearchBar";
 import DashboardWorkspace from "../components/DashboardWorkspace";
+import ErrorBoundary from "../components/ErrorBoundary";
 import { formatMoney } from "../core/adminDashboardFormat";
 import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
 import { getLaunchIntegrationStatus, integrationStatusColor } from "../core/integrations";
@@ -119,6 +121,79 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
       ],
     },
   ];
+  
+  async function handleUpdateUser(userId, updates) {
+    const { error } = await supabase
+      .from("users")
+      .update(updates)
+      .eq("id", userId);
+    
+    if (error) throw error;
+    reloadLiveData();
+  }
+
+  async function handleDeleteUser(userId) {
+    const { error } = await supabase
+      .from("users")
+      .delete()
+      .eq("id", userId);
+    
+    if (error) throw error;
+    reloadLiveData();
+  }
+
+  async function handleUpdateDeal(dealId, updates) {
+    const { error } = await supabase
+      .from("deals")
+      .update(updates)
+      .eq("id", dealId);
+    
+    if (error) throw error;
+    reloadLiveData();
+  }
+
+  async function handleDeleteDeal(dealId) {
+    const { error } = await supabase
+      .from("deals")
+      .delete()
+      .eq("id", dealId);
+    
+    if (error) throw error;
+    reloadLiveData();
+  }
+
+  async function handleCreateUser(userData) {
+    // Note: In production, you would use supabase.auth.admin.createUser via an Edge Function
+    // Here we insert directly to public.users to reflect in the dashboard
+    const { error } = await supabase
+      .from("users")
+      .insert([{
+        name: userData.name,
+        email: userData.email,
+        type: userData.type,
+        is_active: true,
+        joined_at: new Date().toISOString()
+      }]);
+    
+    if (error) throw error;
+    reloadLiveData();
+  }
+
+  async function handleCreateDeal(dealData) {
+    const { error } = await supabase
+      .from("deals")
+      .insert([{
+        address: dealData.address,
+        stage: dealData.stage,
+        arv: dealData.arv,
+        offer_price: dealData.offerPrice,
+        user_id: user?.id, // Assign to current admin for tracking
+        saved_at: new Date().toISOString()
+      }]);
+    
+    if (error) throw error;
+    reloadLiveData();
+  }
 
   return (
     <div className="db-dashboard-root" style={pageShellStyle(G)}>
@@ -132,6 +207,8 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
           metrics={workspaceMetrics}
           railSections={adminRailSections}
         >
+
+        <ErrorBoundary fallback={<div style={{ padding: 16 }}>An unexpected error occurred. Please refresh.</div>}>
         {metricsLoading && (
           <div style={{ ...card, marginBottom: 10, borderColor: `${G.green}44` }}>
             <div style={{ fontSize: 10, color: G.green }}>Syncing live metrics from Supabase...</div>
@@ -307,6 +384,9 @@ VITE_PROPERTY_IMAGES_BUCKET=property-images
             loading={liveDataLoading}
             error={liveDataError}
             onReload={reloadLiveData}
+            onUpdateUser={handleUpdateUser}
+            onDeleteUser={handleDeleteUser}
+            onCreateUser={handleCreateUser}
           />
         )}
 
@@ -363,6 +443,9 @@ VITE_PROPERTY_IMAGES_BUCKET=property-images
             dealsTotal={metrics.dealsTotal}
             dealsClosed={metrics.dealsClosed}
             onReload={reloadLiveData}
+            onUpdateDeal={handleUpdateDeal}
+            onDeleteDeal={handleDeleteDeal}
+            onCreateDeal={handleCreateDeal}
           />
         )}
 
@@ -445,6 +528,7 @@ VITE_PROPERTY_IMAGES_BUCKET=property-images
             </div>
           </div>
         )}
+        </ErrorBoundary>
         </DashboardWorkspace>
       </div>
     </div>

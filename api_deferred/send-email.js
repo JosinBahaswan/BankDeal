@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   const cors = enforceCors(req, res, { methods: "POST, OPTIONS", headers: "Content-Type, Authorization, X-Dealbank-Service-Key, X-Service-Key" });
   if (cors.handled) return;
 
-  const rateLimit = enforceRateLimit(req, res, { keyPrefix: "send-email", max: Number(process.env.RATE_LIMIT_SEND_EMAIL_MAX || 30), windowMs: Number(process.env.RATE_LIMIT_SEND_EMAIL_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000) });
+  const rateLimit = await enforceRateLimit(req, res, { keyPrefix: "send-email", max: Number(process.env.RATE_LIMIT_SEND_EMAIL_MAX || 30), windowMs: Number(process.env.RATE_LIMIT_SEND_EMAIL_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000) });
   if (!rateLimit.allowed) return res.status(429).json({ error: "Too many requests. Please retry later." });
 
   // Require auth in production or when explicitly configured

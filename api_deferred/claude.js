@@ -257,7 +257,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const ipRateLimit = enforceRateLimit(req, res, {
+  const ipRateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "claude-ip",
     max: Number(process.env.RATE_LIMIT_CLAUDE_IP_MAX || process.env.RATE_LIMIT_CLAUDE_MAX || 60),
     windowMs: Number(process.env.RATE_LIMIT_CLAUDE_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
@@ -280,7 +280,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: error?.message || "Unauthorized" });
   }
 
-  const userRateLimit = enforceRateLimit(req, res, {
+  const userRateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "claude-user",
     max: Number(process.env.RATE_LIMIT_CLAUDE_USER_MAX || process.env.RATE_LIMIT_CLAUDE_MAX || 20),
     windowMs: Number(process.env.RATE_LIMIT_CLAUDE_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

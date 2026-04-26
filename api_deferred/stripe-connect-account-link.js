@@ -31,7 +31,7 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: "CORS origin is not allowed" });
   }
 
-  const rateLimit = enforceRateLimit(req, res, {
+  const rateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "stripe-connect-account-link",
     max: Number(process.env.RATE_LIMIT_STRIPE_CONNECT_MAX || 30),
     windowMs: Number(process.env.RATE_LIMIT_STRIPE_CONNECT_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

@@ -391,7 +391,7 @@ export default async function handler(req, res) {
       ? req.body || {}
       : req.query || {};
 
-  const rateLimit = enforceRateLimit(req, res, {
+  const rateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "offmarket-properties",
     max: Number(process.env.RATE_LIMIT_OFFMARKET_MAX || 40),
     windowMs: Number(process.env.RATE_LIMIT_OFFMARKET_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),

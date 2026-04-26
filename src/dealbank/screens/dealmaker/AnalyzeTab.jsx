@@ -94,46 +94,56 @@ export default function AnalyzeTab({ ctx }) {
   const suggestTimer = useRef(null);
   const [showSuggest, setShowSuggest] = useState(false);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    let active = true;
+
     if (!address || address.length < 3 || address.startsWith("address:")) {
-      if ((suggestions || []).length > 0) setSuggestions([]);
-      if (showSuggest) setShowSuggest(false);
-      return;
+      if ((suggestions || []).length > 0) {
+        Promise.resolve().then(() => { if (active) setSuggestions([]); });
+      }
+      if (showSuggest) {
+        Promise.resolve().then(() => { if (active) setShowSuggest(false); });
+      }
+      return () => { active = false; };
     }
 
     if (suggestTimer.current) clearTimeout(suggestTimer.current);
 
     suggestTimer.current = setTimeout(async () => {
+      if (!active) return;
       setSuggestLoad(true);
       try {
         const { data: sessionData } = await supabase.auth.getSession();
         const accessToken = sessionData?.session?.access_token;
-        
+
         const response = await fetch("/api/property-intelligence", {
           method: "POST",
-          headers: { 
+          headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${accessToken}`
+            "Authorization": `Bearer ${accessToken}`,
           },
           body: JSON.stringify({ address, mode: "autocomplete" }),
         });
         const data = await response.json();
+        if (!active) return;
         if (data.suggestions) {
-          setSuggestions(data.suggestions);
-          setShowSuggest(data.suggestions.length > 0);
+          Promise.resolve().then(() => {
+            if (!active) return;
+            setSuggestions(data.suggestions);
+            setShowSuggest(data.suggestions.length > 0);
+          });
         }
       } catch (err) {
         console.error("Autocomplete error:", err);
       }
-      setSuggestLoad(false);
+      if (active) setSuggestLoad(false);
     }, 600);
 
     return () => {
+      active = false;
       if (suggestTimer.current) clearTimeout(suggestTimer.current);
     };
-  }, [address]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+  }, [address, suggestions, showSuggest]);
 
   const selectSuggestion = (s) => {
     setAddress(s.label);

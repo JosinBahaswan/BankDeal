@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   });
   if (cors.handled) return;
 
-  const rateLimit = enforceRateLimit(req, res, {
+  const rateLimit = await enforceRateLimit(req, res, {
     keyPrefix: "realtor-commission-review",
     max: Number(process.env.RATE_LIMIT_REALTOR_COMMISSION_REVIEW_MAX || 40),
     windowMs: Number(process.env.RATE_LIMIT_REALTOR_COMMISSION_REVIEW_WINDOW_MS || process.env.RATE_LIMIT_WINDOW_MS || 60_000),
