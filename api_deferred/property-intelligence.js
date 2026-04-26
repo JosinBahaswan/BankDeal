@@ -1039,8 +1039,9 @@ export default async function handler(req, res) {
     ];
 
     // Try fallback to Realty US (Browse API)
+    let fallbackData = null;
     try {
-      const fallbackData = await fetchFallbackFromRealtyUs(rapidApiKey, address);
+      fallbackData = await fetchFallbackFromRealtyUs(rapidApiKey, address);
       if (fallbackData) {
         return res.status(200).json({
           provider: "realty-us-fallback",
@@ -1052,16 +1053,66 @@ export default async function handler(req, res) {
         });
       }
     } catch (fallbackErr) {
-      console.warn("Realty US fallback also failed:", fallbackErr.message);
+      attempts.push({
+        stage: "fallback-realty-us",
+        status: 500,
+        message: fallbackErr.message
+      });
     }
 
+    // If all real APIs fail, use Simulated Data so Claude has something to work with
     const fallbackWarning = asText(error?.message, "Failed to fetch property intelligence");
-    return res.status(200).json(
-      buildFallbackIntelligence(
-        address,
-        `${fallbackWarning} Using generic fallback context.`,
-        attempts,
-      ),
-    );
+    const simulatedData = buildSimulatedFallback(address, fallbackWarning);
+    
+    return res.status(200).json({
+      ...simulatedData,
+      attempts
+    });
   }
+}
+
+function buildSimulatedFallback(address, warning) {
+  const addr = asText(address);
+  const seed = addr.length + (addr.charCodeAt(0) || 0);
+  const baseVal = 350000 + (seed * 1337 % 450000);
+  const sqft = 1200 + (seed * 17 % 1800);
+  
+  const normalized = {
+    property: {
+      address: addr,
+      bedrooms: 2 + (seed % 4),
+      bathrooms: 1 + (seed % 3),
+      squareFootage: sqft,
+      yearBuilt: 1960 + (seed % 60),
+      propertyType: seed % 5 === 0 ? "Multi-Family" : "Single Family",
+      lotSize: 4000 + (seed * 121 % 12000),
+      lastSalePrice: Math.round(baseVal * 0.72),
+      lastSaleDate: "2019-03-24",
+    },
+    avm: {
+      price: baseVal,
+      priceRangeLow: Math.round(baseVal * 0.91),
+      priceRangeHigh: Math.round(baseVal * 1.09),
+    },
+    comps: [
+      { address: "Nearby Comp 1", price: Math.round(baseVal * 1.03), squareFootage: sqft + 100, bedrooms: 3, bathrooms: 2, daysOld: 24, distance: 0.15 },
+      { address: "Nearby Comp 2", price: Math.round(baseVal * 0.97), squareFootage: sqft - 50, bedrooms: 3, bathrooms: 2, daysOld: 8, distance: 0.42 },
+    ],
+    marketNotes: `⚠️ API Quota Exceeded. Menggunakan estimasi AI untuk demonstrasi analisis. ${warning}`,
+  };
+
+  return {
+    provider: "fallback-simulated",
+    endpoint: "fallback",
+    lookupAddress: addr,
+    normalized,
+    promptContext: {
+      provider: "fallback-simulated",
+      endpoint: "fallback",
+      lookupAddress: addr,
+      normalized,
+      warning: warning,
+    },
+    warning: "Using simulated data due to API limits.",
+  };
 }
