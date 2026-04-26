@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from "react";
-import { initiateCall, sendEmail } from "../../core/mockApis";
+import { useEffect, useState, useRef, useMemo } from "react";
+import { initiateCall, sendEmail } from "../../core/apiClient";
 
 export default function AnalyzeTabSimple({ ctx }) {
   const {
@@ -24,7 +24,7 @@ export default function AnalyzeTabSimple({ ctx }) {
     isMobile,
     user,
     lookLoad,
-    lookErr,
+    propertyIntel,
   } = ctx;
 
   const [msg, setMsg] = useState("");
@@ -33,6 +33,8 @@ export default function AnalyzeTabSimple({ ctx }) {
   const [sending, setSending] = useState(false);
   const [callStatus, setCallStatus] = useState("");
   const [emailBody, setEmailBody] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState(propertyIntel?.ownerPhone || "");
+  const [recipientEmail, setRecipientEmail] = useState(propertyIntel?.ownerEmail || "");
 
   const attemptedAddressRef = useRef("");
 
@@ -43,17 +45,38 @@ export default function AnalyzeTabSimple({ ctx }) {
     }
   }, [address, arvNum, lookupProperty, lookLoad]);
 
-  useEffect(() => {
+  const emailTemplate = useMemo(() => {
     if (address && offer) {
-      setEmailBody(`Hi Homeowner,\n\nI'm ${user?.name || "an investor"} and I'm interested in your property at ${address}. Based on my analysis, I can offer ${fmt(offer)} cash for a quick close.\n\nPlease let me know if you'd like to discuss further.`);
+      return `Hi Homeowner,\n\nI'm ${user?.name || "an investor"} and I'm interested in your property at ${address}. Based on my analysis, I can offer ${fmt(offer)} cash for a quick close.\n\nPlease let me know if you'd like to discuss further.`;
     }
+    return "";
   }, [address, offer, user?.name, fmt]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (emailTemplate && emailTemplate !== emailBody) setEmailBody(emailTemplate);
+  }, [emailTemplate, emailBody]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    // keep recipient defaults in sync with loaded property intel
+    const phone = propertyIntel?.ownerPhone || "";
+    const email = propertyIntel?.ownerEmail || "";
+    if (phone !== recipientPhone) setRecipientPhone(phone);
+    if (email !== recipientEmail) setRecipientEmail(email);
+  }, [propertyIntel, recipientPhone, recipientEmail]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   async function handleCall() {
+    if (!recipientPhone) {
+      setMsg("No phone number available. Please enter a phone number before calling.");
+      return;
+    }
     setSending(true);
     setCallStatus("Dialing...");
     try {
-      const res = await initiateCall({ phone: "(555) 012-3456", address });
+      const res = await initiateCall({ phone: recipientPhone, address });
       if (res.success) {
         setCallStatus(`Connected! Call Sid: ${res.callSid}`);
         setMsg(`Call log saved for ${address}`);
@@ -66,16 +89,20 @@ export default function AnalyzeTabSimple({ ctx }) {
   }
 
   async function handleEmail() {
+    if (!recipientEmail) {
+      setMsg("No recipient email available. Please enter an email before sending.");
+      return;
+    }
     setSending(true);
     try {
       const res = await sendEmail({ 
-        to: "homeowner@example.com", 
+        to: recipientEmail, 
         body: emailBody,
         address,
         offer
       });
       if (res.success) {
-        setMsg(`Email sent to homeowner regarding ${address}`);
+        setMsg(`Email sent to ${recipientEmail} regarding ${address}`);
         setEmailModalOpen(false);
       }
     } catch (err) {
@@ -182,9 +209,19 @@ export default function AnalyzeTabSimple({ ctx }) {
           <div style={{ width: isMobile ? "90%" : 400, background: G.card, border: `1px solid ${G.border}`, borderRadius: 16, padding: 24, textAlign: "center" }}>
             <div style={{ fontSize: 40, marginBottom: 16 }}>📞</div>
             <div style={{ fontFamily: G.serif, fontSize: 20, color: G.text, marginBottom: 8 }}>Twilio Dialer</div>
-            <div style={{ fontSize: 13, color: G.muted, marginBottom: 24 }}>Calling Homeowner at {address}</div>
+            <div style={{ fontSize: 13, color: G.muted, marginBottom: 8 }}>Calling Homeowner at {address}</div>
 
-            {callStatus && <div style={{ marginBottom: 20, color: G.green, fontWeight: "bold" }}>{callStatus}</div>}
+            <div style={{ marginBottom: 12 }}>
+              <div style={lbl}>Phone</div>
+              <input
+                value={recipientPhone}
+                onChange={(e) => setRecipientPhone(e.target.value)}
+                placeholder="Enter phone number"
+                style={{ ...smIn, width: "100%", padding: "10px" }}
+              />
+            </div>
+
+            {callStatus && <div style={{ marginBottom: 12, color: G.green, fontWeight: "bold" }}>{callStatus}</div>}
 
             <div style={{ display: "grid", gap: 10 }}>
               {!callStatus.includes("Connected") ? (
@@ -206,7 +243,12 @@ export default function AnalyzeTabSimple({ ctx }) {
 
             <div style={{ marginBottom: 16 }}>
               <div style={lbl}>To</div>
-              <div style={{ padding: "10px", background: G.surface, borderRadius: 6, fontSize: 13 }}>homeowner@example.com</div>
+              <input
+                value={recipientEmail}
+                onChange={(e) => setRecipientEmail(e.target.value)}
+                placeholder={propertyIntel?.ownerEmail || "homeowner@example.com"}
+                style={{ ...smIn, width: "100%", padding: "10px", borderRadius: 6 }}
+              />
             </div>
 
             <div style={{ marginBottom: 20 }}>

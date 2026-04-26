@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchOffMarketProperties } from "../../core/mockApis";
+import { fetchOffMarketProperties } from "../../core/apiClient";
 
 const FILTER_OPTIONS = [
   "All",
@@ -232,7 +232,7 @@ function ProviderBadge({ provider, G }) {
 }
 
 /** Single property card */
-function PropertyCard({ p, G, card, fmt, isMobile, btnG, btnO, onAnalyze, onContact }) {
+function PropertyCard({ p, G, card, fmt, btnG, btnO, onAnalyze, onContact }) {
   const hasPhone = !!(p.agentPhone || p.ownerPhone);
   const isRealtyUs = p.provider === "realty-us";
 
@@ -440,7 +440,7 @@ function PropertyCard({ p, G, card, fmt, isMobile, btnG, btnO, onAnalyze, onCont
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function PropertiesTab({ ctx }) {
-  const { G, card, lbl, btnG, btnO, fmt, isMobile, setAddress, setFlipTab, showAlert } = ctx;
+  const { G, card, btnG, btnO, fmt, isMobile, setAddress, setFlipTab, showAlert } = ctx;
 
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
@@ -624,7 +624,6 @@ export default function PropertiesTab({ ctx }) {
               G={G}
               card={card}
               fmt={fmt}
-              isMobile={isMobile}
               btnG={btnG}
               btnO={btnO}
               onAnalyze={handleAnalyze}

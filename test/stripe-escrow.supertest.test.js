@@ -1,4 +1,4 @@
-/* eslint-env node */
+/* global process */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import supertest from 'supertest';
 import express from 'express';

@@ -90,14 +90,15 @@ export default function AnalyzeTab({ ctx }) {
   const [showSelling, setShowSelling] = useState(true);
   const [compsSearch, setCompsSearch] = useState("");
   const [suggestions, setSuggestions] = useState([]);
-  const [suggestLoad, setSuggestLoad] = useState(false);
+  const [, setSuggestLoad] = useState(false);
   const suggestTimer = useRef(null);
   const [showSuggest, setShowSuggest] = useState(false);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!address || address.length < 3 || address.startsWith("address:")) {
-      setSuggestions([]);
-      setShowSuggest(false);
+      if ((suggestions || []).length > 0) setSuggestions([]);
+      if (showSuggest) setShowSuggest(false);
       return;
     }
 
@@ -132,6 +133,7 @@ export default function AnalyzeTab({ ctx }) {
       if (suggestTimer.current) clearTimeout(suggestTimer.current);
     };
   }, [address]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const selectSuggestion = (s) => {
     setAddress(s.label);

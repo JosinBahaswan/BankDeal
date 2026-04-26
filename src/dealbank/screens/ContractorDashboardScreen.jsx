@@ -137,7 +137,7 @@ export default function ContractorDashboardScreen({ G, card, lbl, btnG, contract
   const [jobHistoryRows, setJobHistoryRows] = useState([]);
   const [leadRows, setLeadRows] = useState([]);
   const [leadsLoading, setLeadsLoading] = useState(false);
-  const [leadsError, setLeadsError] = useState("");
+  const [, setLeadsError] = useState("");
   const [contractorProfileId, setContractorProfileId] = useState("");
   const [photoPath, setPhotoPath] = useState("");
   const [photoSignedUrl, setPhotoSignedUrl] = useState("");

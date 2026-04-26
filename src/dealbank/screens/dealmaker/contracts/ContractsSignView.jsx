@@ -11,7 +11,6 @@ export default function ContractsSignView({
   deliveryNote,
   activeContract,
   template,
-  contractText,
   nextSigner,
   sigMode,
   typedName,

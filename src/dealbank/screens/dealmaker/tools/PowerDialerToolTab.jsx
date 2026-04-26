@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 import { supabase } from "../../../../lib/supabaseClient";
 import DataSearchBar from "../../../components/DataSearchBar";
+import AlertModal from "../../../components/AlertModal";
 import { DIALER_OUTCOMES, DIALER_QUEUE_SEED } from "./toolData";
 
 const TWILIO_TOKEN_ENDPOINT = String(import.meta.env.VITE_TWILIO_ACCESS_TOKEN_ENDPOINT || "/api/twilio-access-token").trim();
@@ -171,6 +172,7 @@ export default function PowerDialerToolTab({ ctx }) {
   const [callLog, setCallLog] = useState([]);
   const [dialerSearch, setDialerSearch] = useState("");
   const [toast, setToast] = useState("");
+  const [showTwilioConfigModal, setShowTwilioConfigModal] = useState(false);
   const [waveSeed, setWaveSeed] = useState(0);
   const fileRef = useRef(null);
   const callLogSeqRef = useRef(0);
@@ -252,7 +254,8 @@ export default function PowerDialerToolTab({ ctx }) {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload?.token) {
-      throw new Error(payload?.error || `Token endpoint failed (${response.status})`);
+      const serverMsg = payload?.error || response.statusText || `status ${response.status}`;
+      throw new Error(`Failed to fetch Twilio token from ${TWILIO_TOKEN_ENDPOINT}: ${serverMsg}`);
     }
 
     return payload.token;
@@ -325,6 +328,12 @@ export default function PowerDialerToolTab({ ctx }) {
             ? `${fallbackMessage} Using simulation mode.`
             : `${fallbackMessage} Simulation mode is disabled for this environment.`,
         );
+
+        // Show a configuration modal when token/endpoint-related errors occur
+        const errText = String(error?.message || "").toLowerCase();
+        if (!simulationAllowed && (errText.includes("token") || errText.includes("endpoint") || errText.includes("fetch") || errText.includes("twilio"))) {
+          setShowTwilioConfigModal(true);
+        }
       }
     }
 
@@ -594,6 +603,9 @@ export default function PowerDialerToolTab({ ctx }) {
           <div style={{ fontSize: 10, color: G.text }}>
             {dialerModeDetail || "Twilio must be configured before calls can start in this environment."}
           </div>
+          <div style={{ marginTop: 8 }}>
+            <button onClick={() => setShowTwilioConfigModal(true)} style={{ ...btnO, fontSize: 9, padding: "6px 10px" }}>How to configure</button>
+          </div>
         </div>
       ) : dialerDemoMode ? (
         <div style={{ ...card, borderColor: `${G.gold}66`, background: `${G.gold}12`, marginBottom: 12, padding: "10px 12px" }}>
@@ -729,6 +741,23 @@ export default function PowerDialerToolTab({ ctx }) {
       </div>
 
       {toast && <div style={{ position: "fixed", right: isMobile ? 10 : 14, left: isMobile ? 10 : "auto", bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 10px)" : 14, background: G.surface, border: `1px solid ${G.green}44`, borderRadius: 8, padding: "8px 12px", color: G.green, fontSize: 10 }}>{toast}</div>}
+
+      <AlertModal
+        show={showTwilioConfigModal}
+        onClose={() => setShowTwilioConfigModal(false)}
+        title="Twilio Configuration"
+        type="warning"
+        G={G}
+        message={"Twilio token endpoint is unavailable or returned an error."}
+      >
+        <div style={{ textAlign: "left", fontSize: 13, color: G.muted }}>
+          <div style={{ marginBottom: 8 }}>Live Twilio voice requires a token endpoint. Add the following to your <strong>.env</strong> or configure it in your deployment:</div>
+          <pre style={{ background: G.surface, padding: 12, borderRadius: 8, fontSize: 12, overflowX: "auto" }}>
+VITE_TWILIO_ACCESS_TOKEN_ENDPOINT=/api/twilio-access-token
+          </pre>
+          <div style={{ marginTop: 8 }}>If using Vercel, set <strong>VITE_TWILIO_ACCESS_TOKEN_ENDPOINT</strong> in Project Environment Variables and redeploy. For local dev, add it to <strong>.env</strong> and restart dev server.</div>
+        </div>
+      </AlertModal>
     </div>
   );
 }

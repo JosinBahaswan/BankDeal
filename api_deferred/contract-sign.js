@@ -4,7 +4,7 @@ import { asText, createSupabaseAdminClient } from "../lib/server/contractsShared
 import { loadContractBundle, renderBundlePdfBuffer, resolveStorageSignedUrl, persistGeneratedPdf } from "../lib/server/contractsDocumentService.js";
 
 function htmlEscape(value) {
-  return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#39;");
+  return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function portalErrorHtml(message) {
@@ -73,7 +73,7 @@ export default async function handler(req, res) {
       const pdfBuffer = await renderBundlePdfBuffer(bundle);
       const persisted = await persistGeneratedPdf(supabaseAdmin, String(bundle.contract.id), pdfBuffer);
       pdfUrl = String(persisted.signedUrl || "");
-    } catch (err) {
+    } catch {
       // ignore pdf generation failure for signing page, show message below
       pdfUrl = "";
     }

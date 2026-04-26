@@ -94,7 +94,7 @@ function listingDays(publishedAt, closedAt = "") {
 export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSignOut, userName, user, realtorTab, setRealtorTab, showAlert }) {
   const { isMobile, mode } = useViewport();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [, setError] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
   const [realtorProfile, setRealtorProfile] = useState(null);
   const [markets, setMarkets] = useState([]);
@@ -192,6 +192,8 @@ export default function RealtorDashboardScreen({ G, card, lbl, btnG, btnO, onSig
       setRealtorProfile(profileRow);
       setMarkets((marketRows || []).map((row) => row.city).filter(Boolean));
       setSpecialties((specialtyRows || []).map((row) => row.specialty).filter(Boolean));
+      // surface any non-fatal errors collected while loading
+      setError(nextError || "");
       setLoading(false);
     }
 

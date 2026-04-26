@@ -3,6 +3,15 @@ function asText(value, fallback = "") {
   return normalized || fallback;
 }
 
+function isRpcUnavailable(err) {
+  if (!err) return false;
+  const code = String(err?.code || "").toLowerCase();
+  const msg = String(err?.message || err?.error || "").toLowerCase();
+  if (code === "42883") return true;
+  if (msg.includes("does not exist") || msg.includes("undefined_function") || msg.includes("permission denied")) return true;
+  return false;
+}
+
 export function reviewStatusLabel(status) {
   const normalized = asText(status).toLowerCase();
   if (normalized === "approved") return "Approved";
@@ -49,6 +58,11 @@ export async function submitRealtorCommissionReview(supabase, listingId) {
     });
 
   if (error) {
+    if (isRpcUnavailable(error)) {
+      const rpcErr = new Error("Required RPC 'submit_realtor_commission_review' is not available on the database.");
+      rpcErr.code = "rpc_unavailable";
+      throw rpcErr;
+    }
     throw new Error(error.message || "Failed to submit commission review");
   }
 

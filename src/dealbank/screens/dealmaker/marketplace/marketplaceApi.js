@@ -47,6 +47,15 @@ function formatMarkets(markets) {
     .join(" | ");
 }
 
+function isRpcUnavailable(err) {
+  if (!err) return false;
+  const code = String(err?.code || "").toLowerCase();
+  const msg = String(err?.message || err?.error || "").toLowerCase();
+  if (code === "42883") return true; // undefined_function
+  if (msg.includes("does not exist") || msg.includes("undefined_function") || msg.includes("permission denied")) return true;
+  return false;
+}
+
 export function listingDays(publishedAt, closedAt = "") {
   if (!publishedAt) return 0;
   const endTs = closedAt ? new Date(closedAt).getTime() : Date.now();
@@ -69,6 +78,11 @@ export async function incrementListingView(supabase, listingId) {
     });
 
   if (error) {
+    if (isRpcUnavailable(error)) {
+      const rpcErr = new Error("Required RPC 'increment_marketplace_listing_view' is not available on the database.");
+      rpcErr.code = "rpc_unavailable";
+      throw rpcErr;
+    }
     throw new Error(error.message || "Failed to increment listing view count");
   }
 
@@ -165,9 +179,15 @@ export async function loadListingBuyerMatches(supabase, listingId, limit = 8) {
     .rpc("refresh_marketplace_listing_matches", {
       p_listing_id: id,
       p_limit: Math.max(30, normalizedLimit),
-    });
+    })
+    .catch((e) => ({ error: e }));
 
-  if (refreshResult.error) {
+  if (refreshResult?.error) {
+    if (isRpcUnavailable(refreshResult.error)) {
+      const rpcErr = new Error("Required RPC 'refresh_marketplace_listing_matches' is not available on the database.");
+      rpcErr.code = "rpc_unavailable";
+      throw rpcErr;
+    }
     throw new Error(refreshResult.error.message || "Failed to refresh buyer matches");
   }
 

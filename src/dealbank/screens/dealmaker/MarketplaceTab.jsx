@@ -134,6 +134,7 @@ export default function MarketplaceTab({ ctx }) {
     wForm,
     setWForm,
     isMobile,
+    pushToast,
   } = ctx;
 
   const [listings, setListings] = useState([]);
@@ -814,14 +815,14 @@ export default function MarketplaceTab({ ctx }) {
         </div>
       </div>
 
-      <div style={{ background: "linear-gradient(135deg,#eff6ff,#e6efff)", border: "1px solid #93c5fd88", borderRadius: 8, padding: isMobile ? "10px 11px" : "12px 16px", marginBottom: 12, display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 8 : 0 }}>
+      {/* <div style={{ background: "linear-gradient(135deg,#eff6ff,#e6efff)", border: "1px solid #93c5fd88", borderRadius: 8, padding: isMobile ? "10px 11px" : "12px 16px", marginBottom: 12, display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 8 : 0 }}>
         <div>
           <div style={{ fontSize: 7, color: G.blue, letterSpacing: 3, marginBottom: 2 }}>SPONSORED · KIAVI HARD MONEY</div>
           <div style={{ fontFamily: G.serif, fontSize: 13, color: G.text, fontWeight: "bold" }}>Fund any deal in this feed in 5 days</div>
           <div style={{ fontSize: 9, color: G.muted }}>Pre-approval in 24 hours. Up to 90% of purchase. No income docs.</div>
         </div>
         <div style={{ background: G.blue, color: "#fff", borderRadius: 5, padding: "8px 12px", fontSize: 9, fontFamily: G.mono, fontWeight: "bold", letterSpacing: 2, whiteSpace: "nowrap", marginLeft: isMobile ? 0 : 12, textAlign: "center" }}>GET FUNDED →</div>
-      </div>
+      </div> */}
 
       <DataSearchBar
         G={G}

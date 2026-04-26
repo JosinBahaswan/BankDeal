@@ -28,6 +28,15 @@ function clampLimit(rawLimit) {
   return Math.max(1, Math.min(200, limit));
 }
 
+function isRpcUnavailable(err) {
+  if (!err) return false;
+  const code = String(err?.code || "").toLowerCase();
+  const msg = String(err?.message || err?.error || "").toLowerCase();
+  if (code === "42883") return true;
+  if (msg.includes("does not exist") || msg.includes("undefined_function") || msg.includes("permission denied")) return true;
+  return false;
+}
+
 function mapListingToLeadCandidate(row, sellerById, filters) {
   const seller = sellerById.get(String(row?.seller_id || "")) || {};
   const sellerName = asText(seller?.name);
@@ -76,6 +85,11 @@ async function consumeCreditsForPull({ actor, creditsRequired }) {
       const err = new Error(error.message || "Insufficient data credits");
       err.code = "insufficient_credits";
       throw err;
+    }
+    if (isRpcUnavailable(error)) {
+      const rpcErr = new Error("Required RPC 'consume_data_credits' is not available on the database.");
+      rpcErr.code = "rpc_unavailable";
+      throw rpcErr;
     }
 
     throw new Error(error.message || "Failed to consume data credits");

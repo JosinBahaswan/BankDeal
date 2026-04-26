@@ -14,18 +14,18 @@ export default async function handler(req, res) {
 
   let supabaseAdmin = null;
   let actor = null;
-  try {
-    supabaseAdmin = createSupabaseAdminClient();
     try {
-      actor = await verifyContractActor(req, supabaseAdmin);
-    } catch (e) {
-      // proceed without actor if token missing/invalid
-      actor = null;
+      supabaseAdmin = createSupabaseAdminClient();
+      try {
+        actor = await verifyContractActor(req, supabaseAdmin);
+      } catch {
+        // proceed without actor if token missing/invalid
+        actor = null;
+      }
+    } catch {
+      // Supabase admin client not configured — continue without DB logging
+      supabaseAdmin = null;
     }
-  } catch (e) {
-    // Supabase admin client not configured — continue without DB logging
-    supabaseAdmin = null;
-  }
 
   try {
     const body = req.method === "POST" ? (req.body || jsonBody(req) || {}) : {};

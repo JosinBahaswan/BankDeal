@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { sendContractForESign } from "../../core/mockApis";
+import { sendContractForESign } from "../../core/apiClient";
 
 export default function PipelineSimple({ ctx }) {
-  const { G, card, lbl, btnG, btnO, fmt, pipeline = [], updateDealStage, isMobile, setFlipTab } = ctx;
+  const { G, card, lbl, smIn, btnG, btnO, fmt, pipeline = [], updateDealStage, isMobile, setFlipTab } = ctx;
 
   const STAGES = ["Analyzing", "Negotiating", "Under Contract", "Disposition"];
   
   const [contractModal, setContractModal] = useState({ open: false, deal: null });
-  const [contractForm, setContractForm] = useState({ sellerName: "", closeDate: "" });
+  const [contractForm, setContractForm] = useState({ sellerName: "", closeDate: "", recipientEmail: "" });
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -15,7 +15,7 @@ export default function PipelineSimple({ ctx }) {
     setLoading(true);
     try {
       const res = await sendContractForESign({
-        email: "homeowner@example.com",
+        email: contractForm.recipientEmail,
         address: contractModal.deal.address,
         price: contractModal.deal.offer,
         sellerName: contractForm.sellerName
@@ -70,7 +70,7 @@ export default function PipelineSimple({ ctx }) {
                       )}
 
                       {deal.stage === "Contacted" && (
-                        <button onClick={() => setContractModal({ open: true, deal })} style={{ ...btnG, fontSize: 10, padding: "6px" }}>Send Purchase Agreement</button>
+                        <button onClick={() => { setContractModal({ open: true, deal }); setContractForm({ sellerName: '', closeDate: '', recipientEmail: deal.ownerEmail || '' }); }} style={{ ...btnG, fontSize: 10, padding: "6px" }}>Send Purchase Agreement</button>
                       )}
 
                       {(deal.stage === "Under Contract" || deal.stage === "Wholesale" || deal.stage === "Flip") && (
@@ -124,6 +124,15 @@ export default function PipelineSimple({ ctx }) {
                 <div style={{ padding: "10px", background: G.surface, borderRadius: 6, fontSize: 13, border: `1px solid ${G.border}` }}>{fmt(contractModal.deal.offer)}</div>
               </div>
               <div>
+                <div style={lbl}>To (Homeowner Email)</div>
+                <input
+                  value={contractForm.recipientEmail}
+                  onChange={(e) => setContractForm({ ...contractForm, recipientEmail: e.target.value })}
+                  placeholder="homeowner@example.com"
+                  style={{ ...smIn, width: "100%", padding: "10px" }}
+                />
+              </div>
+              <div>
                 <div style={lbl}>Closing Date</div>
                 <input
                   type="date"
@@ -135,7 +144,7 @@ export default function PipelineSimple({ ctx }) {
             </div>
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={handleSendContract} disabled={loading || !contractForm.sellerName} style={{ ...btnG, flex: 2 }}>{loading ? "Generating..." : "Generate & Send for eSign"}</button>
+              <button onClick={handleSendContract} disabled={loading || !contractForm.sellerName || !contractForm.recipientEmail} style={{ ...btnG, flex: 2 }}>{loading ? "Generating..." : "Generate & Send for eSign"}</button>
               <button onClick={() => setContractModal({ open: false, deal: null })} style={{ ...btnO, flex: 1 }}>Cancel</button>
             </div>
           </div>

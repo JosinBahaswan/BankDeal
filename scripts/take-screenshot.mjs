@@ -81,7 +81,7 @@ async function run() {
         executablePath = c;
         break;
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -92,7 +92,7 @@ async function run() {
       if (cp && fs.existsSync(cp) && fs.statSync(cp).isFile()) {
         executablePath = cp;
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -137,7 +137,7 @@ async function run() {
     try {
       await page.click('button[aria-label="Open dashboard menu"]');
       await sleep(500);
-    } catch (e) {
+    } catch {
       // fallback: try clicking by role/text
       await findAndClickButtonByText(page, 'menu');
       await sleep(500);
@@ -149,9 +149,9 @@ async function run() {
     console.log('screenshot saved to ' + screenshotPath);
     await browser.close();
     process.exit(0);
-  } catch (err) {
+    } catch (err) {
     console.error('ERROR', err);
-    try { await browser.close(); } catch (e) {}
+    try { await browser.close(); } catch {}
     process.exit(1);
   }
 }

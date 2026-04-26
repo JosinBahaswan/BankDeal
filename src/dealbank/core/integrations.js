@@ -24,7 +24,9 @@ export function getLaunchIntegrationStatus() {
       id: "twilio",
       label: "Twilio Programmable Voice",
       status: twilioConfigured ? "wired" : "required",
-      details: twilioConfigured ? "Dialer endpoint configured." : "Set VITE_TWILIO_ACCESS_TOKEN_ENDPOINT for live calling.",
+      details: twilioConfigured
+        ? "Dialer endpoint configured."
+        : "Set VITE_TWILIO_ACCESS_TOKEN_ENDPOINT (e.g. /api/twilio-access-token) for live calling. Add to your .env for local dev and set the same env var in your deployment (Vercel) before enabling live calls.",
     },
     {
       id: "stripe",

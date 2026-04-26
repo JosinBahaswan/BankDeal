@@ -6,6 +6,7 @@ import { formatMoney } from "../core/adminDashboardFormat";
 import { dashboardContainerStyle, pageShellStyle } from "../core/layout";
 import { getLaunchIntegrationStatus, integrationStatusColor } from "../core/integrations";
 import useViewport from "../core/useViewport";
+import AlertModal from "../components/AlertModal";
 import useAdminLiveData from "../hooks/useAdminLiveData";
 import useAdminMetrics from "../hooks/useAdminMetrics";
 import AdminDealsPanel from "./admin/AdminDealsPanel";
@@ -42,6 +43,8 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
   const creditsSharePct = totalCashRevenue > 0 ? Math.round((creditsRevenue / totalCashRevenue) * 100) : 0;
   const platformFeeSharePct = totalCashRevenue > 0 ? Math.round((platformFeesRevenue / totalCashRevenue) * 100) : 0;
   const launchIntegrations = getLaunchIntegrationStatus();
+  const [showStripeConfigModal, setShowStripeConfigModal] = useState(false);
+  const [showStorageConfigModal, setShowStorageConfigModal] = useState(false);
   const filteredMockContractors = useMemo(() => {
     const query = contractorSearch.trim().toLowerCase();
     if (!query) return MOCK_CONTRACTORS;
@@ -134,6 +137,47 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
             <div style={{ fontSize: 10, color: G.green }}>Syncing live metrics from Supabase...</div>
           </div>
         )}
+        <AlertModal
+          show={showStripeConfigModal}
+          onClose={() => setShowStripeConfigModal(false)}
+          title="Stripe Configuration"
+          type="warning"
+          G={G}
+          closeLabel="OK"
+          message={"Stripe integration requires publishable key and server endpoints for Checkout and escrow flows."}
+        >
+          <div style={{ textAlign: "left", fontSize: 13, color: G.muted }}>
+            <div style={{ marginBottom: 8 }}>Set these environment variables locally (<strong>.env</strong>) and in your deployment (Vercel):</div>
+            <pre style={{ background: G.surface, padding: 12, borderRadius: 8, fontSize: 12, overflowX: "auto" }}>
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
+VITE_STRIPE_CHECKOUT_ENDPOINT=/api/create-checkout
+VITE_STRIPE_CONNECT_ACCOUNT_ENDPOINT=/api/stripe-connect
+VITE_STRIPE_ESCROW_CREATE_ENDPOINT=/api/stripe-escrow-create
+VITE_STRIPE_ESCROW_RELEASE_ENDPOINT=/api/stripe-escrow-release
+            </pre>
+            <div style={{ marginTop: 8 }}>After setting, redeploy and verify the Admin "Launch Readiness" shows `wired` for Stripe.</div>
+          </div>
+        </AlertModal>
+
+        <AlertModal
+          show={showStorageConfigModal}
+          onClose={() => setShowStorageConfigModal(false)}
+          title="Storage Buckets"
+          type="warning"
+          G={G}
+          closeLabel="OK"
+          message={"Signed file storage requires configured buckets and appropriate access policies."}
+        >
+          <div style={{ textAlign: "left", fontSize: 13, color: G.muted }}>
+            <div style={{ marginBottom: 8 }}>Set these environment variables and ensure your storage service has public/private policies for signed URLs:</div>
+            <pre style={{ background: G.surface, padding: 12, borderRadius: 8, fontSize: 12, overflowX: "auto" }}>
+VITE_CONTRACTS_BUCKET=contracts
+VITE_CONTRACTOR_PHOTOS_BUCKET=contractor-photos
+VITE_PROPERTY_IMAGES_BUCKET=property-images
+            </pre>
+            <div style={{ marginTop: 8 }}>After configuration, verify file uploads and signed URL generation in the Contracts UI.</div>
+          </div>
+        </AlertModal>
 
         {metricsError && (
           <div style={{ ...card, marginBottom: 10, borderColor: `${G.red}55` }}>
@@ -219,6 +263,16 @@ export default function AdminDashboardScreen({ G, card, lbl, btnO, MOCK_CONTRACT
                     <div>
                       <div style={{ fontSize: 11, color: G.text }}>{item.label}</div>
                       <div style={{ fontSize: 9, color: G.muted, marginTop: 2 }}>{item.details}</div>
+                      {item.id === "stripe" && (
+                        <div style={{ marginTop: 8 }}>
+                          <button onClick={() => setShowStripeConfigModal(true)} style={{ ...btnO, fontSize: 9, padding: "6px 10px" }}>How to configure</button>
+                        </div>
+                      )}
+                      {item.id === "storage" && (
+                        <div style={{ marginTop: 8 }}>
+                          <button onClick={() => setShowStorageConfigModal(true)} style={{ ...btnO, fontSize: 9, padding: "6px 10px" }}>How to configure</button>
+                        </div>
+                      )}
                     </div>
                     <div
                       style={{

@@ -9,7 +9,7 @@ import React from "react";
  *  "info"    — blue, ℹ️
  *  "success" — green, ✅
  */
-export default function AlertModal({ show, title, message, type = "error", onClose, G, children }) {
+export default function AlertModal({ show, title, message, type = "error", onClose, G, children, closeLabel }) {
   if (!show) return null;
 
   const CONFIG = {
@@ -87,7 +87,7 @@ export default function AlertModal({ show, title, message, type = "error", onClo
             fontWeight: "800",
           }}
         >
-          {title || (type === "warning" ? "Perhatian" : type === "info" ? "Informasi" : type === "success" ? "Berhasil" : "Terjadi Kesalahan")}
+          {title || (type === "warning" ? "Warning" : type === "info" ? "Info" : type === "success" ? "Success" : "An Error Occurred")}
         </div>
 
         {/* Message */}
@@ -130,7 +130,7 @@ export default function AlertModal({ show, title, message, type = "error", onClo
           onMouseOver={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
           onMouseOut={(e) => (e.currentTarget.style.transform = "translateY(0)")}
         >
-          Mengerti
+          {closeLabel || "OK"}
         </button>
       </div>
 
