@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 import TopBar from "../components/TopBar";
 import DataSearchBar from "../components/DataSearchBar";
 import DashboardWorkspace from "../components/DashboardWorkspace";
