@@ -201,7 +201,7 @@ const DEALMAKER_TAB_LABELS = {
   pipeline: "Pipeline",
   contracts: "Contracts",
   contractors: "Contractors",
-  tools: "Tools",
+
   partners: "Partners",
   resources: "Resources",
   laws: "State Laws",

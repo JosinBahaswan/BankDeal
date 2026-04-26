@@ -12,8 +12,6 @@ import PartnersTab from "./dealmaker/PartnersTab";
 import ResourcesTab from "./dealmaker/ResourcesTab";
 import LawsTab from "./dealmaker/LawsTab";
 import MarketplaceTab from "./dealmaker/MarketplaceTab";
-import ToolsTab from "./dealmaker/tools/ToolsTab";
-
 const TAB_SUMMARY = {
   properties: "Step 1: Browse off-market leads or input a specific address to start a new deal.",
   analyze: "Step 2: Underwrite the deal, calculate offer price, and run AI analysis on comps.",
@@ -97,7 +95,7 @@ export default function DealMakerDashboardScreen({ ctx }) {
             {flipTab === "pipeline" && <PipelineTab ctx={mergedCtx} />}
             {flipTab === "contracts" && <ContractsTab ctx={mergedCtx} />}
             {flipTab === "contractors" && <ContractorsTab ctx={mergedCtx} />}
-            {flipTab === "tools" && <ToolsTab ctx={mergedCtx} />}
+
             {flipTab === "partners" && <PartnersTab ctx={mergedCtx} />}
             {flipTab === "resources" && <ResourcesTab ctx={mergedCtx} />}
             {flipTab === "laws" && <LawsTab ctx={mergedCtx} />}
