@@ -13,6 +13,9 @@ const DEFAULT_AUTOCOMPLETE_PATHS = ["/auto-complete"];
 const DEFAULT_AUTOCOMPLETE_QUERY_KEYS = ["location"];
 const DEFAULT_DETAIL_PATHS = ["/v2/detail", "/detail"];
 
+const REALTY_US_HOST = "realty-us.p.rapidapi.com";
+const REALTY_US_SEARCH_PATH = "/properties/search-buy";
+
 const KNOWN_COMP_PATHS = [
   "comps",
   "comparables",
@@ -791,6 +794,53 @@ async function fetchDetailPayload({ host, apiKey, queryKeys, lookupAddress, quer
   throw err;
 }
 
+async function fetchFallbackFromRealtyUs(apiKey, address) {
+  const url = new URL(`https://${REALTY_US_HOST}${REALTY_US_SEARCH_PATH}`);
+  url.searchParams.set("location", address);
+  url.searchParams.set("resultsPerPage", "1");
+
+  try {
+    const resp = await fetchWithTimeout(url.toString(), {
+      method: "GET",
+      headers: {
+        "x-rapidapi-key": apiKey,
+        "x-rapidapi-host": REALTY_US_HOST,
+        "Content-Type": "application/json",
+      },
+    }, 10000);
+
+    if (!resp.ok) return null;
+    const json = await resp.json();
+    const result = json?.data?.results?.[0] || json?.results?.[0];
+    if (!result) return null;
+
+    // Map Realty US shape to Intelligence Normalized shape
+    const desc = result.description || {};
+    return {
+      property: {
+        address: address,
+        bedrooms: Number(desc.beds || result.beds || 0),
+        bathrooms: Number(desc.baths || result.baths || 0),
+        squareFootage: Number(desc.sqft || result.sqft || 0),
+        yearBuilt: Number(result.year_built || 0),
+        propertyType: desc.type || "Single Family",
+        lotSize: Number(result.lot_size || 0),
+        lastSalePrice: Number(result.list_price || 0),
+        lastSaleDate: "",
+      },
+      avm: {
+        price: Number(result.list_price || 0),
+        priceRangeLow: Number(result.list_price || 0) * 0.95,
+        priceRangeHigh: Number(result.list_price || 0) * 1.05,
+      },
+      comps: [],
+      marketNotes: "Data retrieved from Realty US fallback (Browse API). Detailed analysis quota exceeded.",
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   const cors = enforceCors(req, res, {
     methods: "POST, OPTIONS",
@@ -983,16 +1033,33 @@ export default async function handler(req, res) {
       attempts: [...preflightAttempts, ...detailResult.attempts],
     });
   } catch (error) {
-    const fallbackWarning = asText(error?.message, "Failed to fetch property intelligence");
     const attempts = [
       ...preflightAttempts,
       ...(Array.isArray(error?.attempts) ? error.attempts : []),
     ];
 
+    // Try fallback to Realty US (Browse API)
+    try {
+      const fallbackData = await fetchFallbackFromRealtyUs(rapidApiKey, address);
+      if (fallbackData) {
+        return res.status(200).json({
+          provider: "realty-us-fallback",
+          endpoint: REALTY_US_SEARCH_PATH,
+          lookupAddress: address,
+          normalized: fallbackData,
+          warning: "Primary analysis quota exceeded. Using basic data from search API.",
+          attempts,
+        });
+      }
+    } catch (fallbackErr) {
+      console.warn("Realty US fallback also failed:", fallbackErr.message);
+    }
+
+    const fallbackWarning = asText(error?.message, "Failed to fetch property intelligence");
     return res.status(200).json(
       buildFallbackIntelligence(
         address,
-        `${fallbackWarning} Using fallback context so Claude/manual underwriting can continue.`,
+        `${fallbackWarning} Using generic fallback context.`,
         attempts,
       ),
     );
