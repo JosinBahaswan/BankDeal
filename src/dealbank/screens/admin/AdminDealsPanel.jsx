@@ -12,8 +12,6 @@ export default function AdminDealsPanel({
   error,
   dealsTotal,
   dealsClosed,
-  dealsClosed,
-  dealsClosed,
   onReload,
   onUpdateDeal,
   onDeleteDeal,
