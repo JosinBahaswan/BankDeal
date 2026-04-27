@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">DealBank</string>
-    <string name="title_activity_main">DealBank</string>
-    <string name="package_name">io.dealbank.app</string>
-    <string name="custom_url_scheme">io.dealbank.app</string>
-</resources>
